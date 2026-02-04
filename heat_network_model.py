@@ -16,8 +16,6 @@ def solve_heatpipe_network_model_static(
     [lamb] = n
     [Q] = 1
     """
-    
-    n = A.shape[0]
  
     eta = (k * A / lamb) / (
         (k[0] * A[0] / lamb[0]) + 
@@ -48,8 +46,8 @@ def solve_heatpipe_network_model_static(
          [eta[0]                , 0                      , 0                      , eta_prime[3]          , eta[4] + eta_prime[4]    , eta[5] + eta_prime[5] - 2]]
     )
 
-    C_in = (Q/2) / ((k[0] * A[0] / lamb[0]) + (k[4] * A[4] / lamb[4]) + (k[5] * A[5] / lamb[5]))
-    C_out = (k[6]*A[6]*T_infc/2) / ((k[3] * A[3] / lamb[3]) + (k[4] * A[4] / lamb[4]) + (k[5] * A[5] / lamb[5]) + (k[6] * A[6] / 2))
+    C_in = -(Q/2) / ((k[0] * A[0] / lamb[0]) + (k[4] * A[4] / lamb[4]) + (k[5] * A[5] / lamb[5]))
+    C_out = -(k[6]*A[6]*T_infc/2) / ((k[3] * A[3] / lamb[3]) + (k[4] * A[4] / lamb[4]) + (k[5] * A[5] / lamb[5]) + (k[6] * A[6] / 2))
 
     C = np.array([
         C_in,
@@ -59,6 +57,10 @@ def solve_heatpipe_network_model_static(
         C_in + C_out,
         C_in + C_out        
         ])
+    
+    print(M)
+    print("////\n")
+    print(C)
     
     T = np.linalg.solve(M, C)
     return T
