@@ -32,18 +32,19 @@ def solve_heatpipe_network_model_static(
         )
     
 
-    k_i, k_j = np.meshgrid(k, k)
-    A_i, A_j = np.meshgrid(A, A)
-    lamb_i, lamb_j = np.meshgrid(lamb, lamb)
+    k_j, k_i = np.meshgrid(k, k)
+    A_j, A_i = np.meshgrid(A, A)
+    lamb_j, lamb_i = np.meshgrid(lamb, lamb)
+
     xi = (k_i * A_i / lamb_i)  / ((k_i * A_i / lamb_i) + (k_j * A_j / lamb_j))
-    
+
     M = np.array(
-        [[(xi[0,1] + eta[0] - 2), xi[1,0]                , 0                      , 0                     , eta[4]                   , eta[5]                   ], 
-         [xi[0,1]               , (xi[1,0] + xi[1,2] - 2), xi[2,1]                , 0                     , 0                        , 0                        ], 
-         [0                     , xi[1,2]                , (xi[2,1] + xi[2,3] - 2), xi[3,2]               , 0                        , 0                        ], 
-         [0                     , 0                      , xi[2,3]                , (xi[3,2] + eta[3] - 2), eta_prime[4]             , eta_prime[5]             ], 
-         [eta[0]                , 0                      , 0                      , eta_prime[3]          , eta[4] + eta_prime[4] - 2, eta[5] + eta_prime[5]    ], 
-         [eta[0]                , 0                      , 0                      , eta_prime[3]          , eta[4] + eta_prime[4]    , eta[5] + eta_prime[5] - 2]]
+        [[(xi[0,1] + eta[0] - 2), xi[1,0]                , 0                      , 0                           ,  eta[4]                   , eta[5]                   ], 
+         [xi[0,1]               , (xi[1,0] + xi[1,2] - 2), xi[2,1]                , 0                           , 0                        , 0                        ], 
+         [0                     , xi[1,2]                , (xi[2,1] + xi[2,3] - 2), xi[3,2]                     , 0                        , 0                        ], 
+         [0                     , 0                      , xi[2,3]                , (xi[3,2] + eta_prime[3] - 2), eta_prime[4]             , eta_prime[5]             ], 
+         [eta[0]                , 0                      , 0                      , eta_prime[3]                , eta[4] + eta_prime[4] - 2, eta[5] + eta_prime[5]    ], 
+         [eta[0]                , 0                      , 0                      , eta_prime[3]                , eta[4] + eta_prime[4]    , eta[5] + eta_prime[5] - 2]]
     )
 
     C_in = -(Q/2) / ((k[0] * A[0] / lamb[0]) + (k[4] * A[4] / lamb[4]) + (k[5] * A[5] / lamb[5]))
@@ -57,10 +58,6 @@ def solve_heatpipe_network_model_static(
         C_in + C_out,
         C_in + C_out        
         ])
-    
-    print(M)
-    print("////\n")
-    print(C)
     
     T = np.linalg.solve(M, C)
     return T
