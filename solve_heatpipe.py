@@ -2,7 +2,9 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
-from heat_network_model import solve_heatpipe_network_model_static
+from models.heat_network_model import solve_heatpipe_network_model_static
+from models.heat_discretised_model import solve_heatpipe_discretised
+
 
 def print_heat_pipe_temperatures(T):
     # Index mapping (from your code)
@@ -66,8 +68,12 @@ def main(args):
         -1.0,     # dummy; convection handled via k[6]*A[6]
     ])
 
-    if len(args) > 0 and args[0] == "network_static":
+    if len(args) > 0 and args[0] == "network":
         T = solve_heatpipe_network_model_static(k, A, lamb, T_infc, Q)
+        print_heat_pipe_temperatures(T)
+        return 0
+    elif len(args) > 0 and args[0] == "discretized":
+        T = solve_heatpipe_discretised(k, A, lamb, T_infc, Q)
         print_heat_pipe_temperatures(T)
         return 0
     else:
