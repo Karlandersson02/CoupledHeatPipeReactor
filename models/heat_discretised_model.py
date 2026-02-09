@@ -26,6 +26,9 @@ class heatpipe_discretised:
         self.h_cond = 0
         self.T_cond = 0
 
+        self.k_wall = 0
+        self.k_wick = 0        
+
     def solve_heatpipe_discretised(
             self,
             k: np.ndarray, 
@@ -40,7 +43,9 @@ class heatpipe_discretised:
 
         surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm, delta_Z)
 
-        alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k)
+        k_matrix = self.generate_k_matrix()
+
+        alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k_matrix)
 
         M, C = self.generate_matrix_form(alpha)
 
@@ -95,8 +100,13 @@ class heatpipe_discretised:
 
         return surface_tensor
 
-    def generate_k_matrix(self, k: np.ndarray) -> np.ndarray:
-        return np.array([0])
+    def generate_k_matrix(self) -> np.ndarray:
+
+        k_matrix = np.zeros((self.N_Z, self.N_R))
+        k_matrix[:, :self.N_wick] = self.k_wick
+        k_matrix[:, self.N_wick:] = self.k_wall
+
+        return k_matrix
 
     def calculate_alpha(self, surface_tensor: np.ndarray, delta_Rm: np.ndarray, delta_Rp: np.ndarray, delta_Z: float, k_matrix: np.ndarray) -> np.ndarray:
 
@@ -121,14 +131,7 @@ class heatpipe_discretised:
         adiabatic_mask[self.N_evap:(self.N_evap + self.N_adiabatic), :, 0:2] = True
         alpha_tensor[adiabatic_mask] = 0
 
-<<<<<<< HEAD
         return alpha_tensor
-=======
-        mask = np.zeros_like(alpha_tensor, dtype=bool)
-        mask = 0
-
-        return np.array([0])
->>>>>>> 43db5eb3b08b27120ba5aaf622ef79db666d78d1
 
     def generate_matrix_form(self, alpha: np.ndarray, boundary_conditions: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         N_R = self.N_R
