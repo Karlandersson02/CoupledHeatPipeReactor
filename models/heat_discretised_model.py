@@ -115,7 +115,7 @@ class heatpipe_discretised:
 
         return surface_tensor
 
-    def calculate_k(self, k: np.ndarray) -> np.ndarray:
+    def generate_k_matrix(self, k: np.ndarray) -> np.ndarray:
         return np.array([0])
 
     def calculate_alpha(self, surface_tensor: np.ndarray, delta_Rm: np.ndarray, delta_Rp: np.ndarray, delta_Z: float, k_matrix: np.ndarray) -> np.ndarray:
@@ -129,21 +129,19 @@ class heatpipe_discretised:
                 alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i, j+1]) / (k_matrix[i, j]*delta_Rm[i, j+1] - k_matrix[i, j+1]*delta_Rp[i, j])
                 alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i, j-1]) / (k_matrix[i, j]*delta_Rp[i, j-1] - k_matrix[i, j-1]*delta_Rm[i, j])
 
-        mask = np.zeros_like(alpha_tensor, dtype=bool)
-        mask[0, :, :]  = True
-        mask[-1, :, :] = True
-        mask[:, 0, :]  = True
-        mask[:, -1, :] = True
+        boundary_mask = np.zeros_like(alpha_tensor, dtype=bool)
+        boundary_mask[0, :, :]  = True
+        boundary_mask[-1, :, :] = True
+        boundary_mask[:, 0, :]  = True
+        boundary_mask[:, -1, :] = True
 
-        alpha_tensor[mask] = 0
+        alpha_tensor[boundary_mask] = 0
 
-        i_adiabatic_start = (self.l_evap / (self.l_evap + self.l_cond + self.l_adiabatic) * self.N_Z) // 1
-        i_adiabatic_end = ((self.l_evap + self.l_adiabatic) / (self.l_evap + self.l_cond + self.l_adiabatic) * self.N_Z) // 1
+        adiabatic_mask = np.zeros_like(alpha_tensor, dtype=bool)
+        adiabatic_mask[self.N_evap:(self.N_evap + self.N_adiabatic), :, 0:2] = True
+        alpha_tensor[adiabatic_mask] = 0
 
-        mask = np.zeros_like(alpha_tensor, dtype=bool)
-        mask = 
-
-        return np.array([0])
+        return alpha_tensor
 
     def generate_matrix_form(self, alpha: np.ndarray, boundary_conditions: dict) -> tuple[np.ndarray, np.ndarray]:
         return np.array([0]), np.array([0])
