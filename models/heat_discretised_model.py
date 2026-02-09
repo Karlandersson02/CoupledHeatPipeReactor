@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 class heatpipe_discretised:
     def __init__(self, data):
+
         self.r_outer  = 0
         self.delta_wick  = 0
         self.delta_wall  = 0
@@ -25,6 +26,8 @@ class heatpipe_discretised:
         self.h_vap = 0
         self.h_cond = 0
         self.T_cond = 0
+
+        self.Q = np.array([0])
 
     def solve_heatpipe_discretised(
             self,
@@ -125,70 +128,32 @@ class heatpipe_discretised:
 
         return np.array([0])
 
-    def generate_matrix_form(self, alpha: np.ndarray, boundary_conditions: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        N_R = self.N_R
-        N_Z = boundary_conditions["N_Z"]
-        N = N_R * N_Z
+    def generate_matrix_form(self, alpha: np.ndarray, k: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        N = self.N_R * self.N_Z
 
         M = np.zeros((N, N), dtype=float)
         C = np.zeros(N, dtype=float)
 
         # Bulk elements
-        for z in range(0, N_Z):
-            for r in range(0, N_R):
-                T_idx = (N_Z * z) + r
+        for z in range(0, self.N_Z):
+            for r in range(0, self.N_R):
+                T_idx = (self.N_Z * z) + r
 
-                M[T_idx][T_idx      ] = alpha[z][r][0] + alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3]        
-                M[T_idx][T_idx + 1  ] = alpha[z][r][0]       
-                M[T_idx][T_idx - 1  ] = alpha[z][r][1]       
-                M[T_idx][T_idx + N_Z] = alpha[z][r][2]      
-                M[T_idx][T_idx - N_Z] = alpha[z][r][3]      
+                M[T_idx][T_idx      ]      = k[z][r]     * (alpha[z][r][0] + 
+                                                            alpha[z][r][1] + 
+                                                            alpha[z][r][2] + 
+                                                            alpha[z][r][3])        
+                M[T_idx][T_idx + 1  ]      = k[z][r + 1] * alpha[z][r][0]       
+                M[T_idx][T_idx - 1  ]      = k[z][r - 1] * alpha[z][r][1]       
+                M[T_idx][T_idx + self.N_Z] = k[z + 1][r] * alpha[z][r][2]      
+                M[T_idx][T_idx - self.N_Z] = k[z - 1][r] * alpha[z][r][3]      
 
         # Evaporator outer BC elements, not corners.
-        for z in range(1, N_Z - 1):
-            r = N_R - 1
-            T_idx = z * N_Z + r
+        for z in range(0, self.N_evap):
+            r = self.N_R - 1
+            T_idx = z * self.N_Z + r
 
-            C[T_idx] = boundary_conditions["Q_evap"][z] 
-        
-        # Evaporator vapor BC elements, not corners.
+            C[T_idx] = self.Q[z] / self.k[-1:, :self.N_evap]
 
-        # Todo, need to get N_cond and N_evap
-        for z in range(1,boundary_conditions[''] - 1):
-            r = 0
-            M[(N_Z * z) + r][(N_Z *  z     ) + r    ] = alpha[z][r][0] + alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3]        
-            M[(N_Z * z) + r][(N_Z *  z     ) + r + 1] = alpha[z][r][0]       
-            M[(N_Z * z) + r][(N_Z *  z     ) + r - 1] = alpha[z][r][1]       
-            M[(N_Z * z) + r][(N_Z * (z + 1)) + r    ] = alpha[z][r][2]      
-            M[(N_Z * z) + r][(N_Z * (z - 1)) + r    ] = alpha[z][r][3]      
-            C = 0
-
-        # Condensator vapor BC elements, not corners.
-        for z in range(1,N_Z - 1):
-            for r in range(1,N_R - 1):
-                M[(N_Z * z) + r][(N_Z *  z     ) + r    ] = alpha[z][r][0] + alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3]        
-                M[(N_Z * z) + r][(N_Z *  z     ) + r + 1] = alpha[z][r][0]       
-                M[(N_Z * z) + r][(N_Z *  z     ) + r - 1] = alpha[z][r][1]       
-                M[(N_Z * z) + r][(N_Z * (z + 1)) + r    ] = alpha[z][r][2]      
-                M[(N_Z * z) + r][(N_Z * (z - 1)) + r    ] = alpha[z][r][3]      
-
-                C = 0
-
-        # Condensator outer BC elements, not corners.
-        for z in range(1,N_Z - 1):
-            for r in range(1,N_R - 1):
-                M[(N_Z * z) + r][(N_Z *  z     ) + r    ] = alpha[z][r][0] + alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3]        
-                M[(N_Z * z) + r][(N_Z *  z     ) + r + 1] = alpha[z][r][0]       
-                M[(N_Z * z) + r][(N_Z *  z     ) + r - 1] = alpha[z][r][1]       
-                M[(N_Z * z) + r][(N_Z * (z + 1)) + r    ] = alpha[z][r][2]      
-                M[(N_Z * z) + r][(N_Z * (z - 1)) + r    ] = alpha[z][r][3]      
-
-                C = 0
-
-
-        # Corner cases
-            M[0][0]
-            M[N_Z * N_R - 1][0]
-            M[0][N_Z * N_R - 1]
-            M[N_Z * N_R - 1][N_Z * N_R - 1]
+    
         return M, C
