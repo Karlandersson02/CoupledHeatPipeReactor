@@ -77,7 +77,7 @@ def initialize_discretization(r_vapour, delta_wick, delta_wall, l_evap, l_adiaba
     return R, delta_R_p, delta_R_m, Z, delta_Z
 
 def generate_boundary_conditions(Q: np.ndarray, h_vap: float, h_cond: float, T_cond: float) -> np.ndarray:
-    return np.array([0]) # ? 
+    return {"Q_evap": Q, "h_vap": h_vap, "h_cond": h_cond, "T_cond": T_cond}
 
 def calculate_surfaces(delta_Rp: np.ndarray, delta_Rm: np.ndarray, delta_Z: float, N_Z: int) -> np.ndarray:
 
