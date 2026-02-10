@@ -99,7 +99,7 @@ class heatpipe_discretised:
         :rtype: ndarray[Any, Any]
         """
         delta_R = delta_Rp + delta_Rm
-        Rp = np.cumsum(delta_R)
+        Rp = np.cumsum(delta_R) + self.r_vapour
         Rm = Rp - delta_R
 
         S_rp = Rp * 2*np.pi * self.delta_Z
