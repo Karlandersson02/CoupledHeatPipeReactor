@@ -1,3 +1,5 @@
 .vscode/*
 __pycache__/*
 functions_test.py
+tests/heat_discretised_model/__pycache__
+models/__pycache__
