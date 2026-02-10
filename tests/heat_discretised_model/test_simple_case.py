@@ -127,8 +127,46 @@ class Test_simple_case_discretised_model(unittest.TestCase):
         np.testing.assert_almost_equal(alpha[1][1][2], alpha112_expected)
         np.testing.assert_almost_equal(alpha[1][1][3], alpha113_expected)
 
-        # Testing insulated surface element
+        # Testing insulated surface element at z = 0
+        alpha010_expected = surface_areas[0][1][0] * k[1][2] / (k[0][1] * delta_Rm[2] + k[1][2] * delta_Rp[1])
+        alpha011_expected = surface_areas[0][1][1] * k[1][0] / (k[0][1] * delta_Rp[0] + k[1][0] * delta_Rm[1])
+        alpha012_expected = surface_areas[0][1][2] * k[2][1] / (k[0][1] * self.heatpipe.delta_Z + k[2][1] * self.heatpipe.delta_Z)
+        alpha013_expected = 0.
+
+        np.testing.assert_almost_equal(alpha[0][1][0], alpha010_expected)
+        np.testing.assert_almost_equal(alpha[0][1][1], alpha011_expected)
+        np.testing.assert_almost_equal(alpha[0][1][2], alpha012_expected)
+        np.testing.assert_almost_equal(alpha[0][1][3], alpha013_expected)
+
+        # Testing insulated surface element at z = l_tot
+        alpha010_expected = surface_areas[0][1][0] * k[1][2] / (k[0][1] * delta_Rm[2] + k[1][2] * delta_Rp[1])
+        alpha011_expected = surface_areas[0][1][1] * k[1][0] / (k[0][1] * delta_Rp[0] + k[1][0] * delta_Rm[1])
+        alpha012_expected = 0.
+        alpha013_expected = surface_areas[1][1][3] * k[0][1] / (k[1][1] * self.heatpipe.delta_Z + k[0][1] * self.heatpipe.delta_Z)
+
+        np.testing.assert_almost_equal(alpha[0][1][0], alpha010_expected)
+        np.testing.assert_almost_equal(alpha[0][1][1], alpha011_expected)
+        np.testing.assert_almost_equal(alpha[0][1][2], alpha012_expected)
+        np.testing.assert_almost_equal(alpha[0][1][3], alpha013_expected)
 
         # Testing vapor surface element
+        alpha110_expected = surface_areas[1][0][0] * k[1][2] / (k[1][1] * delta_Rm[2] + k[1][2] * delta_Rp[1])
+        alpha111_expected = surface_areas[1][0][1] 
+        alpha112_expected = surface_areas[1][0][2] * k[2][1] / (k[1][1] * self.heatpipe.delta_Z + k[2][1] * self.heatpipe.delta_Z)
+        alpha113_expected = surface_areas[1][0][3] * k[0][1] / (k[1][1] * self.heatpipe.delta_Z + k[0][1] * self.heatpipe.delta_Z)
+
+        np.testing.assert_almost_equal(alpha[1][1][0], alpha110_expected)
+        np.testing.assert_almost_equal(alpha[1][1][1], alpha111_expected)
+        np.testing.assert_almost_equal(alpha[1][1][2], alpha112_expected)
+        np.testing.assert_almost_equal(alpha[1][1][3], alpha113_expected)
 
         # Testing condenstor surface element  
+        alpha110_expected = surface_areas[4][3][0]
+        alpha111_expected = surface_areas[4][3][1] * k[1][0] / (k[1][1] * delta_Rp[0] + k[1][0] * delta_Rm[1])
+        alpha112_expected = surface_areas[4][3][2] * k[2][1] / (k[1][1] * self.heatpipe.delta_Z + k[2][1] * self.heatpipe.delta_Z)
+        alpha113_expected = surface_areas[4][3][3] * k[0][1] / (k[1][1] * self.heatpipe.delta_Z + k[0][1] * self.heatpipe.delta_Z)
+
+        np.testing.assert_almost_equal(alpha[1][1][0], alpha110_expected)
+        np.testing.assert_almost_equal(alpha[1][1][1], alpha111_expected)
+        np.testing.assert_almost_equal(alpha[1][1][2], alpha112_expected)
+        np.testing.assert_almost_equal(alpha[1][1][3], alpha113_expected)
