@@ -69,8 +69,6 @@ class heatpipe_discretised:
         # Calculating the radiuses of the half-elements
         R[0] = np.sqrt((self.r_outer**2 - self.r_vapour**2) / (self.N_R * 2) + self.r_vapour**2)
 
-        print(R[0], (self.r_outer**2 - self.r_vapour**2), self.r_outer, self.r_vapour)
-
         for i in range(1, 2 * self.N_R):
             R[i] = np.sqrt(R[i-1]**2 + R[0]**2 - self.r_vapour**2)
 
@@ -133,11 +131,11 @@ class heatpipe_discretised:
         h_matrix = np.zeros((self.N_Z, self.N_R))
         
         # Heat transfer coefficient for the vapor section.
-        h_matrix[0, :self.N_evap]         = self.h_vap
-        h_matrix[0, self.N_cond:self.N_Z] = self.h_vap
+        h_matrix[:self.N_evap, 0]                      = self.h_vap
+        h_matrix[(self.N_Z - self.N_cond):self.N_Z, 0] = self.h_vap
 
         # Heat transfer coefficient for the condensator section.
-        h_matrix[self.N_R - 1, self.N_cond:self.N_Z] = self.h_cond
+        h_matrix[(self.N_Z - self.N_cond):self.N_Z, self.N_R - 1] = self.h_cond
 
         return h_matrix
 
