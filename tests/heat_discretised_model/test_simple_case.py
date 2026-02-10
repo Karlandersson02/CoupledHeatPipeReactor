@@ -114,7 +114,7 @@ class Test_simple_case_discretised_model(unittest.TestCase):
         surface_areas = self.heatpipe.calculate_surfaces(delta_Rp, delta_Rm)
         k = self.heatpipe.generate_k_matrix()
 
-        alpha = self.heatpipe.calculate_alpha(surface_areas, delta_Rp, delta_Rm, k)
+        alpha = self.heatpipe.calculate_alpha(surface_areas, delta_Rm, delta_Rp, k)
 
         # Testing bulk elements
         alpha110_expected = surface_areas[1][1][0] * k[1][2] / (k[1][1] * delta_Rm[2] + k[1][2] * delta_Rp[1])
