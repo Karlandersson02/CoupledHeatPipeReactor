@@ -114,15 +114,13 @@ class Test_simple_case_discretised_model(unittest.TestCase):
         surface_areas = self.heatpipe.calculate_surfaces(delta_Rp, delta_Rm)
         k = self.heatpipe.generate_k_matrix()
 
-        alpha = self.heatpipe.calculate_alpha(surface_areas, delta_Rp, delta_Rm, k)
+        alpha = self.heatpipe.calculate_alpha(surface_areas, delta_Rm, delta_Rp, k)
 
         # Testing bulk elements
         alpha110_expected = surface_areas[1][1][0] * k[1][2] / (k[1][1] * delta_Rm[2] + k[1][2] * delta_Rp[1])
         alpha111_expected = surface_areas[1][1][1] * k[1][0] / (k[1][1] * delta_Rp[0] + k[1][0] * delta_Rm[1])
         alpha112_expected = surface_areas[1][1][2] * k[2][1] / (k[1][1] * self.heatpipe.delta_Z + k[2][1] * self.heatpipe.delta_Z)
         alpha113_expected = surface_areas[1][1][3] * k[0][1] / (k[1][1] * self.heatpipe.delta_Z + k[0][1] * self.heatpipe.delta_Z)
-
-        print(alpha)
 
         np.testing.assert_almost_equal(alpha[1][1][0], alpha110_expected)
         np.testing.assert_almost_equal(alpha[1][1][1], alpha111_expected)
