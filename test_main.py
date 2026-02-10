@@ -9,7 +9,7 @@ def main():
     runner = unittest.TextTestRunner(
         verbosity=2,   # detailed output
         failfast=False,  # stop on first failure if True
-        buffer=True     # hide print output unless failure if True
+        buffer=False     # hide print output unless failure if True
     )
 
     # Run tests
