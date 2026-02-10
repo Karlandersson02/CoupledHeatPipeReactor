@@ -170,16 +170,13 @@ class heatpipe_discretised:
         cooling_mask = np.zeros_like(alpha_tensor, dtype=bool)
         
         # Configure masks
-        boundary_mask[0, :, :]  = True
-        boundary_mask[-1, :, :] = True
-        boundary_mask[:, 0, :]  = True
-        boundary_mask[:, -1, :] = True
-
+        boundary_mask[0, :, 3]  = True
+        boundary_mask[-1, :, 2] = True
+        boundary_mask[:, 0, 1]  = True
+        boundary_mask[:, -1, 0] = True
         adiabatic_mask[self.N_evap:(self.N_evap + self.N_adiabatic), :, 0:2] = True
-
         vapour_mask[0:self.N_evap, 0, 1] = True
         vapour_mask[(self.N_evap + self.N_adiabatic):, 0, 1] = True
-
         cooling_mask[(self.N_evap + self.N_adiabatic):, -1, 0] = True
 
         # Apply masks
