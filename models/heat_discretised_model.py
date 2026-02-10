@@ -67,14 +67,14 @@ class heatpipe_discretised:
         Z         = np.zeros(self.N_Z, dtype=float)
         
         # Calculating the radiuses of the half-elements
-        R[0] = np.sqrt(self.r_outer**2)
+        R[0] = np.sqrt(self.r_outer**2 / (self.N_R * 2))
         for i in range(1, 2 * self.N_R):
             R[i] = np.sqrt(R[i-1]**2 + R[0]**2)
 
         # Calculating the differences in the radius of the half-elements
         delta_R[0] = R[0]
         for i in range(1, 2 * self.N_R):
-            delta_R = R[i] - R[i - 1]
+            delta_R[i] = R[i] - R[i - 1]
 
         delta_R_m = delta_R[0::2]
         delta_R_p = delta_R[1::2]
