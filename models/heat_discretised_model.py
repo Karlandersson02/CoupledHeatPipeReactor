@@ -149,8 +149,6 @@ class heatpipe_discretised:
         :type delta_Rm: np.ndarray
         :param delta_Rp: shape (N_r/2,)
         :type delta_Rp: np.ndarray
-        :param delta_Z:
-        :type delta_Z: float
         :param k_matrix: shape (N_z, N_r)
         :type k_matrix: np.ndarray
         :return: shape (N_z, N_r, 4)
@@ -160,10 +158,10 @@ class heatpipe_discretised:
 
         for i in range(1, alpha_tensor.shape[0] - 1):
             for j in range(1, alpha_tensor.shape[1] - 1):
-                alpha_tensor[i, j, 0] = (surface_tensor[i, j, 0] * k_matrix[i+1, j]) / (k_matrix[i, j]*delta_Rm[i+1, j] - k_matrix[i+1, j]*delta_Rp[i, j])
-                alpha_tensor[i, j, 1] = (surface_tensor[i, j, 1] * k_matrix[i-1, j]) / (k_matrix[i, j]*delta_Rp[i-1, j] - k_matrix[i-1, j]*delta_Rm[i, j])
-                alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i, j+1]) / (k_matrix[i, j]*delta_Rm[i, j+1] - k_matrix[i, j+1]*delta_Rp[i, j])
-                alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i, j-1]) / (k_matrix[i, j]*delta_Rp[i, j-1] - k_matrix[i, j-1]*delta_Rm[i, j])
+                alpha_tensor[i, j, 0] = (surface_tensor[i, j, 0] * k_matrix[i+1, j]) / (k_matrix[i, j]*delta_Rm[j] - k_matrix[i+1, j]*delta_Rp[j])
+                alpha_tensor[i, j, 1] = (surface_tensor[i, j, 1] * k_matrix[i-1, j]) / (k_matrix[i, j]*delta_Rp[j] - k_matrix[i-1, j]*delta_Rm[j])
+                alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i, j+1]) / (k_matrix[i, j]*delta_Rm[j+1] - k_matrix[i, j+1]*delta_Rp[j])
+                alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i, j-1]) / (k_matrix[i, j]*delta_Rp[j-1] - k_matrix[i, j-1]*delta_Rm[j])
 
         # Init masks
         boundary_mask = np.zeros_like(alpha_tensor, dtype=bool)
@@ -182,7 +180,7 @@ class heatpipe_discretised:
         vapour_mask[0:self.N_evap, 0, 1] = True
         vapour_mask[(self.N_evap + self.N_adiabatic):, 0, 1] = True
 
-        cooling_mask[(self.N_evap + self.N_adiabatic):, self.N_R, 0] = True
+        cooling_mask[(self.N_evap + self.N_adiabatic):, -1, 0] = True
 
         # Apply masks
         alpha_tensor[boundary_mask] = 0
