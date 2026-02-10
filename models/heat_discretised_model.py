@@ -159,10 +159,10 @@ class heatpipe_discretised:
 
         for i in range(1, alpha_tensor.shape[0] - 1):
             for j in range(1, alpha_tensor.shape[1] - 1):
-                alpha_tensor[i, j, 0] = (surface_tensor[i, j, 0] * k_matrix[i+1, j]) / (k_matrix[i, j]*delta_Rm[j] - k_matrix[i+1, j]*delta_Rp[j])
-                alpha_tensor[i, j, 1] = (surface_tensor[i, j, 1] * k_matrix[i-1, j]) / (k_matrix[i, j]*delta_Rp[j] - k_matrix[i-1, j]*delta_Rm[j])
-                alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i, j+1]) / (k_matrix[i, j]*delta_Rm[j+1] - k_matrix[i, j+1]*delta_Rp[j])
-                alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i, j-1]) / (k_matrix[i, j]*delta_Rp[j-1] - k_matrix[i, j-1]*delta_Rm[j])
+                alpha_tensor[i, j, 0] = (surface_tensor[i, j, 0] * k_matrix[i, j+1]) / (k_matrix[i, j]*delta_Rm[j+1] + k_matrix[i, j+1]*delta_Rp[j])
+                alpha_tensor[i, j, 1] = (surface_tensor[i, j, 1] * k_matrix[i, j-1]) / (k_matrix[i, j]*delta_Rp[j-1] + k_matrix[i, j-1]*delta_Rm[j])
+                alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i+1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i+1, j]*self.delta_Z)
+                alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i-1, j]*self.delta_Z)
 
         # Init masks
         boundary_mask = np.zeros_like(alpha_tensor, dtype=bool)
