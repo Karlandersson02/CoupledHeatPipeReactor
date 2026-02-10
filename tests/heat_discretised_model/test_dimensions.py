@@ -3,7 +3,7 @@ import unittest
 
 from models.heat_discretised_model import heatpipe_discretised
 
-class Test_calculate_surfaces(unittest.TestCase):
+class Test_dimensions_discretised_model(unittest.TestCase):
 
     def setUp(self):
         data_discretised = {
@@ -28,9 +28,14 @@ class Test_calculate_surfaces(unittest.TestCase):
 
         self.heatpipe = heatpipe_discretised(data_discretised)
 
-    def test_array_shape(self):
+    def test_dimensions_calculate_surfaces(self):
         delta_Rs = np.arange(np.random.randint(5, 25)) * 2
         delta_Rm = delta_Rs[0::2]
         delta_Rp = delta_Rs[1::2]
 
+        # Testing shape
         self.assertEqual(self.heatpipe.calculate_surfaces(delta_Rm, delta_Rp).shape, (len(delta_Rm), len(delta_Rp), 4))
+
+        # Testing delta_Rm
+        self.assertEqual 
+        # 
