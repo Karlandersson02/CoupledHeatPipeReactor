@@ -5,31 +5,33 @@ import matplotlib.pyplot as plt
 class heatpipe_discretised:
     def __init__(self, data):
 
-        self.r_outer  = 0
-        self.delta_wick  = 0
-        self.delta_wall  = 0
+        self.r_outer  = data.get("r_outer")
+        self.delta_wick  = data.get("delta_wick")
+        self.delta_wall  = data.get("delta_wall")
+        self.r_vapour = self.r_outer - self.delta_wick - self.delta_wall
 
-        self.l_evap  = 0
-        self.l_adiabatic  = 0
-        self.l_cond  = 0
-        self.l_tot = 0
+        self.l_evap  = data.get("l_evap")
+        self.l_adiabatic  = data.get("l_adiabatic")
+        self.l_cond  = data.get("l_cond")
+        self.l_tot = self.l_evap + self.l_adiabatic + self.l_cond
         
-        self.N_R  = 0
-        self.N_wick = 0
-        self.N_wall = 0
+        self.N_wick = data.get("N_wick")
+        self.N_wall = data.get("N_wall")
+        self.N_R  = self.N_wick + self.N_wall
 
-        self.N_Z  = 0
-        self.N_evap = 0
-        self.N_adiabatic = 0
-        self.N_cond = 0
+        self.N_evap = data.get("N_evap")
+        self.N_adiabatic = data.get("N_adiabatic")
+        self.N_cond = data.get("N_cond")
+        self.N_Z = self.N_evap + self.N_adiabatic + self.N_cond
+        self.delta_Z = self.l_tot / self.N_Z
 
-        self.h_vap = 0
-        self.h_cond = 0
-        self.T_cond = 0
+        self.h_vap = data.get("h_vap")
+        self.h_cond = data.get("h_cond")
+        self.T_cond = data.get("T_cond")
 
-        self.k_wall = 0
-        self.k_wick = 0        
-        self.Q = np.array([0])
+        self.k_wall = data.get("k_wall")
+        self.k_wick = data.get("k_wick")
+        self.Q = data.get("Q")
 
     def solve_heatpipe_discretised(
             self,
@@ -41,15 +43,15 @@ class heatpipe_discretised:
             discretization
     ) -> np.ndarray:
         
-        R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
+        R, delta_Rp, delta_Rm, Z = self.initialize_discretization()
 
-        surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm, delta_Z)
+        surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm)
 
         k_matrix = self.generate_k_matrix()
 
-        alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k_matrix)
+        alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, k_matrix)
 
-        M, C = self.generate_matrix_form(alpha)
+        M, C = self.generate_matrix_form(alpha, k_matrix)
 
         T = np.linalg.solve(M, C)
         
@@ -63,10 +65,8 @@ class heatpipe_discretised:
         delta_R_p = np.zeros(self.N_R, dtype=float)
         Z         = np.zeros(self.N_Z, dtype=float)
         
-        R_outer = self.r_vapour + self.delta_wick + self.delta_wall
-        
         # Calculating the radiuses of the half-elements
-        R[0] = np.sqrt(R_outer**2)
+        R[0] = np.sqrt(self.r_outer**2)
         for i in range(1, 2 * self.N_R):
             R[i] = np.sqrt(R[i-1]**2 + R[0]**2)
 
@@ -81,20 +81,28 @@ class heatpipe_discretised:
         # Calculating the Z-position of the bulk of the elements 
         for i in range(self.N_Z):
             Z[i] = (i + 1/2) * self.l_tot/self.N_Z
+
+        return R, delta_R_p, delta_R_m, Z
+
+    def calculate_surfaces(self, delta_Rp: np.ndarray, delta_Rm: np.ndarray) -> np.ndarray:
+        """
+        Calculates a surface tensor representing the areas in the positive and negative radial and axial directions at every discrete element. \\
+        The order is (positive radial, negative radial, positive axial, negative axial).
         
-        # Calculating the difference in the Z-position of the elements
-        delta_Z = self.l_tot/self.N_Z
-
-        return R, delta_R_p, delta_R_m, Z, delta_Z
-
-    def calculate_surfaces(self, delta_Rp: np.ndarray, delta_Rm: np.ndarray, delta_Z: float) -> np.ndarray:
-
+        :param self:
+        :param delta_Rp: shape (N_R /2 ,)
+        :type delta_Rp: np.ndarray
+        :param delta_Rm: shape (N_R /2 ,)
+        :type delta_Rm: np.ndarray
+        :return: shape (N_z, N_r, 4)
+        :rtype: ndarray[Any, Any]
+        """
         delta_R = delta_Rp + delta_Rm
         Rp = np.cumsum(delta_R)
         Rm = Rp - delta_R
 
-        S_rp = Rp * 2*np.pi * delta_Z
-        S_rm = Rm * 2*np.pi * delta_Z
+        S_rp = Rp * 2*np.pi * self.delta_Z
+        S_rm = Rm * 2*np.pi * self.delta_Z
         S_z = (Rp**2 - Rm**2) * np.pi
 
         surface_tensor = np.concatenate([S_rp[:, None], S_rm[:, None], S_z[:, None], S_z[:, None]], axis=1)
@@ -103,15 +111,37 @@ class heatpipe_discretised:
         return surface_tensor
 
     def generate_k_matrix(self) -> np.ndarray:
-
+        """
+        Generates a matrix representing the conduction coefficient on every discrete element in the heat pipe.
+        
+        :param self:
+        :return: shape (N_z, N_r)
+        :rtype: ndarray[Any, Any]
+        """
         k_matrix = np.zeros((self.N_Z, self.N_R))
         k_matrix[:, :self.N_wick] = self.k_wick
         k_matrix[:, self.N_wick:] = self.k_wall
 
         return k_matrix
 
-    def calculate_alpha(self, surface_tensor: np.ndarray, delta_Rm: np.ndarray, delta_Rp: np.ndarray, delta_Z: float, k_matrix: np.ndarray) -> np.ndarray:
-
+    def calculate_alpha(self, surface_tensor: np.ndarray, delta_Rm: np.ndarray, delta_Rp: np.ndarray, k_matrix: np.ndarray) -> np.ndarray:
+        """
+        Calculates a tensor representing the alpha coefficients on every discrete element in the heat pipe
+        
+        :param self:
+        :param surface_tensor: shape (N_z, N_r, 4)
+        :type surface_tensor: np.ndarray
+        :param delta_Rm: shape (N_r/2,)
+        :type delta_Rm: np.ndarray
+        :param delta_Rp: shape (N_r/2,)
+        :type delta_Rp: np.ndarray
+        :param delta_Z:
+        :type delta_Z: float
+        :param k_matrix: shape (N_z, N_r)
+        :type k_matrix: np.ndarray
+        :return: shape (N_z, N_r, 4)
+        :rtype: ndarray[Any, Any]
+        """
         alpha_tensor = np.zeros_like(surface_tensor)
 
         for i in range(1, alpha_tensor.shape[0] - 1):

@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from models.heat_network_model import solve_heatpipe_network_model_static
-from models.heat_discretised_model import solve_heatpipe_discretised
+from models.heat_discretised_model import heatpipe_discretised
 
 
 def print_heat_pipe_temperatures(T):
@@ -68,12 +68,34 @@ def main(args):
         -1.0,     # dummy; convection handled via k[6]*A[6]
     ])
 
+    # ///
+    data_discretised = {
+        "r_outer": 0,
+        "delta_wick": 0,
+        "delta_wall": 0,
+        "l_evap": 0,
+        "l_adiabatic": 0,
+        "l_cond": 0,
+        "N_wick": 0,
+        "N_wall": 0,
+        "N_evap": 0,
+        "N_adiabatic": 0,
+        "N_cond": 0,
+        "h_vap": 0,
+        "h_cond": 0,
+        "T_cond": 0,
+        "k_wall": 0,
+        "k_wick": 0,
+        "Q": np.array([0])
+    }
+    # \\\
+
     if len(args) > 0 and args[0] == "network":
         T = solve_heatpipe_network_model_static(k, A, lamb, T_infc, Q)
         print_heat_pipe_temperatures(T)
         return 0
-    elif len(args) > 0 and args[0] == "discretized":
-        T = solve_heatpipe_discretised(k, A, lamb, T_infc, Q)
+    elif len(args) > 0 and args[0] == "discretised":
+        T = heatpipe_discretised(data_discretised)
         print_heat_pipe_temperatures(T)
         return 0
     else:
