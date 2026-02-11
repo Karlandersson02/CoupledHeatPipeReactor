@@ -33,6 +33,23 @@ class Test_randomised_discretised_model(unittest.TestCase):
 
         self.heatpipe = heatpipe_discretised(self.data_discretised)
 
+    def test_initialise_discretisation(self):
+        R, delta_Rp, delta_Rm, Z = self.heatpipe.initialize_discretization()
+
+        self.assertEqual(delta_Rp.shape, (self.N_R,), "shape mismatch")
+        self.assertEqual(delta_Rm.shape, (self.N_R,), "shape mismatch")
+
+        Rp = R[2::2]
+        Rm = R[0::2][:-1]
+        Rmid = R[1::2][:-1]
+
+        areasp = Rp**2 - Rmid**2
+        areasm = Rmid**2 - Rm**2
+        
+        self.assertTrue(np.all(areasp - areasp[0] < 0.0000001), msg=f"\nActual: {areasp - areasp[0]}\nDesired: {0}")
+        self.assertTrue(np.all(areasm - areasm[0] < 0.0000001), msg=f"\nActual: {areasm - areasm[0]}\nDesired: {0}")
+        self.assertAlmostEqual(areasp[0], areasm[0], places=7, msg=f"\nActual: {areasp[0] - areasm[0]}\nDesired: {0}")
+
     def test_calculate_surfaces(self):
         delta_Rs = np.random.rand(self.N_R*2)*4
         delta_Rm = delta_Rs[0::2]

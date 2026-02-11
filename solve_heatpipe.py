@@ -70,23 +70,23 @@ def main(args):
 
     # ///
     data_discretised = {
-        "r_outer": 0,
-        "delta_wick": 0,
-        "delta_wall": 0,
-        "l_evap": 0,
-        "l_adiabatic": 0,
-        "l_cond": 0,
-        "N_wick": 0,
-        "N_wall": 0,
-        "N_evap": 0,
-        "N_adiabatic": 0,
-        "N_cond": 0,
-        "h_vap": 0,
-        "h_cond": 0,
-        "T_cond": 0,
-        "k_wall": 0,
-        "k_wick": 0,
-        "Q": np.array([0])
+        "r_outer": D_v/2 + delta_wall + delta_wick,
+        "delta_wick": delta_wick,
+        "delta_wall": delta_wall,
+        "l_evap": l_evap,
+        "l_adiabatic": l_adiabatic,
+        "l_cond": l_cond,
+        "N_wick": 2,
+        "N_wall": 2,
+        "N_evap": 2,
+        "N_adiabatic": 2,
+        "N_cond": 2,
+        "h_vap": 1e5,       # högt tal bara
+        "h_cond": 39,
+        "T_cond": T_infc,
+        "k_wall": 45.0,
+        "k_wick": 21.7,
+        "Q": np.repeat(np.array([Q]), 2)
     }
     # \\\
 
@@ -96,7 +96,7 @@ def main(args):
         return 0
     elif len(args) > 0 and args[0] == "discretised":
         T = heatpipe_discretised(data_discretised)
-        print_heat_pipe_temperatures(T)
+        print(T)
         return 0
     else:
         raise ValueError("Invalid function argument")

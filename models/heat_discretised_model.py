@@ -33,15 +33,7 @@ class heatpipe_discretised:
         self.k_wick = data.get("k_wick")
         self.Q = data.get("Q")
 
-    def solve_heatpipe_discretised(
-            self,
-            k: np.ndarray, 
-            A: np.ndarray, 
-            lamb: np.ndarray, 
-            T_infc, 
-            Q, 
-            discretization
-    ) -> np.ndarray:
+    def solve_heatpipe_discretised(self) -> np.ndarray:
         
         R, delta_Rp, delta_Rm, Z = self.initialize_discretization()
 
@@ -66,7 +58,7 @@ class heatpipe_discretised:
         delta_R_p = np.zeros(self.N_R, dtype=float)
         Z         = np.zeros(self.N_Z, dtype=float)
         
-        # Calculating the radiuses of the half-elements
+        # Calculating the radii of the half-elements
         R[0] = np.sqrt((self.r_outer**2 - self.r_vapour**2) / (self.N_R * 2) + self.r_vapour**2)
 
         for i in range(1, 2 * self.N_R):
@@ -169,23 +161,17 @@ class heatpipe_discretised:
                     alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i-1, j]*self.delta_Z)
 
         # Init masks
-        # boundary_mask = np.zeros_like(alpha_tensor, dtype=bool)
         adiabatic_mask = np.zeros_like(alpha_tensor, dtype=bool)
         vapour_mask = np.zeros_like(alpha_tensor, dtype=bool)
         cooling_mask = np.zeros_like(alpha_tensor, dtype=bool)
         
         # Configure masks
-        # boundary_mask[0, :, 3]  = True
-        # boundary_mask[-1, :, 2] = True
-        # boundary_mask[:, 0, 1]  = True
-        # boundary_mask[:, -1, 0] = True
         adiabatic_mask[self.N_evap:(self.N_evap + self.N_adiabatic), :, 0:2] = True
         vapour_mask[0:self.N_evap, 0, 1] = True
         vapour_mask[(self.N_evap + self.N_adiabatic):, 0, 1] = True
         cooling_mask[(self.N_evap + self.N_adiabatic):, -1, 0] = True
 
         # Apply masks
-        # alpha_tensor[boundary_mask] = 0
         alpha_tensor[adiabatic_mask] = 0
         alpha_tensor[vapour_mask] = surface_tensor[vapour_mask]
         alpha_tensor[cooling_mask] = surface_tensor[cooling_mask]
