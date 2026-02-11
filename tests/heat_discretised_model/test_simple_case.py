@@ -172,3 +172,122 @@ class Test_simple_case_discretised_model(unittest.TestCase):
         np.testing.assert_almost_equal(alpha[4][3][1], alpha431_expected)
         np.testing.assert_almost_equal(alpha[4][3][2], alpha432_expected)
         np.testing.assert_almost_equal(alpha[4][3][3], alpha433_expected)
+
+    def test_output_generate_matrix_form(self):
+        R, delta_Rp, delta_Rm, Z = self.heatpipe.initialize_discretization()
+        surface_areas = self.heatpipe.calculate_surfaces(delta_Rp, delta_Rm)
+        k = self.heatpipe.generate_k_matrix()
+        h = self.heatpipe.generate_h_matrix()
+
+        alpha = self.heatpipe.calculate_alpha(surface_areas, delta_Rm, delta_Rp, k)
+
+        M, C = self.heatpipe.generate_matrix_form(alpha, k, h)
+
+        stride = self.heatpipe.N_R
+
+        # Testing bulk element
+        T_idx11 = (stride * 1) + 1
+        M11_diag_expected = -k[1][1] * (alpha[1][1][0] + alpha[1][1][1] + alpha[1][1][2] + alpha[1][1][3])
+        M11_rp_expected   =  k[1][1] * alpha[1][1][0]
+        M11_rm_expected   =  k[1][1] * alpha[1][1][1]
+        M11_zp_expected   =  k[1][1] * alpha[1][1][2]
+        M11_zm_expected   =  k[1][1] * alpha[1][1][3]
+
+        np.testing.assert_almost_equal(M[T_idx11][T_idx11]         , M11_diag_expected)
+        np.testing.assert_almost_equal(M[T_idx11][T_idx11 + 1]     , M11_rp_expected)
+        np.testing.assert_almost_equal(M[T_idx11][T_idx11 - 1]     , M11_rm_expected)
+        np.testing.assert_almost_equal(M[T_idx11][T_idx11 + stride], M11_zp_expected)
+        np.testing.assert_almost_equal(M[T_idx11][T_idx11 - stride], M11_zm_expected)
+
+        C11_expected = 0.
+        np.testing.assert_almost_equal(C[T_idx11], C11_expected)
+
+        # Testing insulated surface element at z = 0
+        T_idx01 = (stride * 0) + 1
+        M01_diag_expected = -k[0][1] * (alpha[0][1][0] + alpha[0][1][1] + alpha[0][1][2])
+        M01_rp_expected   =  k[0][1] *  alpha[0][1][0]
+        M01_rm_expected   =  k[0][1] *  alpha[0][1][1]
+        M01_zp_expected   =  k[0][1] *  alpha[0][1][2]
+        M01_zm_expected   =  k[0][1] *  0.0
+
+        np.testing.assert_almost_equal(M[T_idx01][T_idx01]         , M01_diag_expected)
+        np.testing.assert_almost_equal(M[T_idx01][T_idx01 + 1]     , M01_rp_expected)
+        np.testing.assert_almost_equal(M[T_idx01][T_idx01 - 1]     , M01_rm_expected)
+        np.testing.assert_almost_equal(M[T_idx01][T_idx01 + stride], M01_zp_expected)
+
+        C01_expected = 0.
+        np.testing.assert_almost_equal(C[T_idx01], C01_expected)
+
+        # Testing insulated surface element at z = l_tot
+        T_idx51 = (stride * 5) + 1
+        M51_diag_expected = -k[5][1] * (alpha[5][1][0] + alpha[5][1][1] + alpha[5][1][3])
+        M51_rp_expected   =  k[5][1] *  alpha[5][1][0]
+        M51_rm_expected   =  k[5][1] *  alpha[5][1][1]
+        M51_zm_expected   =  k[5][1] *  alpha[5][1][3]
+
+        np.testing.assert_almost_equal(M[T_idx51][T_idx51]         , M51_diag_expected)
+        np.testing.assert_almost_equal(M[T_idx51][T_idx51 + 1]     , M51_rp_expected)
+        np.testing.assert_almost_equal(M[T_idx51][T_idx51 - 1]     , M51_rm_expected)
+        np.testing.assert_almost_equal(M[T_idx51][T_idx51 - stride], M51_zm_expected)
+
+        C51_expected = 0.
+        np.testing.assert_almost_equal(C[T_idx51], C51_expected)
+
+        # Testing vapor surface element
+        T_idx10 = (stride * 1) + 0
+        M10_diag_expected = -k[1][0] * (alpha[1][0][1] + alpha[1][0][2] + alpha[1][0][3])
+        M10_diag_expected -= h[1][0] * alpha[1][0][0]
+        M10_rp_expected   =  k[1][0] *  alpha[1][0][0]
+        M10_rm_expected   =  h[1][0] *  alpha[1][0][1]
+        M10_zp_expected   =  k[1][0] *  alpha[1][0][2]
+        M10_zm_expected   =  k[1][0] *  alpha[1][0][3]
+
+        np.testing.assert_almost_equal(M[T_idx10][T_idx10]         , M10_diag_expected)
+        np.testing.assert_almost_equal(M[T_idx10][T_idx10 + 1]     , M10_rp_expected)
+        np.testing.assert_almost_equal(M[T_idx10][-1         ]     , M10_rm_expected)
+        np.testing.assert_almost_equal(M[T_idx10][T_idx10 + stride], M10_zp_expected)
+        np.testing.assert_almost_equal(M[T_idx10][T_idx10 - stride], M10_zm_expected)
+
+        C10_expected = 0.
+        np.testing.assert_almost_equal(C[T_idx10], C10_expected)
+
+        # Testing condenstor surface corner element  
+        T_idx53 = (stride * 5) + 3
+        M53_diag_expected = -k[5][3] * (alpha[5][3][1] + alpha[5][3][3])
+        M53_diag_expected -= h[5][3] *  alpha[5][3][0]
+        M53_rm_expected   =  k[5][3] *  alpha[5][3][1]
+        M53_zm_expected   =  k[5][3] *  alpha[5][3][3]
+
+        np.testing.assert_almost_equal(M[T_idx53][T_idx53]         , M53_diag_expected)
+        np.testing.assert_almost_equal(M[T_idx53][T_idx53 - 1]     , M53_rm_expected)
+        np.testing.assert_almost_equal(M[T_idx53][T_idx53 - stride], M53_zm_expected)
+
+        C53_expected = h[5][3] * alpha[5][3][0] * self.heatpipe.T_cond
+        np.testing.assert_almost_equal(C[T_idx53], C53_expected)
+
+        # Testing insultade wick edge r = 0
+        T_idx30 = (stride * 3) + 0
+        M30_diag_expected = -k[3][0] * (alpha[1][1][2] + alpha[1][1][3])
+        M30_zp_expected   =  k[3][0] * alpha[1][1][2]
+        M30_zm_expected   =  k[3][0] * alpha[1][1][3]
+
+        np.testing.assert_almost_equal(M[T_idx30][T_idx30]         , M30_diag_expected)
+        np.testing.assert_almost_equal(M[T_idx30][T_idx30 + stride], M30_zp_expected)
+        np.testing.assert_almost_equal(M[T_idx30][T_idx30 - stride], M30_zm_expected)
+
+        C30_expected = 0.
+        np.testing.assert_almost_equal(C[T_idx30], C30_expected)
+
+        # Testing insultade wall edge r = N_R - 1
+        T_idx33 = (stride * 3) + 3 - 1
+        M33_diag_expected = -k[3][3] * (alpha[3][3][2] + alpha[3][3][3])
+        M33_zp_expected   =  k[3][3] *  alpha[3][3][2]
+        M33_zm_expected   =  k[3][3] *  alpha[3][3][3]
+
+        np.testing.assert_almost_equal(M[T_idx33][T_idx33]         , M33_diag_expected)
+        np.testing.assert_almost_equal(M[T_idx33][T_idx33 + stride], M33_zp_expected)
+        np.testing.assert_almost_equal(M[T_idx33][T_idx33 - stride], M33_zm_expected)
+        self.assertFalse(M[T_idx33][T_idx33 - stride] == 0.)
+
+        C33_expected = 0.
+        np.testing.assert_almost_equal(C[T_idx33], C33_expected)
