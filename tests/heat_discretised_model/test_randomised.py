@@ -26,10 +26,10 @@ class Test_randomised_discretised_model(unittest.TestCase):
             "Q": np.array([0])
         }
 
-        self.N_R = self.data_discretised.get("N_wick") + self.data_discretised.get("N_wall")
-        self.N_Z = self.data_discretised.get("N_evap") + self.data_discretised.get("N_adiabatic") + self.data_discretised.get("N_cond")
-        self.delta_Z = (self.data_discretised.get("l_evap") + self.data_discretised.get("l_adiabatic") + self.data_discretised.get("l_cond")) / self.N_Z
-        self.r_vapour = self.data_discretised.get("r_outer") - self.data_discretised.get("delta_wall") - self.data_discretised.get("delta_wick")
+        self.N_R = self.data_discretised["N_wick"] + self.data_discretised["N_wall"]
+        self.N_Z = self.data_discretised["N_evap"] + self.data_discretised["N_adiabatic"] + self.data_discretised["N_cond"]
+        self.delta_Z = (self.data_discretised["l_evap"] + self.data_discretised["l_adiabatic"] + self.data_discretised["l_cond"]) / self.N_Z
+        self.r_vapour = self.data_discretised["r_outer"] - self.data_discretised["delta_wall"] - self.data_discretised["delta_wick"]
 
         self.heatpipe = heatpipe_discretised(self.data_discretised)
 
@@ -79,17 +79,17 @@ class Test_randomised_discretised_model(unittest.TestCase):
         alpha_Zp = (surface_tensor[i, j, 2] * k_matrix[i+1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i+1, j]*self.delta_Z)
         alpha_Zm = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i-1, j]*self.delta_Z)
 
-        if not (self.data_discretised.get("N_evap") < i < (self.data_discretised.get("N_evap") + self.data_discretised.get("N_adiabatic"))):
+        if not (self.data_discretised["N_evap"] < i < (self.data_discretised["N_evap"] + self.data_discretised["N_adiabatic"])):
             self.assertAlmostEqual(alpha_tensor[i, j, 0], alpha_Rp, places=10, msg=f"\n\nACTUAL: {alpha_tensor[i, j, 0]}\nDESIRED: {alpha_Rp}\nalpha_Rp: (i, j) = ({i}, {j})")
             self.assertAlmostEqual(alpha_tensor[i, j, 1], alpha_Rm, places=10, msg=f"\n\nACTUAL: {alpha_tensor[i, j, 1]}\nDESIRED: {alpha_Rm}\nalpha_Rm: (i, j) = ({i}, {j})")
         self.assertAlmostEqual(alpha_tensor[i, j, 2], alpha_Zp, places=10, msg=f"\n\nACTUAL: {alpha_tensor[i, j, 2]}\nDESIRED: {alpha_Zp}\nalpha_Zp: (i, j) = ({i}, {j})")
         self.assertAlmostEqual(alpha_tensor[i, j, 3], alpha_Zm, places=10, msg=f"\n\nACTUAL: {alpha_tensor[i, j, 3]}\nDESIRED: {alpha_Zm}\nalpha_Zm: (i, j) = ({i}, {j})")
 
-        self.assertTrue(np.all(alpha_tensor[0, :, 2] == 0), "Zero boundary incorrect")
-        self.assertTrue(np.all(alpha_tensor[-1, :, 3] == 0), "Zero boundary incorrect")
+        self.assertTrue(np.all(alpha_tensor[0, :, 3] == 0), "Zero boundary incorrect")
+        self.assertTrue(np.all(alpha_tensor[-1, :, 2] == 0), "Zero boundary incorrect")
 
-        self.assertTrue(np.all(alpha_tensor[:(self.data_discretised.get("N_evap")), 0, 1] == surface_tensor[:(self.data_discretised.get("N_evap")), 0, 1]), "Conduction boundary incorrect")
-        self.assertTrue(np.all(alpha_tensor[(self.data_discretised.get("N_evap") + self.data_discretised.get("N_adiabatic")):, 0, 1] == surface_tensor[(self.data_discretised.get("N_evap") + self.data_discretised.get("N_adiabatic")):, 0, 1]), "Conduction boundary incorrect")
-        self.assertTrue(np.all(alpha_tensor[(self.data_discretised.get("N_evap") + self.data_discretised.get("N_adiabatic")):, -1, 0] == surface_tensor[(self.data_discretised.get("N_evap") + self.data_discretised.get("N_adiabatic")):, -1, 0]), "Conduction boundary incorrect")
+        self.assertTrue(np.all(alpha_tensor[:(self.data_discretised["N_evap"]), 0, 1] == surface_tensor[:(self.data_discretised["N_evap"]), 0, 1]), "Conduction boundary incorrect")
+        self.assertTrue(np.all(alpha_tensor[(self.data_discretised["N_evap"] + self.data_discretised["N_adiabatic"]):, 0, 1] == surface_tensor[(self.data_discretised["N_evap"] + self.data_discretised["N_adiabatic"]):, 0, 1]), "Conduction boundary incorrect")
+        self.assertTrue(np.all(alpha_tensor[(self.data_discretised["N_evap"] + self.data_discretised["N_adiabatic"]):, -1, 0] == surface_tensor[(self.data_discretised["N_evap"] + self.data_discretised["N_adiabatic"]):, -1, 0]), "Conduction boundary incorrect")
 
-        self.assertTrue(np.all(alpha_tensor[self.data_discretised.get("N_evap"):self.data_discretised.get("N_adiabatic"), :, 0:2] == 0), "Radial heat transfer omission in adiabatic section incorrect")
+        self.assertTrue(np.all(alpha_tensor[self.data_discretised["N_evap"]:self.data_discretised["N_adiabatic"], :, 0:2] == 0), "Radial heat transfer omission in adiabatic section incorrect")

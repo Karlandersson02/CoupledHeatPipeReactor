@@ -157,31 +157,35 @@ class heatpipe_discretised:
         """
         alpha_tensor = np.zeros_like(surface_tensor)
 
-        for i in range(1, alpha_tensor.shape[0] - 1):
-            for j in range(1, alpha_tensor.shape[1] - 1):
-                alpha_tensor[i, j, 0] = (surface_tensor[i, j, 0] * k_matrix[i, j+1]) / (k_matrix[i, j]*delta_Rm[j+1] + k_matrix[i, j+1]*delta_Rp[j])
-                alpha_tensor[i, j, 1] = (surface_tensor[i, j, 1] * k_matrix[i, j-1]) / (k_matrix[i, j]*delta_Rp[j-1] + k_matrix[i, j-1]*delta_Rm[j])
-                alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i+1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i+1, j]*self.delta_Z)
-                alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i-1, j]*self.delta_Z)
+        for i in range(alpha_tensor.shape[0]):
+            for j in range(alpha_tensor.shape[1]):
+                if not (j == alpha_tensor.shape[1] - 1):
+                    alpha_tensor[i, j, 0] = (surface_tensor[i, j, 0] * k_matrix[i, j+1]) / (k_matrix[i, j]*delta_Rm[j+1] + k_matrix[i, j+1]*delta_Rp[j])
+                if not (j == 0):
+                    alpha_tensor[i, j, 1] = (surface_tensor[i, j, 1] * k_matrix[i, j-1]) / (k_matrix[i, j]*delta_Rp[j-1] + k_matrix[i, j-1]*delta_Rm[j])
+                if not (i == alpha_tensor.shape[0] - 1):
+                    alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i+1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i+1, j]*self.delta_Z)
+                if not (i == 0):
+                    alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i-1, j]*self.delta_Z)
 
         # Init masks
-        boundary_mask = np.zeros_like(alpha_tensor, dtype=bool)
+        # boundary_mask = np.zeros_like(alpha_tensor, dtype=bool)
         adiabatic_mask = np.zeros_like(alpha_tensor, dtype=bool)
         vapour_mask = np.zeros_like(alpha_tensor, dtype=bool)
         cooling_mask = np.zeros_like(alpha_tensor, dtype=bool)
         
         # Configure masks
-        boundary_mask[0, :, 3]  = True
-        boundary_mask[-1, :, 2] = True
-        boundary_mask[:, 0, 1]  = True
-        boundary_mask[:, -1, 0] = True
+        # boundary_mask[0, :, 3]  = True
+        # boundary_mask[-1, :, 2] = True
+        # boundary_mask[:, 0, 1]  = True
+        # boundary_mask[:, -1, 0] = True
         adiabatic_mask[self.N_evap:(self.N_evap + self.N_adiabatic), :, 0:2] = True
         vapour_mask[0:self.N_evap, 0, 1] = True
         vapour_mask[(self.N_evap + self.N_adiabatic):, 0, 1] = True
         cooling_mask[(self.N_evap + self.N_adiabatic):, -1, 0] = True
 
         # Apply masks
-        alpha_tensor[boundary_mask] = 0
+        # alpha_tensor[boundary_mask] = 0
         alpha_tensor[adiabatic_mask] = 0
         alpha_tensor[vapour_mask] = surface_tensor[vapour_mask]
         alpha_tensor[cooling_mask] = surface_tensor[cooling_mask]
