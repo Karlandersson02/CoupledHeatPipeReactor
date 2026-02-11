@@ -23,7 +23,6 @@ class heatpipe_discretised:
         self.N_adiabatic = data.get("N_adiabatic")
         self.N_cond = data.get("N_cond")
         self.N_Z = self.N_evap + self.N_adiabatic + self.N_cond
-        self.delta_Z = self.l_tot / self.N_Z
 
         self.h_vap = data.get("h_vap")
         self.h_cond = data.get("h_cond")
@@ -35,7 +34,7 @@ class heatpipe_discretised:
 
     def solve_heatpipe_discretised(self) -> np.ndarray:
         
-        R, delta_Rp, delta_Rm, Z = self.initialize_discretization()
+        R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
 
         surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm)
 
@@ -45,6 +44,10 @@ class heatpipe_discretised:
         alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, k_matrix)
 
         M, C = self.generate_matrix_form(alpha, k_matrix, h_matrix)
+
+        print(M)
+
+        print(C)
 
         T = np.linalg.solve(M, C)
         
@@ -56,7 +59,8 @@ class heatpipe_discretised:
         delta_R   = np.zeros(2 * self.N_R, dtype=float)
         delta_R_m = np.zeros(self.N_R, dtype=float)
         delta_R_p = np.zeros(self.N_R, dtype=float)
-        Z         = np.zeros(self.N_Z, dtype=float)
+        Z         = np.zeros(2 * self.N_Z, dtype=float)
+        delta_Z   = np.zeros(self.N_Z, dtype=float)
         
         # Calculating the radii of the half-elements
         R[0] = np.sqrt((self.r_outer**2 - self.r_vapour**2) / (self.N_R * 2) + self.r_vapour**2)
@@ -72,13 +76,22 @@ class heatpipe_discretised:
         delta_R_m = delta_R[0::2]
         delta_R_p = delta_R[1::2]
 
-        # Calculating the Z-position of the bulk of the elements 
+        # Calculating the Z-position of the bulk and edges of the elements 
+        for i in range(self.N_evap*2):
+            Z[i] = (i/2 + 1/2) * self.l_evap/self.N_evap
+
+        for i in range(self.N_adiabatic*2):
+            Z[i + self.N_evap*2] = (i/2 + 1/2) * self.l_adiabatic/self.N_adiabatic + self.l_evap
+
+        for i in range(self.N_cond*2):
+            Z[i+ self.N_evap*2 + self.N_adiabatic*2] = (i/2 + 1/2) * self.l_cond/self.N_cond + (self.l_evap + self.l_adiabatic)
+
         for i in range(self.N_Z):
-            Z[i] = (i + 1/2) * self.l_tot/self.N_Z
+            delta_Z[i] = Z[2*i + 1] - Z[2*i]
 
-        return R, delta_R_p, delta_R_m, Z
+        return R, delta_R_p, delta_R_m, Z, delta_Z
 
-    def calculate_surfaces(self, delta_Rp: np.ndarray, delta_Rm: np.ndarray) -> np.ndarray:
+    def calculate_surfaces(self, delta_Rp: np.ndarray, delta_Rm: np.ndarray, delta_Z: np.ndarray) -> np.ndarray:
         """
         Calculates a surface tensor representing the areas in the positive and negative radial and axial directions at every discrete element. \\
         The order is (positive radial, negative radial, positive axial, negative axial).
@@ -95,8 +108,8 @@ class heatpipe_discretised:
         Rp = np.cumsum(delta_R) + self.r_vapour
         Rm = Rp - delta_R
 
-        S_rp = Rp * 2*np.pi * self.delta_Z
-        S_rm = Rm * 2*np.pi * self.delta_Z
+        S_rp = Rp * 2 * np.pi * self.delta_Z
+        S_rm = Rm * 2 * np.pi * self.delta_Z
         S_z = (Rp**2 - Rm**2) * np.pi
 
         surface_tensor = np.concatenate([S_rp[:, None], S_rm[:, None], S_z[:, None], S_z[:, None]], axis=1)
@@ -273,11 +286,11 @@ class heatpipe_discretised:
         for z in range(0, self.N_evap):
             T_idx = z * stride + r 
 
-            M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
-            M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][0]
+            M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2] + alpha[z][r][3])
+            M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1]
 
             M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
-            M[T_idx][-1]             = h[z][r]     * alpha[z][r][1]
+            M[T_idx][-1]             = h[z][r] * alpha[z][r][1]
             M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
             M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
 
@@ -287,11 +300,11 @@ class heatpipe_discretised:
         for z in range(self.N_evap, self.N_Z - 1):
             T_idx = z * stride + r 
 
-            M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
-            M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][0]
+            M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2] + alpha[z][r][3])
+            M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1]
 
             M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
-            M[T_idx][-1]             = h[z][r]     * alpha[z][r][1]
+            M[T_idx][-1]             = h[z][r] * alpha[z][r][1]
             M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
             M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
 
@@ -320,7 +333,7 @@ class heatpipe_discretised:
         M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
         M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3]  
 
-        C[T_idx] = h[z][r] * alpha[z][r][0] * self.T_cond 
+        C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_cond 
 
         # -----------------------
         # Corner next to evaporator vapor inlet (z = 0, r = 0).
@@ -328,11 +341,11 @@ class heatpipe_discretised:
         r = 0
         T_idx = z * stride + r
 
-        M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2])
-        M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][0] 
+        M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2])
+        M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1] 
 
         M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
-        M[T_idx][-1]             = h[z][r]     * alpha[z][r][1]
+        M[T_idx][-1]             = h[z][r] * alpha[z][r][1]
         M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2]
 
         # -----------------------
@@ -341,11 +354,11 @@ class heatpipe_discretised:
         r = 0
         T_idx = z * stride + r
 
-        M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][3])
-        M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][0]
+        M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][3])
+        M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1]
 
         M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
-        M[T_idx][-1]             = h[z][r]     * alpha[z][r][1]
+        M[T_idx][-1]             = h[z][r] * alpha[z][r][1]
         M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
 
         # -----------------------
@@ -355,15 +368,15 @@ class heatpipe_discretised:
             r = 0
             T_idx = z * stride + r 
 
-            M[-1][-1   ] -= h[z][r]     * alpha[z][r][1]
-            M[-1][T_idx]  = k[z][r] * alpha[z][r][1]
+            M[-1][-1   ] -= h[z][r] * alpha[z][r][1]
+            M[-1][T_idx] += h[z][r] * alpha[z][r][1]
 
-        for z in range(self.N_cond, self.N_Z):
+        for z in range(self.N_Z - self.N_cond, self.N_Z):
             r = 0
             T_idx = z * stride + r 
 
-            M[-1][-1   ] -= h[z][r]     * alpha[z][r][1]
-            M[-1][T_idx]  = k[z][r] * alpha[z][r][1]
+            M[-1][-1   ] -= h[z][r] * alpha[z][r][1]
+            M[-1][T_idx] += h[z][r] * alpha[z][r][1]
 
         # -----------------------
         # Return matrix and vector

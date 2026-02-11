@@ -18,12 +18,12 @@ def print_heat_pipe_temperatures(T):
     print("\n   EVAPORATOR     ADIABATIC      CONDENSER")
     print("┌──────────────┬──────────────┬──────────────┐")
     print(f"│   WICK       │    WICK      │    WICK      │")
-    print(f"│ {T_ev_wick:6.0f} K     │ {T_ad_wick:6.0f} K     │ {T_co_wick:6.0f} K     │")
-    print(f"│ {T_ev_wick - 273.15:6.0f} C     │ {T_ad_wick - 273.15:6.0f} C     │ {T_co_wick - 273.15:6.0f} C     │")
+    print(f"│ {T_ev_wick:6.2f} K     │ {T_ad_wick:6.2f} K     │ {T_co_wick:6.2f} K     │")
+    print(f"│ {T_ev_wick - 273.15:6.2f} C     │ {T_ad_wick - 273.15:6.2f} C     │ {T_co_wick - 273.15:6.2f} C     │")
     print("├──────────────┼──────────────┼──────────────┤")
     print(f"│   WALL       │    WALL      │    WALL      │")
-    print(f"│ {T_ev_wall:6.0f} K     │ {T_ad_wall:6.0f} K     │ {T_co_wall:6.0f} K     │")
-    print(f"│ {T_ev_wall - 273.15:6.0f} C     │ {T_ad_wall - 273.15:6.0f} C     │ {T_co_wall - 273.15:6.0f} C     │")
+    print(f"│ {T_ev_wall:6.2f} K     │ {T_ad_wall:6.2f} K     │ {T_co_wall:6.2f} K     │")
+    print(f"│ {T_ev_wall - 273.15:6.2f} C     │ {T_ad_wall - 273.15:6.2f} C     │ {T_co_wall - 273.15:6.2f} C     │")
     print("└──────────────┴──────────────┴──────────────┘\n")
 
 def main(args):
@@ -76,17 +76,17 @@ def main(args):
         "l_evap": l_evap,
         "l_adiabatic": l_adiabatic,
         "l_cond": l_cond,
-        "N_wick": 2,
-        "N_wall": 2,
-        "N_evap": 2,
-        "N_adiabatic": 2,
-        "N_cond": 2,
-        "h_vap": 1e5,       # högt tal bara
+        "N_wick": 1,
+        "N_wall": 1,
+        "N_evap": 1,
+        "N_adiabatic": 1,
+        "N_cond": 1,
+        "h_vap": 1e10,       # högt tal bara
         "h_cond": 39,
         "T_cond": T_infc,
         "k_wall": 45.0,
         "k_wick": 21.7,
-        "Q": np.repeat(np.array([Q]), 2)
+        "Q": np.repeat(np.array([Q/1]), 1)
     }
     # \\\
 
@@ -95,7 +95,8 @@ def main(args):
         print_heat_pipe_temperatures(T)
         return 0
     elif len(args) > 0 and args[0] == "discretised":
-        T = heatpipe_discretised(data_discretised)
+        heatpipe = heatpipe_discretised(data_discretised)
+        T = heatpipe.solve_heatpipe_discretised()
         print(T)
         return 0
     else:
