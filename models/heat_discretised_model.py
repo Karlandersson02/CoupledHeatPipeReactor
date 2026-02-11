@@ -35,14 +35,14 @@ class heatpipe_discretised:
 
     def solve_heatpipe_discretised(self) -> np.ndarray:
         
-        R, delta_Rp, delta_Rm, Z = self.initialize_discretization()
+        R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
 
-        surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm)
+        surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm, delta_Z)
 
         k_matrix = self.generate_k_matrix()
         h_matrix = self.generate_h_matrix()
 
-        alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, k_matrix)
+        alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k_matrix)
 
         M, C = self.generate_matrix_form(alpha, k_matrix, h_matrix)
 
@@ -78,15 +78,17 @@ class heatpipe_discretised:
 
         return R, delta_R_p, delta_R_m, Z
 
-    def calculate_surfaces(self, delta_Rp: np.ndarray, delta_Rm: np.ndarray) -> np.ndarray:
+    def calculate_surfaces(self, delta_Rp: np.ndarray, delta_Rm: np.ndarray, delta_Z: np.ndarray) -> np.ndarray:
         """
         Calculates a surface tensor representing the areas in the positive and negative radial and axial directions at every discrete element. \\
         The order is (positive radial, negative radial, positive axial, negative axial).
         
         :param self:
-        :param delta_Rp: shape (N_R /2 ,)
+        :param delta_Rp: shape (N_R,)
         :type delta_Rp: np.ndarray
-        :param delta_Rm: shape (N_R /2 ,)
+        :param delta_Rm: shape (N_R,)
+        :type delta_Rm: np.ndarray
+        :param delta_Rm: shape (N_Z,)
         :type delta_Rm: np.ndarray
         :return: shape (N_z, N_r, 4)
         :rtype: ndarray[Any, Any]
@@ -95,12 +97,13 @@ class heatpipe_discretised:
         Rp = np.cumsum(delta_R) + self.r_vapour
         Rm = Rp - delta_R
 
-        S_rp = Rp * 2*np.pi * self.delta_Z
-        S_rm = Rm * 2*np.pi * self.delta_Z
+        S_rp = Rp * 2*np.pi
+        S_rm = Rm * 2*np.pi
         S_z = (Rp**2 - Rm**2) * np.pi
 
         surface_tensor = np.concatenate([S_rp[:, None], S_rm[:, None], S_z[:, None], S_z[:, None]], axis=1)
         surface_tensor = np.repeat(surface_tensor[None], self.N_Z, axis=0)
+        surface_tensor[..., 0:2] *= 2*delta_Z[:, None, None]
 
         return surface_tensor
 
@@ -131,17 +134,19 @@ class heatpipe_discretised:
 
         return h_matrix
 
-    def calculate_alpha(self, surface_tensor: np.ndarray, delta_Rm: np.ndarray, delta_Rp: np.ndarray, k_matrix: np.ndarray) -> np.ndarray:
+    def calculate_alpha(self, surface_tensor: np.ndarray, delta_Rm: np.ndarray, delta_Rp: np.ndarray, delta_Z: np.ndarray, k_matrix: np.ndarray) -> np.ndarray:
         """
         Calculates a tensor representing the alpha coefficients on every discrete element in the heat pipe
         
         :param self:
         :param surface_tensor: shape (N_z, N_r, 4)
         :type surface_tensor: np.ndarray
-        :param delta_Rm: shape (N_r/2,)
+        :param delta_Rm: shape (N_r,)
         :type delta_Rm: np.ndarray
-        :param delta_Rp: shape (N_r/2,)
+        :param delta_Rp: shape (N_r,)
         :type delta_Rp: np.ndarray
+        :param delta_Z: shape (N_Z,)
+        :type delta_Z: np.ndarray
         :param k_matrix: shape (N_z, N_r)
         :type k_matrix: np.ndarray
         :return: shape (N_z, N_r, 4)
@@ -156,9 +161,9 @@ class heatpipe_discretised:
                 if not (j == 0):
                     alpha_tensor[i, j, 1] = (surface_tensor[i, j, 1] * k_matrix[i, j-1]) / (k_matrix[i, j]*delta_Rp[j-1] + k_matrix[i, j-1]*delta_Rm[j])
                 if not (i == alpha_tensor.shape[0] - 1):
-                    alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i+1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i+1, j]*self.delta_Z)
+                    alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i+1, j]) / (k_matrix[i, j]*delta_Z[i+1] + k_matrix[i+1, j]*delta_Z[i])
                 if not (i == 0):
-                    alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*self.delta_Z + k_matrix[i-1, j]*self.delta_Z)
+                    alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*delta_Z[i-1] + k_matrix[i-1, j]*delta_Z[i])
 
         # Init masks
         adiabatic_mask = np.zeros_like(alpha_tensor, dtype=bool)
