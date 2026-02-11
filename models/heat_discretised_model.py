@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from time import time
 
 
 class heatpipe_discretised:
@@ -34,6 +35,7 @@ class heatpipe_discretised:
 
     def solve_heatpipe_discretised(self) -> np.ndarray:
         
+        time1_start = time()
         R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
 
         surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm, delta_Z)
@@ -44,13 +46,13 @@ class heatpipe_discretised:
         alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k_matrix)
 
         M, C = self.generate_matrix_form(alpha, k_matrix, h_matrix)
-
-        print(M)
-
-        print(C)
+        time1_stop = time()
 
         T = np.linalg.solve(M, C)
-        
+        time2_stop = time()
+
+        print(f"First time: {time1_stop - time1_start}")
+        print(f"Second time: {time2_stop - time1_stop}")
         return T
 
 
