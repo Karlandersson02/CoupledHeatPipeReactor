@@ -3,3 +3,4 @@ __pycache__/*
 functions_test.py
 tests/heat_discretised_model/__pycache__
 models/__pycache__
+visualisation/__pycache__
