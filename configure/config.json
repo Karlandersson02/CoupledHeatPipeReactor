@@ -1,0 +1,45 @@
+{
+  "output": {
+    "base_dir": "outputs",
+    "save_figures": true,
+    "show_figures": true
+  },
+  
+  "geometry": {
+    "D_v": 0.014,
+    "delta_wick": 0.001,
+    "delta_wall": 0.001,
+    "l_evap": 0.105,
+    "l_adiabatic": 0.0525,
+    "l_cond": 0.5425
+  },
+
+  "boundary_conditions": {
+    "T_infc": 300.0,
+    "Q_total": 770.0,
+    "h_cond": 39.0,
+    "h_vap": 10000000000.0
+  },
+
+  "network_model": {
+    "k": [
+      21.7,
+      45.0,
+      45.0,
+      21.7,
+      45.0,
+      21.7,
+      39.0
+    ]
+  },
+
+  "discretised_model": {
+    "N_wick": 15,
+    "N_wall": 15,
+    "N_evap": 15,
+    "N_adiabatic": 15,
+    "N_cond": 150,
+    "k_wall": 45.0,
+    "k_wick": 21.7
+  }
+}

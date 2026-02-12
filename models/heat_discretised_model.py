@@ -51,12 +51,29 @@ class heatpipe_discretised:
         T = np.linalg.solve(M, C)
         time2_stop = time()
 
-        print(f"First time: {time1_stop - time1_start}")
-        print(f"Second time: {time2_stop - time1_stop}")
+        print(f"First time: {time1_stop - time1_start} s")
+        print(f"Second time: {time2_stop - time1_stop} s")
         return T
 
 
-    def initialize_discretization(self):        
+    def initialize_discretization(self):
+        """
+        Discretises the 2D model based on the information given in the heatpipe initalization. // 
+
+        The radial discretisation results in constant area of the resulting concentric circles, while //
+        the axial discretisation instead results in axial elements that reflects the relationship between // 
+        the number of elements and length of the evaporator, adiabatic section and condenser.  
+        
+        :param self:
+        :param delta_Rp: shape (N_R,)
+        :type delta_Rp: np.ndarray
+        :param delta_Rm: shape (N_R,)
+        :type delta_Rm: np.ndarray
+        :param delta_Rm: shape (N_Z,)
+        :type delta_Rm: np.ndarray
+        :return: shape (N_z, N_r, 4)
+        :rtype: ndarray[Any, Any]
+        """        
         R         = np.zeros(2 * self.N_R, dtype=float)
         delta_R   = np.zeros(2 * self.N_R, dtype=float)
         delta_R_m = np.zeros(self.N_R, dtype=float)

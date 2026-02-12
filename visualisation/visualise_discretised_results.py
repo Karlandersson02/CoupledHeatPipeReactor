@@ -2,8 +2,8 @@ import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 
-def display_temperature_distribution(T, data):
 
+def display_temperature_distribution(T, data, *, save_path=None, show=True):
     # -------------------------
     # Extract discretisation
     # -------------------------
@@ -51,7 +51,6 @@ def display_temperature_distribution(T, data):
     # Radial grid
     # Order: vapour (bottom) -> wick -> wall (top)
     # -------------------------
-
     r_vap_top = r_outer - delta_wall - delta_wick
     r_wick_top = r_outer - delta_wall
 
@@ -68,8 +67,8 @@ def display_temperature_distribution(T, data):
     cmap = mpl.cm.get_cmap("viridis")
 
     norm = mpl.colors.Normalize(
-        vmin=min(T_solid.min(), T_vap),
-        vmax=max(T_solid.max(), T_vap)
+        vmin=min(float(T_solid.min()), float(T_vap)),
+        vmax=max(float(T_solid.max()), float(T_vap))
     )
 
     pcm = ax.pcolormesh(
@@ -81,7 +80,7 @@ def display_temperature_distribution(T, data):
         norm=norm
     )
 
-    vap_color = cmap(norm(T_vap))
+    vap_color = cmap(norm(float(T_vap)))
 
     ax.fill_between(
         [0, z_total],
@@ -100,4 +99,12 @@ def display_temperature_distribution(T, data):
 
     fig.colorbar(pcm, ax=ax, label="Temperature")
 
-    plt.show()
+    if save_path is not None:
+        fig.savefig(save_path, dpi=200, bbox_inches="tight")
+
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+
+    return fig, ax
