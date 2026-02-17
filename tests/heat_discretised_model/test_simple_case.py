@@ -29,7 +29,7 @@ class Test_simple_case_discretised_model(unittest.TestCase):
         self.heatpipe = heatpipe_discretised(data_discretised)
 
     def test_output_initialize_discretiszation(self):
-        R, delta_Rp, delta_Rm, Z = self.heatpipe.initialize_discretization()
+        R, delta_Rp, delta_Rm, Z, delta_Z = self.heatpipe.initialize_discretization()
 
         R_expected = np.array([8.276473,  
                                8.544004,  
@@ -69,9 +69,9 @@ class Test_simple_case_discretised_model(unittest.TestCase):
         np.testing.assert_array_almost_equal(Z, Z_expected)
 
     def test_output_calculate_surfaces(self):
-        R, delta_Rp, delta_Rm, Z = self.heatpipe.initialize_discretization()
+        R, delta_Rp, delta_Rm, Z, delta_Z = self.heatpipe.initialize_discretization()
 
-        surface_areas = self.heatpipe.calculate_surfaces(delta_Rp, delta_Rm) 
+        surface_areas = self.heatpipe.calculate_surfaces(delta_Rp, delta_Rm, delta_Z) 
 
         radial_strip_surface_areas_1_expected = [50.2654825, 53.6835588, 56.8966629, 59.9377677]
         radial_strip_surface_areas_0_expected = [53.6835588, 56.8966629, 59.9377677, 62.8318531]
@@ -110,8 +110,8 @@ class Test_simple_case_discretised_model(unittest.TestCase):
         np.testing.assert_array_almost_equal(h, h_expected)
 
     def test_output_calculate_alpha(self):
-        R, delta_Rp, delta_Rm, Z = self.heatpipe.initialize_discretization()
-        surface_areas = self.heatpipe.calculate_surfaces(delta_Rp, delta_Rm)
+        R, delta_Rp, delta_Rm, Z, delta_Z = self.heatpipe.initialize_discretization()
+        surface_areas = self.heatpipe.calculate_surfaces(delta_Rp, delta_Rm, delta_Z)
         k = self.heatpipe.generate_k_matrix()
 
         alpha = self.heatpipe.calculate_alpha(surface_areas, delta_Rm, delta_Rp, k)
@@ -174,8 +174,8 @@ class Test_simple_case_discretised_model(unittest.TestCase):
         np.testing.assert_almost_equal(alpha[4][3][3], alpha433_expected)
 
     def test_output_generate_matrix_form(self):
-        R, delta_Rp, delta_Rm, Z = self.heatpipe.initialize_discretization()
-        surface_areas = self.heatpipe.calculate_surfaces(delta_Rp, delta_Rm)
+        R, delta_Rp, delta_Rm, Z, delta_Z = self.heatpipe.initialize_discretization()
+        surface_areas = self.heatpipe.calculate_surfaces(delta_Rp, delta_Rm, delta_Z)
         k = self.heatpipe.generate_k_matrix()
         h = self.heatpipe.generate_h_matrix()
 
