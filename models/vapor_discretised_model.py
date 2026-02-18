@@ -31,14 +31,22 @@ class vapor_discretised:
         self.T_C = data.get("T_C")
         self.rho_C = data.get("rho_C")
 
+        # Molar gas constant
+        self.R = 8.314472 
+
+        # Specific gas constant, 22.990 being the molar mass.
+        self.R_Na = self.R / 22.990
+
+
     def solve_vapor_discretised(self, ) -> np.ndarray:
         Gamma, h_fg_Na = self.calculate_mass_flow()
 
-        T_v = self.solve_vapor_heat_drop(m_dot)
+        T_v = self.solve_vapor_heat_drop(Gamma)
 
         P_v = self.calculate_pressure_drop(T_v)
 
         return T_v, P_v
+    
     
     def calculate_mass_flow_and_latent_heat(self):
         T_wick_lv_interface = self.T_HP[::self.N_R]
@@ -62,17 +70,41 @@ class vapor_discretised:
         Gamma = a_W * q_bis_surface / h_fg_Na
 
         return Gamma, h_fg_Na
+    
 
     def calculate_rho(self, T, h_fg_Na):
         rho = ( self.p_c / (self.R * T) ) * np.exp(h_fg_Na * self.R * (1/self.Tc - 1 / T))
 
         return rho
+    
 
-    def solve_vapor_heat_drop(self, m_dot):
-        return np.array([0])
+    def solve_vapor_heat_profile(self, Gamma):
+        initial_guess = np.zeros(self.N_Z + self.N_Z + 1)
+
+        sol_krylov = root(
+            self.coupled_system, 
+            initial_guess,
+            method="krylov",
+            options={
+                "disp": True,
+                "maxiter": 350,   # outer iterations
+                "fatol": 1e-6,  # residual tolerance
+                # You *can* set inner method here too, but leaving default shows "krylov" usage.
+                # "method": "lgmres",
+            },
+        )
+        print("\n[root/krylov] success:", sol_krylov.success)
+        print("[root/krylov] ||F|| =", np.linalg.norm(sol_krylov.fun))
+
+        return sol_krylov.x[:self.N_Z]
+    
 
     def calculate_pressure_drop(self, T_v):
-        return np.array([0])
+        rho_v = self.calculate_rho(T_v)
+
+        return rho_v * self.R_Na * T_v
+
+    
 
     def coupled_system(self, ui: np.ndarray, Ti: np.ndarray) -> np.ndarray:
         T = np.zeros(len(Ti) + 2)
@@ -108,6 +140,7 @@ class vapor_discretised:
         r2 = (rhoi * (ui + uip1)/2 * ui - rhoim1 * (uim1 + ui)/2 * uim1) + (rhobar * self.h_fg_Na) / Tbar * (Ti - Tim1) + dxi * lami / (2*2*self.r_vapour) * rhobar * ui * np.abs(ui)
 
         return r2 # temp
+    
 
 if __name__ == "__main__":
     data = {}
