@@ -55,8 +55,8 @@ class vapor_discretised:
         T_v = self.T_HP[-1]
 
         q_bis_surface = np.zeros(self.N_Z)
-        q_bis_surface[0: self.N_evap]           =  self.h_vap * (T_wick_lv_interface[0: self.N_evap]           - T_v)
-        q_bis_surface[self.N_Z - self.N_cond: ] = -self.h_vap * (T_wick_lv_interface[self.N_Z - self.N_cond: ] - T_v)
+        q_bis_surface[0: self.N_evap]           = self.h_vap * (T_wick_lv_interface[0: self.N_evap]           - T_v)
+        q_bis_surface[self.N_Z - self.N_cond: ] = self.h_vap * (T_wick_lv_interface[self.N_Z - self.N_cond: ] - T_v)
 
         # Heat transfer surface area density per unit volume.
         # a_W = 2 * np.pi * self.r_vapour * delta_Z / np.pi * self.r_vapour**2 * delta_Z
@@ -89,7 +89,7 @@ class vapor_discretised:
             options={
                 "disp": True,
                 "maxiter": 3000,   # outer iterations
-                "fatol": 1e-4,  # residual tolerance
+                "fatol": 1e-5,  # residual tolerance
                 # You *can* set inner method here too, but leaving default shows "krylov" usage.
                 # "method": "lgmres",
             },
@@ -156,8 +156,8 @@ if __name__ == "__main__":
         "l_cond": 0.55,
         "N_wick": 3,
         "N_wall": 3,
-        "N_evap": 5,
-        "N_adiabatic": 10,
+        "N_evap": 10,
+        "N_adiabatic": 5,
         "N_cond": 55,
         "h_vap": 62.6,
         "h_cond": 2.,
