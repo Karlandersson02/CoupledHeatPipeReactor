@@ -39,9 +39,9 @@ class vapor_discretised:
 
 
     def solve_vapor_discretised(self, ) -> np.ndarray:
-        Gamma, h_fg_Na = self.calculate_mass_flow()
+        Gamma, h_fg_Na = self.calculate_mass_flow_and_latent_heat()
 
-        T_v = self.solve_vapor_heat_drop(Gamma)
+        T_v = self.solve_vapor_heat_profile(Gamma)
 
         P_v = self.calculate_pressure_drop(T_v)
 
@@ -146,6 +146,29 @@ class vapor_discretised:
     
 
 if __name__ == "__main__":
-    data = {}
+    data = {
+        "r_outer": 10.,
+        "delta_wick": 1.,
+        "delta_wall": 1.,
+        "l_evap": 2.,
+        "l_adiabatic": 2.,
+        "l_cond": 2.,
+        "N_wick": 2,
+        "N_wall": 2,
+        "N_evap": 2,
+        "N_adiabatic": 2,
+        "N_cond": 2,
+        "h_vap": 1.,
+        "h_cond": 2.,
+        "T_cond": 100.,
+        "k_wall": 3.,
+        "k_wick": 4.,
+        "viscosity_Na": 0,
+        "T_HP": 0,
+        "T_C": 0,
+        "P_C": 0
+    }
+
     vapor = vapor_discretised(data) 
+
     T_v, P_v = vapor.solve_vapor_discretised()
