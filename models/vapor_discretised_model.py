@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize import root, newton_krylov
+import matplotlib.pyplot as plt
 
 class vapor_discretised:
     def __init__(self, data):
@@ -51,9 +52,6 @@ class vapor_discretised:
     def calculate_mass_flow_and_latent_heat(self) -> tuple[np.ndarray, float]:
         T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
 
-        print(np.array(self.T_HP).shape)
-        print(T_wick_lv_interface.shape)
-
         T_v = self.T_HP[-1]
 
         q_bis_surface = np.zeros(self.N_Z)
@@ -74,15 +72,15 @@ class vapor_discretised:
     
 
     def calculate_rho(self, T: np.ndarray, h_fg_Na: float) -> np.ndarray:
-        rho = ( self.P_C / (self.R * T) ) * np.exp(h_fg_Na * self.R * (1 / self.T_C - 1 / T))
-
+        rho = ( self.P_C / (self.R * T) ) * np.exp(h_fg_Na / self.R * (1 / self.T_C - 1 / T))
         return rho
 
 
     def solve_vapor_heat_profile(self, Gamma: np.ndarray, h_fg_Na: float) -> np.ndarray:
-        initial_guess = np.zeros(self.N_Z - 1 + self.N_Z - 2)
+        initial_guess = np.ones(self.N_Z - 1 + self.N_Z)
+        initial_guess[self.N_Z-1:] = self.T_HP[-1]
 
-        coupled_system_lambda = lambda S: self.coupled_system(S[:(self.N_Z - 1)], S[(self.N_Z - 2):], Gamma, h_fg_Na) 
+        coupled_system_lambda = lambda S: self.coupled_system(S[:(self.N_Z - 1)], S[(self.N_Z - 1):], Gamma, h_fg_Na) 
 
         sol_krylov = root(
             coupled_system_lambda, 
@@ -90,8 +88,8 @@ class vapor_discretised:
             method="krylov",
             options={
                 "disp": True,
-                "maxiter": 350,   # outer iterations
-                "fatol": 1e-6,  # residual tolerance
+                "maxiter": 3000,   # outer iterations
+                "fatol": 1e-4,  # residual tolerance
                 # You *can* set inner method here too, but leaving default shows "krylov" usage.
                 # "method": "lgmres",
             },
@@ -100,7 +98,7 @@ class vapor_discretised:
         print("\n[root/krylov] success:", sol_krylov.success)
         print("[root/krylov] ||F|| =", np.linalg.norm(sol_krylov.fun))
 
-        return sol_krylov.x[:self.N_Z]
+        return sol_krylov.x[(self.N_Z - 1):]
     
 
     def calculate_pressure_profile(self, T_v: np.ndarray, h_fg_Na: float) -> np.ndarray:
@@ -109,26 +107,24 @@ class vapor_discretised:
         return rho_v * self.R_Na * T_v
 
 
-    def coupled_system(self, ui: np.ndarray, T: np.ndarray, Gami: np.ndarray, h_fg_Na: float) -> np.ndarray:
-        Ti = np.zeros(len(T) + 1)
-        Tim1 = np.zeros(len(T) + 1)
-
-        Ti[:-1] = T
-        Ti[-1] = T[-1]
-        Tim1[1:] = T
-        Tim1[0] = T[0]
+    def coupled_system(self, u: np.ndarray, T: np.ndarray, Gami: np.ndarray, h_fg_Na: float) -> np.ndarray:
+        T_full = T
+        Ti = T[1:]
+        Tim1 = T[:-1]
         Tbar = (Ti + Tim1)/2
 
-        u = np.zeros(len(ui) + 2)
-        u[1:-1] = ui
-        uim1 = u[:-2]
-        uip1 = u[2:]
+        u_full = np.zeros(len(u) + 2)
+        u_full[1:-1] = u
+        ui = u
+        uim1 = u_full[:-2]
+        uip1 = u_full[2:]
 
-        rhoi = self.calculate_rho(Ti, h_fg_Na)
-        rhoim1 = self.calculate_rho(Tim1, h_fg_Na)
+        rho_full = self.calculate_rho(T, h_fg_Na)
+        rhoi = rho_full[1:]
+        rhoim1 = rho_full[:-1]
         rhobar = self.calculate_rho(Tbar, h_fg_Na)
 
-        dxi = np.zeros(len(T) + 2)
+        dxi = np.zeros_like(T)
         dxi[:self.N_evap] = self.l_evap / self.N_evap
         dxi[self.N_evap:(self.N_evap + self.N_adiabatic)] = self.l_adiabatic / self.N_adiabatic
         dxi[(self.N_evap + self.N_adiabatic):] = self.l_cond / self.N_cond
@@ -138,13 +134,14 @@ class vapor_discretised:
         lami[Rei <= 2200] = 64 / Rei[Rei <= 2200]
         lami[Rei > 3000] = 0.316 / Rei[Rei > 3000]**0.25
         lami[(Rei > 2200) & (Rei <= 3000)] = Rei[(Rei > 2200) & (Rei <= 3000)] * 1.70088e-5 - 0.00832838               # interpolation (behöver dubbelkollas)
-        lami[Rei == 0] = 100000000000000
+        lami[Rei == 0] = 1e10
+
+        r1 = np.zeros_like(T_full)
+        r1[1:-1] = (uip1[:-1]*rhoi[:-1] - ui[:-1]*rhoim1[:-1]) - dxi[1:-1] * Gami[1:-1]
+        r1[0] = u_full[1]*rho_full[0] - dxi[0]*Gami[0]
+        r1[-1] = -u_full[-2]*rho_full[-2] - dxi[-1]*Gami[-1]
 
         r2 = (rhoi * (ui + uip1)/2 * ui - rhoim1 * (uim1 + ui)/2 * uim1) + (rhobar * h_fg_Na) / Tbar * (Ti - Tim1) + dxi[1:] * lami / (2*2*self.r_vapour) * rhobar * ui * np.abs(ui)
-        r1 = np.zeros(len(r2) + 1)
-        r1[1:-1] = (uip1[:-1]*rhoi[:-1] - ui[:-1]*rhoim1[:-1]) - dxi[1:-1] * Gami[1:-1]
-        r1[0] = ui[0]*rhoim1[0] - dxi[0]*Gami[0]
-        r1[-1] = -ui[-1]*rhoim1[-1] - dxi[-1]*Gami[-1]
 
         return np.concatenate([r1, r2])
 
@@ -176,3 +173,16 @@ if __name__ == "__main__":
     vapor = vapor_discretised(data) 
 
     T_v, P_v = vapor.solve_vapor_discretised()
+
+    print(T_v, P_v)
+
+    x = np.arange(len(T_v))
+
+    fig = plt.figure(figsize=(15,7))
+    ax = fig.add_subplot(111)
+    ax_twin = ax.twinx()
+    ax.grid(alpha=0.4)
+    ax.plot(x, T_v, color="blue", label="Temperature")
+    ax_twin.plot(x, P_v, color="red", label="Pressure")
+    ax.legend()
+    plt.show()
