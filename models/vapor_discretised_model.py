@@ -73,16 +73,18 @@ class vapor_discretised:
     
 
     def calculate_rho(self, T, h_fg_Na):
-        rho = ( self.p_c / (self.R * T) ) * np.exp(h_fg_Na * self.R * (1/self.Tc - 1 / T))
+        rho = ( self.p_c / (self.R * T) ) * np.exp(h_fg_Na * self.R * (1 / self.Tc - 1 / T))
 
         return rho
     
 
-    def solve_vapor_heat_profile(self, Gamma):
+    def solve_vapor_heat_profile(self, Gamma, h_fg_Na):
         initial_guess = np.zeros(self.N_Z + self.N_Z + 1)
 
+        coupled_system_lambda = lambda S: self.coupled_system(S[:(self.N_Z - 1)], S[(self.N_Z - 1):], Gamma, h_fg_Na) 
+
         sol_krylov = root(
-            self.coupled_system, 
+            coupled_system_lambda, 
             initial_guess,
             method="krylov",
             options={
@@ -93,6 +95,7 @@ class vapor_discretised:
                 # "method": "lgmres",
             },
         )
+
         print("\n[root/krylov] success:", sol_krylov.success)
         print("[root/krylov] ||F|| =", np.linalg.norm(sol_krylov.fun))
 
