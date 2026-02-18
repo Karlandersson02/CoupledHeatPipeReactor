@@ -108,13 +108,14 @@ class vapor_discretised:
         return rho_v * self.R_Na * T_v
 
 
-    def coupled_system(self, ui: np.ndarray, Ti: np.ndarray, Gami: np.ndarray, h_fg_Na: float) -> np.ndarray:
-        T = np.zeros(len(Ti) + 2)
-        T[1:-1] = Ti
-        T[0] = Ti[0]
-        T[-1] = Ti[-1]
-        Tim1 = T[:-2]
-        Tip1 = T[2:]
+    def coupled_system(self, ui: np.ndarray, T: np.ndarray, Gami: np.ndarray, h_fg_Na: float) -> np.ndarray:
+        Ti = np.zeros(len(T) + 1)
+        Tim1 = np.zeros(len(T) + 1)
+
+        Ti[:-1] = T
+        Ti[-1] = T[-1]
+        Tim1[1:] = T
+        Tim1[0] = T[0]
         Tbar = (Ti + Tim1)/2
 
         u = np.zeros(len(ui) + 2)
@@ -122,27 +123,27 @@ class vapor_discretised:
         uim1 = u[:-2]
         uip1 = u[2:]
 
-        rho = self.calculate_rho(T, h_fg_Na)
+        rhoi = self.calculate_rho(Ti, h_fg_Na)
+        rhoim1 = self.calculate_rho(Tim1, h_fg_Na)
         rhobar = self.calculate_rho(Tbar, h_fg_Na)
-        rhoi = rho[1:-1]
-        rhoim1 = rho[:-2]
-        rhoip1 = rho[2:]
 
-        dxi = np.zeros_like(Ti)
+        dxi = np.zeros(len(T) + 2)
         dxi[:self.N_evap] = self.l_evap / self.N_evap
-        dxi[self.N_evap:self.N_adiabatic] = self.l_adiabatic / self.N_adiabatic
+        dxi[self.N_evap:(self.N_evap + self.N_adiabatic)] = self.l_adiabatic / self.N_adiabatic
         dxi[(self.N_evap + self.N_adiabatic):] = self.l_cond / self.N_cond
 
-        Rei = rhoi * ui * 2*self.r_vapour / self.viscosity_Na
-        lami = np.zeros_like(Ti)
+        Rei = rhobar * ui * 2*self.r_vapour / self.viscosity_Na
+        lami = np.zeros_like(Rei)
         lami[Rei <= 2200] = 64 / Rei[Rei <= 2200]
         lami[Rei > 3000] = 0.316 / Rei[Rei > 3000]**0.25
-        lami[2200 < Rei <= 3000] = Rei[2200 < Rei <= 3000] * 1.70088e-5 - 0.00832838               # interpolation (behöver dubbelkollas)
+        lami[(Rei > 2200) & (Rei <= 3000)] = Rei[(Rei > 2200) & (Rei <= 3000)] * 1.70088e-5 - 0.00832838               # interpolation (behöver dubbelkollas)
+        lami[Rei == 0] = 100000000000000
 
-        r2 = (rhoi * (ui + uip1)/2 * ui - rhoim1 * (uim1 + ui)/2 * uim1) + (rhobar * h_fg_Na) / Tbar * (Ti - Tim1) + dxi * lami / (2*2*self.r_vapour) * rhobar * ui * np.abs(ui)
-        r1 = np.zeros(len(r2) + 2)
-        r1[1:-1] = (uip1*rhoi - ui*rhoim1) - dxi * Gami
-        r1[0] = ui[0]*rho[0] - dxi[0]*Gami[0]
+        r2 = (rhoi * (ui + uip1)/2 * ui - rhoim1 * (uim1 + ui)/2 * uim1) + (rhobar * h_fg_Na) / Tbar * (Ti - Tim1) + dxi[1:] * lami / (2*2*self.r_vapour) * rhobar * ui * np.abs(ui)
+        r1 = np.zeros(len(r2) + 1)
+        r1[1:-1] = (uip1[:-1]*rhoi[:-1] - ui[:-1]*rhoim1[:-1]) - dxi[1:-1] * Gami[1:-1]
+        r1[0] = ui[0]*rhoim1[0] - dxi[0]*Gami[0]
+        r1[-1] = -ui[-1]*rhoim1[-1] - dxi[-1]*Gami[-1]
 
         return np.concatenate([r1, r2])
 
