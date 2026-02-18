@@ -29,21 +29,25 @@ class vapor_discretised:
         self.T_HP = data.get("T_HP")
 
         self.T_C = data.get("T_C")
-        self.rho_C = data.get("rho_C")
+        self.P_C = data.get("P_C")
 
-        self.R = 8.314462618 # dubbelkolla
-        self.p_c = ...
+        # Molar gas constant
+        self.R = 8.314472 
+
+        # Specific gas constant, 22.990 being the molar mass.
+        self.R_Na = self.R / 22.990
 
 
-    def solve_vapor_discretised(self, ) -> tuple[np.ndarray, np.ndarray]:
+    def solve_vapor_discretised(self) -> tuple[np.ndarray, np.ndarray]:
         Gamma, h_fg_Na = self.calculate_mass_flow_and_latent_heat()
 
-        T_v = self.solve_vapor_heat_drop(Gamma)
+        T_v = self.solve_vapor_heat_profile(Gamma, h_fg_Na)
 
-        P_v = self.calculate_pressure_drop(T_v)
+        P_v = self.calculate_pressure_profile(T_v, h_fg_Na)
 
         return T_v, P_v
     
+
     def calculate_mass_flow_and_latent_heat(self) -> tuple[np.ndarray, float]:
         T_wick_lv_interface = self.T_HP[::self.N_R]
         T_evap_lv_interface = T_wick_lv_interface[0:self.N_evap]
@@ -66,17 +70,43 @@ class vapor_discretised:
         Gamma = a_W * q_bis_surface / h_fg_Na
 
         return Gamma, h_fg_Na
+    
 
     def calculate_rho(self, T: np.ndarray, h_fg_Na: float) -> np.ndarray:
-        rho = ( self.p_c / (self.R * T) ) * np.exp(h_fg_Na * self.R * (1/self.Tc - 1 / T))
+        rho = ( self.P_C / (self.R * T) ) * np.exp(h_fg_Na * self.R * (1 / self.T_C - 1 / T))
 
         return rho
 
-    def solve_vapor_heat_drop(self, m_dot):
-        return np.array([0])
 
-    def calculate_pressure_drop(self, T_v):
-        return np.array([0])
+    def solve_vapor_heat_profile(self, Gamma: np.ndarray, h_fg_Na: float) -> np.ndarray:
+        initial_guess = np.zeros(self.N_Z + self.N_Z + 1)
+
+        coupled_system_lambda = lambda S: self.coupled_system(S[:(self.N_Z - 1)], S[(self.N_Z - 1):], Gamma, h_fg_Na) 
+
+        sol_krylov = root(
+            coupled_system_lambda, 
+            initial_guess,
+            method="krylov",
+            options={
+                "disp": True,
+                "maxiter": 350,   # outer iterations
+                "fatol": 1e-6,  # residual tolerance
+                # You *can* set inner method here too, but leaving default shows "krylov" usage.
+                # "method": "lgmres",
+            },
+        )
+
+        print("\n[root/krylov] success:", sol_krylov.success)
+        print("[root/krylov] ||F|| =", np.linalg.norm(sol_krylov.fun))
+
+        return sol_krylov.x[:self.N_Z]
+    
+
+    def calculate_pressure_profile(self, T_v: np.ndarray, h_fg_Na: float) -> np.ndarray:
+        rho_v = self.calculate_rho(T_v, h_fg_Na)
+
+        return rho_v * self.R_Na * T_v
+
 
     def coupled_system(self, ui: np.ndarray, Ti: np.ndarray, Gami: np.ndarray, h_fg_Na: float) -> np.ndarray:
         T = np.zeros(len(Ti) + 2)
@@ -115,6 +145,7 @@ class vapor_discretised:
         r1[0] = ui[0]*rho[0] - dxi[0]*Gami[0]
 
         return np.concatenate([r1, r2])
+
 
 if __name__ == "__main__":
     data = {}
