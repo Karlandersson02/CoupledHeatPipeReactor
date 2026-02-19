@@ -207,6 +207,7 @@ def run_discretised(cfg: dict[str, Any], out_dir: Path) -> int:
         f"T_vap = {T_vap:.6g}\n"
         f"T_solid_min = {float(T_solid.min()):.6g}\n"
         f"T_solid_max = {float(T_solid.max()):.6g}\n"
+        f"All temperatures: {T.tolist()}"
     )
 
     extra = {

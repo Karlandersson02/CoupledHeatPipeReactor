@@ -6,3 +6,4 @@ models/__pycache__
 visualisation/__pycache__
 configure/__pycache__
 outputs/*
+.venv
