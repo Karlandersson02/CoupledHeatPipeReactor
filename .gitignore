@@ -7,3 +7,4 @@ visualisation/__pycache__
 configure/__pycache__
 tests/vapour_discretised_model/__pycache__
 outputs/*
+.venv
