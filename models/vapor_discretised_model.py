@@ -50,7 +50,6 @@ class vapor_discretised:
         T_full = T_v
 
         rhoim1 = self.calculate_rho(T_full[:-1], h_fg_Na)
-        # print(u_v)
         mdot = rhoim1*u_v
 
         Rei = self.calculate_rho((T_full[1:] + T_full[:-1])/2, h_fg_Na) * np.abs(u_v) * 2*self.r_vapour / self.viscosity_Na
@@ -141,8 +140,8 @@ class vapor_discretised:
     def solve_vapor_heat_profile(self, Gamma: np.ndarray, h_fg_Na: float):
         initial_guess = np.ones(self.N_Z - 1 + self.N_Z)
         initial_guess[self.N_Z-1:] = self.T_HP[-1]
-        initial_guess[:self.N_Z-1] = 150*np.array([0.07810245, 0.15620481, 0.23430684, 0.31240859, 0.39051026, 0.46861212, 0.54671421, 0.62481634, 0.70291819, 0.7810199, 0.85912161, 0.93722368, 1.01532644, 1.09342929, 1.17153219, 1.24963485, 1.32773731, 1.40583935, 1.48393355, 1.56174227, 1.56174184, 1.56174126, 1.56174057, 1.56174046, 1.56174099, 1.56174192, 1.56174299, 1.561744,   1.56174489, 1.56174572, 1.54783865, 1.53364632, 1.51944598, 1.50524516, 1.49104431, 1.47684384, 1.4626438,  1.44844357, 1.4342428,  1.42004181, 1.40584097, 1.39164058, 1.37744032, 1.36324051, 1.34904079, 1.33484092, 1.32064108, 1.30644105, 1.29224103, 1.27804115, 1.26384077, 1.24964012, 1.23543916, 1.22123884, 1.20703852, 1.19283811, 1.17863743, 1.16443672, 1.15023611, 1.13603599, 1.12183574, 1.10763584, 1.09343659, 1.07923738, 1.0650379,  1.05083841, 1.0366393,  1.02243946, 1.00823923, 0.99403854, 0.97983745, 0.96563596, 0.95143382, 0.93723274, 0.92303139, 0.9088297,  0.89462788, 0.88042592, 0.86622391, 0.85202234, 0.837821,   0.8236198,  0.80941873, 0.79521783, 0.78101771, 0.76681744, 0.75261726, 0.73841769, 0.72421857, 0.71001976, 0.69582092, 0.68162228, 0.66742358, 0.65322438, 0.6390244,  0.62482395, 0.61062363, 0.59642297, 0.58222231, 0.56802169, 0.55382078, 0.53961971, 0.52541961, 0.51121881, 0.49701744, 0.48281564, 0.46861366, 0.45441181, 0.4402102,  0.42600836, 0.41180717, 0.39760609, 0.38340523, 0.36920421, 0.35500445, 0.34080469, 0.32660507, 0.31240588, 0.29820726, 0.2840084, 0.2698095,  0.25561013, 0.2414097,  0.22720912, 0.21300832, 0.19880726, 0.18460593, 0.1704047,  0.15620322, 0.14200221, 0.12780148, 0.11360088, 0.0994005,  0.0851985,  0.07099711, 0.05679684, 0.04259744, 0.02839852, 0.01420016])
-
+        self.u_guess = 150*np.array([0.07810245, 0.15620481, 0.23430684, 0.31240859, 0.39051026, 0.46861212, 0.54671421, 0.62481634, 0.70291819, 0.7810199, 0.85912161, 0.93722368, 1.01532644, 1.09342929, 1.17153219, 1.24963485, 1.32773731, 1.40583935, 1.48393355, 1.56174227, 1.56174184, 1.56174126, 1.56174057, 1.56174046, 1.56174099, 1.56174192, 1.56174299, 1.561744,   1.56174489, 1.56174572, 1.54783865, 1.53364632, 1.51944598, 1.50524516, 1.49104431, 1.47684384, 1.4626438,  1.44844357, 1.4342428,  1.42004181, 1.40584097, 1.39164058, 1.37744032, 1.36324051, 1.34904079, 1.33484092, 1.32064108, 1.30644105, 1.29224103, 1.27804115, 1.26384077, 1.24964012, 1.23543916, 1.22123884, 1.20703852, 1.19283811, 1.17863743, 1.16443672, 1.15023611, 1.13603599, 1.12183574, 1.10763584, 1.09343659, 1.07923738, 1.0650379,  1.05083841, 1.0366393,  1.02243946, 1.00823923, 0.99403854, 0.97983745, 0.96563596, 0.95143382, 0.93723274, 0.92303139, 0.9088297,  0.89462788, 0.88042592, 0.86622391, 0.85202234, 0.837821,   0.8236198,  0.80941873, 0.79521783, 0.78101771, 0.76681744, 0.75261726, 0.73841769, 0.72421857, 0.71001976, 0.69582092, 0.68162228, 0.66742358, 0.65322438, 0.6390244,  0.62482395, 0.61062363, 0.59642297, 0.58222231, 0.56802169, 0.55382078, 0.53961971, 0.52541961, 0.51121881, 0.49701744, 0.48281564, 0.46861366, 0.45441181, 0.4402102,  0.42600836, 0.41180717, 0.39760609, 0.38340523, 0.36920421, 0.35500445, 0.34080469, 0.32660507, 0.31240588, 0.29820726, 0.2840084, 0.2698095,  0.25561013, 0.2414097,  0.22720912, 0.21300832, 0.19880726, 0.18460593, 0.1704047,  0.15620322, 0.14200221, 0.12780148, 0.11360088, 0.0994005,  0.0851985,  0.07099711, 0.05679684, 0.04259744, 0.02839852, 0.01420016])
+        initial_guess[:self.N_Z-1] = self.u_guess
         coupled_system_lambda = lambda S: self.coupled_system(S[:(self.N_Z - 1)], S[(self.N_Z - 1):], Gamma, h_fg_Na) 
 
         sol_krylov = newton_krylov(
@@ -236,93 +235,49 @@ if __name__ == "__main__":
     mpl.rcParams["font.family"] = "computer modern"
     mpl.rcParams["text.usetex"] = True
 
-    # fig = plt.figure(figsize=(16,9))
-
-    # fig.subplots_adjust(
-    #     hspace=0.0,
-    #     wspace=0.5
-    # )
-    # ax1 = fig.add_subplot(221)
-    # ax3 = fig.add_subplot(222)
-    # ax4 = fig.add_subplot(223, sharex=ax1)
-    # ax2 = fig.add_subplot(224, sharex=ax3)
-    # ax1_twin = ax1.twinx()
-    # ax4_twin = ax4.twinx()
-
-    # ax1.grid(alpha=0.4)
-    # ax2.grid(alpha=0.4)
-    # ax3.grid(alpha=0.4)
-    # ax4.grid(alpha=0.4)
-
-    # ax1.plot(T_v, color="red", marker="o", label="Temperature")
-    # ax1_twin.plot(P_v, color="blue", marker="o", markersize=5, label="Pressure")
-    # ax4.plot(Rei, color="red", marker="o", label=r"Reynolds Re")
-    # ax4_twin.plot(lami, color="blue", marker="o", markersize=5, label=r"Friction $\lambda$")
-
-    # ax2.plot(Gamma, color='black', marker="o", label=rf"$\sum\Gamma=$ {np.sum(Gamma):.3g}")
-    # ax3.plot(mdot, color="black", marker="o")
-
-    # # --- Make axes colored ---
-    # ax1.set_ylabel("Temperature", color="red")
-    # ax1.tick_params(axis='y', colors="red")
-    # ax1.spines["left"].set_color("red")
-
-    # ax1_twin.set_ylabel("Pressure", color="blue")
-    # ax1_twin.tick_params(axis='y', colors="blue")
-    # ax1_twin.spines["right"].set_color("blue")
-
-    # ax4.set_ylabel("Reynolds Re", color="red")
-    # ax4.tick_params(axis='y', colors="red")
-    # ax4.spines["left"].set_color("red")
-
-    # ax4_twin.set_ylabel(r"Friction $\lambda$", color="blue")
-    # ax4_twin.tick_params(axis='y', colors="blue")
-    # ax4_twin.spines["right"].set_color("blue")
-    # # --------------------------
-
-    # ax1.tick_params(
-    #     axis='x',
-    #     which='both',
-    #     bottom=False,
-    #     top=False,
-    #     labelbottom=False)
-    # ax3.tick_params(
-    #     axis='x',
-    #     which='both',
-    #     bottom=False,
-    #     top=False,
-    #     labelbottom=False)
-
-    # lines1, labels1 = ax1.get_legend_handles_labels()
-    # lines2, labels2 = ax1_twin.get_legend_handles_labels()
-    # ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
-
-    # lines4, labels4 = ax4.get_legend_handles_labels()
-    # lines3, labels3 = ax4_twin.get_legend_handles_labels()
-    # ax4.legend(lines4 + lines3, labels4 + labels3, loc="best")
-
-    # ax2.legend()
-
-    # ax2.set_xlabel(r"Element number $n$")
-    # ax4.set_xlabel(r"Element number $n$")
-
-    # ax3.set_ylabel(r"Mass flow $\rho_{i-1}u_i$")
-    # ax2.set_ylabel(r"Generated mass flow $\Gamma$")
-
-    # plt.savefig("./Figures/vapour_system_unconstrained.png", bbox_inches="tight")
-
     fig = plt.figure(figsize=(16,9))
-    fig.subplots_adjust(hspace=0.0)
-    ax1 = fig.add_subplot(211)
+
+    fig.subplots_adjust(
+        hspace=0.0,
+        wspace=0.5
+    )
+    ax1 = fig.add_subplot(221)
+    ax3 = fig.add_subplot(222)
+    ax4 = fig.add_subplot(223, sharex=ax1)
+    ax2 = fig.add_subplot(224, sharex=ax3)
     ax1_twin = ax1.twinx()
-    ax2 = fig.add_subplot(212)
+    ax4_twin = ax4.twinx()
 
     ax1.grid(alpha=0.4)
     ax2.grid(alpha=0.4)
+    ax3.grid(alpha=0.4)
+    ax4.grid(alpha=0.4)
 
-    ax1.plot(T_v, marker="o", markersize=5, color="red", label="Temperature")
-    ax1_twin.plot(P_v, marker="o", markersize=5, color="blue", label=rf"$\Delta p =$ {np.round(P_v[0] - P_v[-1])} Pa")
-    ax2.plot(mdot, marker="o", markersize=5, color="black")
+    ax1.plot(T_v, color="red", marker="o", label="Temperature")
+    ax1_twin.plot(P_v, color="blue", marker="o", markersize=5, label="Pressure")
+    ax4.plot(Rei, color="red", marker="o", label=r"Reynolds Re")
+    ax4_twin.plot(lami, color="blue", marker="o", markersize=5, label=r"Friction $\lambda$")
+
+    ax2.plot(Gamma, color='black', marker="o", label=rf"$\sum\Gamma=$ {np.sum(Gamma):.3g}")
+    ax3.plot(mdot, color="black", marker="o")
+
+    # --- Make axes colored ---
+    ax1.set_ylabel("Temperature", color="red")
+    ax1.tick_params(axis='y', colors="red")
+    ax1.spines["left"].set_color("red")
+
+    ax1_twin.set_ylabel("Pressure", color="blue")
+    ax1_twin.tick_params(axis='y', colors="blue")
+    ax1_twin.spines["right"].set_color("blue")
+
+    ax4.set_ylabel("Reynolds Re", color="red")
+    ax4.tick_params(axis='y', colors="red")
+    ax4.spines["left"].set_color("red")
+
+    ax4_twin.set_ylabel(r"Friction $\lambda$", color="blue")
+    ax4_twin.tick_params(axis='y', colors="blue")
+    ax4_twin.spines["right"].set_color("blue")
+    # --------------------------
 
     ax1.tick_params(
         axis='x',
@@ -330,19 +285,63 @@ if __name__ == "__main__":
         bottom=False,
         top=False,
         labelbottom=False)
-    
-    ax1.set_ylabel(r"$T$", color="red", fontsize=32)
-    ax1.tick_params(axis='y', colors="red")
-    ax1.spines["left"].set_color("red")
-    ax1_twin.set_ylabel(r"$P$", color="blue", fontsize=32)
-    ax1_twin.tick_params(axis='y', colors="blue")
-    ax1_twin.spines["right"].set_color("blue")
-    ax2.set_xlabel(r"$n$", fontsize=32)
-    ax2.set_ylabel(r"$\dot m$", fontsize=32)
+    ax3.tick_params(
+        axis='x',
+        which='both',
+        bottom=False,
+        top=False,
+        labelbottom=False)
 
-    # lines1, labels1 = ax1.get_legend_handles_labels()
-    # lines2, labels2 = ax1_twin.get_legend_handles_labels()
-    # ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
-    ax1_twin.legend()
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax1_twin.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
+
+    lines4, labels4 = ax4.get_legend_handles_labels()
+    lines3, labels3 = ax4_twin.get_legend_handles_labels()
+    ax4.legend(lines4 + lines3, labels4 + labels3, loc="best")
+
+    ax2.legend()
+
+    ax2.set_xlabel(r"Element number $n$")
+    ax4.set_xlabel(r"Element number $n$")
+
+    ax3.set_ylabel(r"Mass flow $\rho_{i-1}u_i$")
+    ax2.set_ylabel(r"Generated mass flow $\Gamma$")
+
+    # plt.savefig("./Figures/vapour_system_unconstrained.png", bbox_inches="tight")
+
+    # fig = plt.figure(figsize=(16,9))
+    # fig.subplots_adjust(hspace=0.0)
+    # ax1 = fig.add_subplot(211)
+    # ax1_twin = ax1.twinx()
+    # ax2 = fig.add_subplot(212)
+
+    # ax1.grid(alpha=0.4)
+    # ax2.grid(alpha=0.4)
+
+    # ax1.plot(T_v, marker="o", markersize=5, color="red", label="Temperature")
+    # ax1_twin.plot(P_v, marker="o", markersize=5, color="blue", label=rf"$\Delta p =$ {np.round(P_v[0] - P_v[-1])} Pa")
+    # ax2.plot(mdot, marker="o", markersize=5, color="black")
+
+    # ax1.tick_params(
+    #     axis='x',
+    #     which='both',
+    #     bottom=False,
+    #     top=False,
+    #     labelbottom=False)
+    
+    # ax1.set_ylabel(r"$T$", color="red", fontsize=32)
+    # ax1.tick_params(axis='y', colors="red")
+    # ax1.spines["left"].set_color("red")
+    # ax1_twin.set_ylabel(r"$P$", color="blue", fontsize=32)
+    # ax1_twin.tick_params(axis='y', colors="blue")
+    # ax1_twin.spines["right"].set_color("blue")
+    # ax2.set_xlabel(r"$n$", fontsize=32)
+    # ax2.set_ylabel(r"$\dot m$", fontsize=32)
+
+    # # lines1, labels1 = ax1.get_legend_handles_labels()
+    # # lines2, labels2 = ax1_twin.get_legend_handles_labels()
+    # # ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
+    # ax1_twin.legend()
 
     plt.show()
