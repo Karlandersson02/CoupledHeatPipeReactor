@@ -47,10 +47,25 @@ class vapor_discretised:
 
         P_v = self.calculate_pressure_profile(T_v, h_fg_Na)
 
-        rhoim1 = self.calculate_rho(T_v[:-1], h_fg_Na)
+        T_full = T_v
+
+        rhoim1 = self.calculate_rho(T_full[:-1], h_fg_Na)
+        # print(u_v)
         mdot = rhoim1*u_v
 
-        return T_v, P_v, Gamma, mdot
+        Rei = self.calculate_rho((T_full[1:] + T_full[:-1])/2, h_fg_Na) * np.abs(u_v) * 2*self.r_vapour / self.viscosity_Na
+        lami = np.zeros_like(Rei)
+        lami[Rei <= 2200] = 64 / Rei[Rei <= 2200]
+        lami[Rei > 3000] = 0.316 / Rei[Rei > 3000]**0.25
+        lami[(Rei > 2200) & (Rei <= 3000)] = Rei[(Rei > 2200) & (Rei <= 3000)] * 1.70088e-5 - 0.00832838               # interpolation (behöver dubbelkollas)
+        lami[Rei == 0] = 1e10
+
+        dxi = np.zeros_like(T_full)
+        dxi[:self.N_evap] = self.l_evap / self.N_evap
+        dxi[self.N_evap:(self.N_evap + self.N_adiabatic)] = self.l_adiabatic / self.N_adiabatic
+        dxi[(self.N_evap + self.N_adiabatic):] = self.l_cond / self.N_cond
+
+        return T_v, P_v, Gamma*dxi, mdot, Rei, lami, u_v
     
 
     def calculate_mass_flow_and_latent_heat(self):
@@ -77,32 +92,71 @@ class vapor_discretised:
 
     def calculate_rho(self, T: np.ndarray, h_fg_Na: float):
         rho = ( self.P_C / (self.R_Na * T) ) * np.exp(h_fg_Na / self.R_Na * (1 / self.T_C - 1 / T))
+        # rho = ( self.P_C / (self.R_Na * T) ) * (1 + h_fg_Na / self.R_Na * (1 / self.T_C - 1 / T))
         return rho
+
+
+    def build_T_initial_guess(self) -> np.ndarray:
+        # cell-centered z positions (same indexing as your Gamma and T arrays)
+        dxi = np.zeros(self.N_Z)
+        dxi[:self.N_evap] = self.l_evap / self.N_evap
+        dxi[self.N_evap:self.N_evap + self.N_adiabatic] = self.l_adiabatic / self.N_adiabatic
+        dxi[self.N_evap + self.N_adiabatic:] = self.l_cond / self.N_cond
+        zc = np.cumsum(dxi) - 0.5 * dxi  # cell centers
+
+        # --- pick reasonable temperature levels from what you already have ---
+        # A good "hot end" estimate: average wick-LV interface temperature in evaporator
+        # (Fix the extraction if needed; see note at the end.)
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
+        T_hot = float(np.mean(T_wick_lv_interface[:self.N_evap]))
+
+        # A good "cold end" estimate: average wick-LV interface temperature in condenser
+        T_cold_wall = float(np.mean(T_wick_lv_interface[-self.N_cond:]))
+
+        # Use a drop magnitude similar to the paper (about 12–18 K). Tie it to your data:
+        dT_drop = np.clip(T_hot - T_cold_wall, 8.0, 18.0)
+
+        T0   = T_hot
+        Tmin = T0 - dT_drop
+        Tend = Tmin + 0.55 * dT_drop   # recovery in condenser (tune 0.45–0.70)
+
+        # anchor locations: start, end of evap, end of adiabatic (min), end
+        z0   = 0.0
+        zE   = self.l_evap
+        zEA  = self.l_evap + self.l_adiabatic
+        zL   = self.l_tot
+
+        # anchor temperatures: sharp drop in evaporator, slight further drop to min
+        anchors_z = np.array([z0,  zE,          zEA,  zL])
+        anchors_T = np.array([T0,  Tmin + 0.25*dT_drop, Tmin, Tend])
+
+        T_guess = np.interp(zc, anchors_z, anchors_T)
+
+        # Optional: enforce your Neumann ends in the initial guess
+        T_guess[0]  = T_guess[1]
+        T_guess[-1] = T_guess[-2]
+        return T_guess
 
 
     def solve_vapor_heat_profile(self, Gamma: np.ndarray, h_fg_Na: float):
         initial_guess = np.ones(self.N_Z - 1 + self.N_Z)
         initial_guess[self.N_Z-1:] = self.T_HP[-1]
+        initial_guess[:self.N_Z-1] = 150*np.array([0.07810245, 0.15620481, 0.23430684, 0.31240859, 0.39051026, 0.46861212, 0.54671421, 0.62481634, 0.70291819, 0.7810199, 0.85912161, 0.93722368, 1.01532644, 1.09342929, 1.17153219, 1.24963485, 1.32773731, 1.40583935, 1.48393355, 1.56174227, 1.56174184, 1.56174126, 1.56174057, 1.56174046, 1.56174099, 1.56174192, 1.56174299, 1.561744,   1.56174489, 1.56174572, 1.54783865, 1.53364632, 1.51944598, 1.50524516, 1.49104431, 1.47684384, 1.4626438,  1.44844357, 1.4342428,  1.42004181, 1.40584097, 1.39164058, 1.37744032, 1.36324051, 1.34904079, 1.33484092, 1.32064108, 1.30644105, 1.29224103, 1.27804115, 1.26384077, 1.24964012, 1.23543916, 1.22123884, 1.20703852, 1.19283811, 1.17863743, 1.16443672, 1.15023611, 1.13603599, 1.12183574, 1.10763584, 1.09343659, 1.07923738, 1.0650379,  1.05083841, 1.0366393,  1.02243946, 1.00823923, 0.99403854, 0.97983745, 0.96563596, 0.95143382, 0.93723274, 0.92303139, 0.9088297,  0.89462788, 0.88042592, 0.86622391, 0.85202234, 0.837821,   0.8236198,  0.80941873, 0.79521783, 0.78101771, 0.76681744, 0.75261726, 0.73841769, 0.72421857, 0.71001976, 0.69582092, 0.68162228, 0.66742358, 0.65322438, 0.6390244,  0.62482395, 0.61062363, 0.59642297, 0.58222231, 0.56802169, 0.55382078, 0.53961971, 0.52541961, 0.51121881, 0.49701744, 0.48281564, 0.46861366, 0.45441181, 0.4402102,  0.42600836, 0.41180717, 0.39760609, 0.38340523, 0.36920421, 0.35500445, 0.34080469, 0.32660507, 0.31240588, 0.29820726, 0.2840084, 0.2698095,  0.25561013, 0.2414097,  0.22720912, 0.21300832, 0.19880726, 0.18460593, 0.1704047,  0.15620322, 0.14200221, 0.12780148, 0.11360088, 0.0994005,  0.0851985,  0.07099711, 0.05679684, 0.04259744, 0.02839852, 0.01420016])
 
         coupled_system_lambda = lambda S: self.coupled_system(S[:(self.N_Z - 1)], S[(self.N_Z - 1):], Gamma, h_fg_Na) 
 
-        sol_krylov = root(
-            coupled_system_lambda, 
+        sol_krylov = newton_krylov(
+            coupled_system_lambda,
             initial_guess,
-            method="krylov",
-            options={
-                "disp": True,
-                "maxiter": 2000,   # outer iterations
-                "fatol": 1e-5,  # residual tolerance
-                # You *can* set inner method here too, but leaving default shows "krylov" usage.
-                # "method": "lgmres",
-            },
+            iter = 3000,
+            verbose = True,
+            method = "lgmres"
         )
 
-        print("\n[root/krylov] success:", sol_krylov.success)
-        print("[root/krylov] ||F|| =", np.linalg.norm(sol_krylov.fun))
+        T_v = sol_krylov[(self.N_Z - 1):]
+        u_v = sol_krylov[:(self.N_Z - 1)]
 
-        return sol_krylov.x[(self.N_Z - 1):], sol_krylov.x[:(self.N_Z - 1)]
+        return T_v, u_v
 
 
     def calculate_pressure_profile(self, T_v: np.ndarray, h_fg_Na: float):
@@ -133,7 +187,7 @@ class vapor_discretised:
         dxi[self.N_evap:(self.N_evap + self.N_adiabatic)] = self.l_adiabatic / self.N_adiabatic
         dxi[(self.N_evap + self.N_adiabatic):] = self.l_cond / self.N_cond
 
-        Rei = rhobar * ui * 2*self.r_vapour / self.viscosity_Na
+        Rei = rhobar * np.abs(ui) * 2*self.r_vapour / self.viscosity_Na
         lami = np.zeros_like(Rei)
         lami[Rei <= 2200] = 64 / Rei[Rei <= 2200]
         lami[Rei > 3000] = 0.316 / Rei[Rei > 3000]**0.25
@@ -145,7 +199,7 @@ class vapor_discretised:
         r1[0] = u_full[1]*rho_full[0] - dxi[0]*Gami[0]
         r1[-1] = -u_full[-2]*rho_full[-2] - dxi[-1]*Gami[-1]
 
-        r2 = (rhoi * (ui + uip1)/2 * ui - rhoim1 * (uim1 + ui)/2 * uim1) + (rhobar * h_fg_Na) / Tbar * (Ti - Tim1) + dxi[1:] * lami / (2*2*self.r_vapour) * rhobar * ui * np.abs(ui)
+        r2 = (rhoi * ui**2 - rhoim1 * uim1**2) + (rhobar * h_fg_Na) / Tbar * (Ti - Tim1) + dxi[1:] * lami / (2*2*self.r_vapour) * rhobar * ui * np.abs(ui)
 
         return np.concatenate([r1, r2])
 
@@ -176,37 +230,99 @@ if __name__ == "__main__":
 
     vapor = vapor_discretised(data) 
 
-    T_v, P_v, Gamma, mdot = vapor.solve_vapor_discretised()
+    T_v, P_v, Gamma, mdot, Rei, lami, u_v = vapor.solve_vapor_discretised()
 
     mpl.rcParams["font.size"] = 22
     mpl.rcParams["font.family"] = "computer modern"
     mpl.rcParams["text.usetex"] = True
 
-    fig = plt.figure(figsize=(12,12))
-    ax1 = fig.add_subplot(221)
-    ax3 = fig.add_subplot(222)
-    ax2 = fig.add_subplot(223, sharex=ax1)
+    # fig = plt.figure(figsize=(16,9))
+
+    # fig.subplots_adjust(
+    #     hspace=0.0,
+    #     wspace=0.5
+    # )
+    # ax1 = fig.add_subplot(221)
+    # ax3 = fig.add_subplot(222)
+    # ax4 = fig.add_subplot(223, sharex=ax1)
+    # ax2 = fig.add_subplot(224, sharex=ax3)
+    # ax1_twin = ax1.twinx()
+    # ax4_twin = ax4.twinx()
+
+    # ax1.grid(alpha=0.4)
+    # ax2.grid(alpha=0.4)
+    # ax3.grid(alpha=0.4)
+    # ax4.grid(alpha=0.4)
+
+    # ax1.plot(T_v, color="red", marker="o", label="Temperature")
+    # ax1_twin.plot(P_v, color="blue", marker="o", markersize=5, label="Pressure")
+    # ax4.plot(Rei, color="red", marker="o", label=r"Reynolds Re")
+    # ax4_twin.plot(lami, color="blue", marker="o", markersize=5, label=r"Friction $\lambda$")
+
+    # ax2.plot(Gamma, color='black', marker="o", label=rf"$\sum\Gamma=$ {np.sum(Gamma):.3g}")
+    # ax3.plot(mdot, color="black", marker="o")
+
+    # # --- Make axes colored ---
+    # ax1.set_ylabel("Temperature", color="red")
+    # ax1.tick_params(axis='y', colors="red")
+    # ax1.spines["left"].set_color("red")
+
+    # ax1_twin.set_ylabel("Pressure", color="blue")
+    # ax1_twin.tick_params(axis='y', colors="blue")
+    # ax1_twin.spines["right"].set_color("blue")
+
+    # ax4.set_ylabel("Reynolds Re", color="red")
+    # ax4.tick_params(axis='y', colors="red")
+    # ax4.spines["left"].set_color("red")
+
+    # ax4_twin.set_ylabel(r"Friction $\lambda$", color="blue")
+    # ax4_twin.tick_params(axis='y', colors="blue")
+    # ax4_twin.spines["right"].set_color("blue")
+    # # --------------------------
+
+    # ax1.tick_params(
+    #     axis='x',
+    #     which='both',
+    #     bottom=False,
+    #     top=False,
+    #     labelbottom=False)
+    # ax3.tick_params(
+    #     axis='x',
+    #     which='both',
+    #     bottom=False,
+    #     top=False,
+    #     labelbottom=False)
+
+    # lines1, labels1 = ax1.get_legend_handles_labels()
+    # lines2, labels2 = ax1_twin.get_legend_handles_labels()
+    # ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
+
+    # lines4, labels4 = ax4.get_legend_handles_labels()
+    # lines3, labels3 = ax4_twin.get_legend_handles_labels()
+    # ax4.legend(lines4 + lines3, labels4 + labels3, loc="best")
+
+    # ax2.legend()
+
+    # ax2.set_xlabel(r"Element number $n$")
+    # ax4.set_xlabel(r"Element number $n$")
+
+    # ax3.set_ylabel(r"Mass flow $\rho_{i-1}u_i$")
+    # ax2.set_ylabel(r"Generated mass flow $\Gamma$")
+
+    # plt.savefig("./Figures/vapour_system_unconstrained.png", bbox_inches="tight")
+
+    fig = plt.figure(figsize=(16,9))
+    fig.subplots_adjust(hspace=0.0)
+    ax1 = fig.add_subplot(211)
     ax1_twin = ax1.twinx()
+    ax2 = fig.add_subplot(212)
 
     ax1.grid(alpha=0.4)
     ax2.grid(alpha=0.4)
 
-    ax1.plot(T_v, color="red", marker="o", label="Temperature")
-    ax1_twin.plot(P_v, color="blue", marker="o", label="Pressure")
-
-    ax2.plot(Gamma, color='black', marker="o",
-            label=rf"$\sum\Gamma=$ {np.sum(Gamma):.3g}")
-    ax3.plot(mdot, color="black", marker="o")
-
-    # --- Make axes colored ---
-    ax1.set_ylabel("Temperature", color="red")
-    ax1.tick_params(axis='y', colors="red")
-    ax1.spines["left"].set_color("red")
-
-    ax1_twin.set_ylabel("Pressure", color="blue")
-    ax1_twin.tick_params(axis='y', colors="blue")
-    ax1_twin.spines["right"].set_color("blue")
-    # --------------------------
+    ax1.plot(T_v, marker="o", markersize=5, color="red", label="Temperature")
+    ax1_twin.plot(P_v, marker="o", markersize=5, color="blue", label=rf"$\Delta p =$ {np.round(P_v[0] - P_v[-1])} Pa")
+    ax2.plot(mdot, marker="o", markersize=5, color="black")
 
     ax1.tick_params(
         axis='x',
@@ -214,11 +330,19 @@ if __name__ == "__main__":
         bottom=False,
         top=False,
         labelbottom=False)
+    
+    ax1.set_ylabel(r"$T$", color="red", fontsize=32)
+    ax1.tick_params(axis='y', colors="red")
+    ax1.spines["left"].set_color("red")
+    ax1_twin.set_ylabel(r"$P$", color="blue", fontsize=32)
+    ax1_twin.tick_params(axis='y', colors="blue")
+    ax1_twin.spines["right"].set_color("blue")
+    ax2.set_xlabel(r"$n$", fontsize=32)
+    ax2.set_ylabel(r"$\dot m$", fontsize=32)
 
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax1_twin.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
-
-    ax2.legend()
+    # lines1, labels1 = ax1.get_legend_handles_labels()
+    # lines2, labels2 = ax1_twin.get_legend_handles_labels()
+    # ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
+    ax1_twin.legend()
 
     plt.show()
