@@ -50,7 +50,6 @@ class vapor_discretised:
         T_full = T_v
 
         rhoim1 = self.calculate_rho(T_full[:-1], h_fg_Na)
-        # print(u_v)
         mdot = rhoim1*u_v
 
         Rei = self.calculate_rho((T_full[1:] + T_full[:-1])/2, h_fg_Na) * np.abs(u_v) * 2*self.r_vapour / self.viscosity_Na
@@ -249,93 +248,49 @@ if __name__ == "__main__":
     mpl.rcParams["font.family"] = "computer modern"
     #mpl.rcParams["text.usetex"] = True
 
-    # fig = plt.figure(figsize=(16,9))
-
-    # fig.subplots_adjust(
-    #     hspace=0.0,
-    #     wspace=0.5
-    # )
-    # ax1 = fig.add_subplot(221)
-    # ax3 = fig.add_subplot(222)
-    # ax4 = fig.add_subplot(223, sharex=ax1)
-    # ax2 = fig.add_subplot(224, sharex=ax3)
-    # ax1_twin = ax1.twinx()
-    # ax4_twin = ax4.twinx()
-
-    # ax1.grid(alpha=0.4)
-    # ax2.grid(alpha=0.4)
-    # ax3.grid(alpha=0.4)
-    # ax4.grid(alpha=0.4)
-
-    # ax1.plot(T_v, color="red", marker="o", label="Temperature")
-    # ax1_twin.plot(P_v, color="blue", marker="o", markersize=5, label="Pressure")
-    # ax4.plot(Rei, color="red", marker="o", label=r"Reynolds Re")
-    # ax4_twin.plot(lami, color="blue", marker="o", markersize=5, label=r"Friction $\lambda$")
-
-    # ax2.plot(Gamma, color='black', marker="o", label=rf"$\sum\Gamma=$ {np.sum(Gamma):.3g}")
-    # ax3.plot(mdot, color="black", marker="o")
-
-    # # --- Make axes colored ---
-    # ax1.set_ylabel("Temperature", color="red")
-    # ax1.tick_params(axis='y', colors="red")
-    # ax1.spines["left"].set_color("red")
-
-    # ax1_twin.set_ylabel("Pressure", color="blue")
-    # ax1_twin.tick_params(axis='y', colors="blue")
-    # ax1_twin.spines["right"].set_color("blue")
-
-    # ax4.set_ylabel("Reynolds Re", color="red")
-    # ax4.tick_params(axis='y', colors="red")
-    # ax4.spines["left"].set_color("red")
-
-    # ax4_twin.set_ylabel(r"Friction $\lambda$", color="blue")
-    # ax4_twin.tick_params(axis='y', colors="blue")
-    # ax4_twin.spines["right"].set_color("blue")
-    # # --------------------------
-
-    # ax1.tick_params(
-    #     axis='x',
-    #     which='both',
-    #     bottom=False,
-    #     top=False,
-    #     labelbottom=False)
-    # ax3.tick_params(
-    #     axis='x',
-    #     which='both',
-    #     bottom=False,
-    #     top=False,
-    #     labelbottom=False)
-
-    # lines1, labels1 = ax1.get_legend_handles_labels()
-    # lines2, labels2 = ax1_twin.get_legend_handles_labels()
-    # ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
-
-    # lines4, labels4 = ax4.get_legend_handles_labels()
-    # lines3, labels3 = ax4_twin.get_legend_handles_labels()
-    # ax4.legend(lines4 + lines3, labels4 + labels3, loc="best")
-
-    # ax2.legend()
-
-    # ax2.set_xlabel(r"Element number $n$")
-    # ax4.set_xlabel(r"Element number $n$")
-
-    # ax3.set_ylabel(r"Mass flow $\rho_{i-1}u_i$")
-    # ax2.set_ylabel(r"Generated mass flow $\Gamma$")
-
-    # plt.savefig("./Figures/vapour_system_unconstrained.png", bbox_inches="tight")
-
     fig = plt.figure(figsize=(16,9))
-    fig.subplots_adjust(hspace=0.0)
-    ax1 = fig.add_subplot(211)
+
+    fig.subplots_adjust(
+        hspace=0.0,
+        wspace=0.5
+    )
+    ax1 = fig.add_subplot(221)
+    ax3 = fig.add_subplot(222)
+    ax4 = fig.add_subplot(223, sharex=ax1)
+    ax2 = fig.add_subplot(224, sharex=ax3)
     ax1_twin = ax1.twinx()
-    ax2 = fig.add_subplot(212)
+    ax4_twin = ax4.twinx()
 
     ax1.grid(alpha=0.4)
     ax2.grid(alpha=0.4)
+    ax3.grid(alpha=0.4)
+    ax4.grid(alpha=0.4)
 
-    ax1.plot(T_v, marker="o", markersize=5, color="red", label="Temperature")
-    ax1_twin.plot(P_v, marker="o", markersize=5, color="blue", label=rf"Delta p = {np.round(P_v[0] - P_v[-1])} Pa")
-    ax2.plot(mdot, marker="o", markersize=5, color="black")
+    ax1.plot(T_v, color="red", marker="o", label="Temperature")
+    ax1_twin.plot(P_v, color="blue", marker="o", markersize=5, label="Pressure")
+    ax4.plot(Rei, color="red", marker="o", label=r"Reynolds Re")
+    ax4_twin.plot(lami, color="blue", marker="o", markersize=5, label=r"Friction $\lambda$")
+
+    ax2.plot(Gamma, color='black', marker="o", label=rf"$\sum\Gamma=$ {np.sum(Gamma):.3g}")
+    ax3.plot(mdot, color="black", marker="o")
+
+    # --- Make axes colored ---
+    ax1.set_ylabel("Temperature", color="red")
+    ax1.tick_params(axis='y', colors="red")
+    ax1.spines["left"].set_color("red")
+
+    ax1_twin.set_ylabel("Pressure", color="blue")
+    ax1_twin.tick_params(axis='y', colors="blue")
+    ax1_twin.spines["right"].set_color("blue")
+
+    ax4.set_ylabel("Reynolds Re", color="red")
+    ax4.tick_params(axis='y', colors="red")
+    ax4.spines["left"].set_color("red")
+
+    ax4_twin.set_ylabel(r"Friction $\lambda$", color="blue")
+    ax4_twin.tick_params(axis='y', colors="blue")
+    ax4_twin.spines["right"].set_color("blue")
+    # --------------------------
 
     ax1.tick_params(
         axis='x',
@@ -343,19 +298,63 @@ if __name__ == "__main__":
         bottom=False,
         top=False,
         labelbottom=False)
-    
-    ax1.set_ylabel(r"$T$", color="red", fontsize=32)
-    ax1.tick_params(axis='y', colors="red")
-    ax1.spines["left"].set_color("red")
-    ax1_twin.set_ylabel(r"$P$", color="blue", fontsize=32)
-    ax1_twin.tick_params(axis='y', colors="blue")
-    ax1_twin.spines["right"].set_color("blue")
-    ax2.set_xlabel(r"$n$", fontsize=32)
-    ax2.set_ylabel(r"$\dot m$", fontsize=32)
+    ax3.tick_params(
+        axis='x',
+        which='both',
+        bottom=False,
+        top=False,
+        labelbottom=False)
 
-    # lines1, labels1 = ax1.get_legend_handles_labels()
-    # lines2, labels2 = ax1_twin.get_legend_handles_labels()
-    # ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
-    ax1_twin.legend()
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax1_twin.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
+
+    lines4, labels4 = ax4.get_legend_handles_labels()
+    lines3, labels3 = ax4_twin.get_legend_handles_labels()
+    ax4.legend(lines4 + lines3, labels4 + labels3, loc="best")
+
+    ax2.legend()
+
+    ax2.set_xlabel(r"Element number $n$")
+    ax4.set_xlabel(r"Element number $n$")
+
+    ax3.set_ylabel(r"Mass flow $\rho_{i-1}u_i$")
+    ax2.set_ylabel(r"Generated mass flow $\Gamma$")
+
+    # plt.savefig("./Figures/vapour_system_unconstrained.png", bbox_inches="tight")
+
+    # fig = plt.figure(figsize=(16,9))
+    # fig.subplots_adjust(hspace=0.0)
+    # ax1 = fig.add_subplot(211)
+    # ax1_twin = ax1.twinx()
+    # ax2 = fig.add_subplot(212)
+
+    # ax1.grid(alpha=0.4)
+    # ax2.grid(alpha=0.4)
+
+    # ax1.plot(T_v, marker="o", markersize=5, color="red", label="Temperature")
+    # ax1_twin.plot(P_v, marker="o", markersize=5, color="blue", label=rf"$\Delta p =$ {np.round(P_v[0] - P_v[-1])} Pa")
+    # ax2.plot(mdot, marker="o", markersize=5, color="black")
+
+    # ax1.tick_params(
+    #     axis='x',
+    #     which='both',
+    #     bottom=False,
+    #     top=False,
+    #     labelbottom=False)
+    
+    # ax1.set_ylabel(r"$T$", color="red", fontsize=32)
+    # ax1.tick_params(axis='y', colors="red")
+    # ax1.spines["left"].set_color("red")
+    # ax1_twin.set_ylabel(r"$P$", color="blue", fontsize=32)
+    # ax1_twin.tick_params(axis='y', colors="blue")
+    # ax1_twin.spines["right"].set_color("blue")
+    # ax2.set_xlabel(r"$n$", fontsize=32)
+    # ax2.set_ylabel(r"$\dot m$", fontsize=32)
+
+    # # lines1, labels1 = ax1.get_legend_handles_labels()
+    # # lines2, labels2 = ax1_twin.get_legend_handles_labels()
+    # # ax1.legend(lines1 + lines2, labels1 + labels2, loc="best")
+    # ax1_twin.legend()
 
     plt.show()
