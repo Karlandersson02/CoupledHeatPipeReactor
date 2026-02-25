@@ -3,6 +3,8 @@ from scipy.optimize import root, newton_krylov
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
+from models.sodium_properties import calculate_Na_h_fg
+
 class vapor_discretised:
     def __init__(self, data):
         self.r_outer  = data.get("r_outer")
@@ -80,9 +82,7 @@ class vapor_discretised:
         # a_W = 2 * np.pi * self.r_vapour * delta_Z / np.pi * self.r_vapour**2 * delta_Z
         a_W = 2 / self.r_vapour
 
-        # Formula from: https://www.osti.gov/servlets/purl/94649
-        T_crit_Na = 2503.7
-        h_fg_Na = (393.37 * (1 - T_v / T_crit_Na) + 4398.6 * (1 - T_v / T_crit_Na)**(0.29302)) * 1e3 # kJ -> J
+        h_fg_Na = calculate_Na_h_fg(T_v)
 
         Gamma = a_W * q_bis_surface / h_fg_Na
 
