@@ -108,3 +108,19 @@ def display_temperature_distribution(T, data, *, save_path=None, show=True):
         plt.close(fig)
 
     return fig, ax
+
+def plot_temperature_cross_section(T, data):
+    N_R = data["N_wick"] + data["N_wall"]
+    Twall = T[N_R-1:-1:N_R]
+    Twick = T[data["N_wick"]::N_R]
+    Tvap = T[0::N_R]
+
+    fig = plt.figure(figsize = (16,9))
+    ax = fig.add_subplot(111)
+
+    ax.plot(Twall, label="Wall")
+    ax.plot(Twick, label="Wick")
+    ax.plot(Tvap, label="Vapour")
+
+    plt.legend()
+    plt.show()
