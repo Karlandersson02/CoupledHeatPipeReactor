@@ -1,7 +1,7 @@
 import numpy as np
-from scipy.optimize import root, newton_krylov
 import matplotlib.pyplot as plt
-import matplotlib as mpl
+
+from models.sodium_properties import calculate_rho_l, calculate_viscosity_l, calculate_K
 
 class heat_pipe_limitations:
     def __init__(self, data):
@@ -28,27 +28,29 @@ class heat_pipe_limitations:
         self.T_HP = data.get("T_HP")
         self.mdot_HP = data.get("mdot_HP")
 
-    def calculate_heat_pipe_limitations(self):
+    def calculate_analytical_heat_pipe_limitations(self):
+        F_l = mu_l / rho_l * A_wick * K * h_fg
+
         return 0
     
     
-    def calculate_capillary_limitations(self):
+    def calculate_analytical_capillary_limit(self):
         return 0
     
     
-    def calculate_boiling_limitations(self):
+    def calculate_analytical_boiling_limit(self):
         return 0
     
     
-    def calculate_sonic_limitations(self):
+    def calculate_analytical_sonic_limit(self):
         return 0
     
     
-    def calculate_vacuum_limitations(self):
+    def calculate_analytical_vacuum_limit(self):
         return 0
     
     
-    def calculate_entrainment_limitations(self):
+    def calculate_analytical_entrainment_limit(self):
         return 0
 
 if __name__ == "__main__":
