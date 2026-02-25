@@ -21,6 +21,15 @@ def calculate_Na_viscosity_l(T_liquid):
 
     return np.exp(-6.4406 - 0.3958 * np.log(T_liquid) + 556.835 / T_liquid)
 
+def calculate_Na_viscosity_v(T_vapour):
+    
+    # Constants and formula taken from:
+    # MODELING OF TRANSIENT HEAT PIPE OPERATION - NASA GRANT NAG-1-392
+    # BY Gene T. Colwell, George W, Woodruff 
+    # page 190.
+
+    return 6.083e-9 * T_vapour + 1.2606e-5
+
 def calculate_Na_h_fg(T_v):
 
     # Constants and formula taken from:
