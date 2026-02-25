@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from models.sodium_properties import calculate_rho_l, calculate_viscosity_l, calculate_K
+from models.sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_l
 
 class heat_pipe_limitations:
     def __init__(self, data):

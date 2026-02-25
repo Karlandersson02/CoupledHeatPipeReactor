@@ -278,50 +278,25 @@ class heatpipe_discretised:
         # -----------------------
         # Evaporator outer BC elements, no corners.
         r = self.N_R - 1
-        for z in range(1, self.N_evap):
+        for z in range(1, self.N_Z-1): #
             T_idx = z * stride + r 
 
             M[T_idx][T_idx] = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
-
-            M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
-            M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
-            M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
-
-            C[T_idx] = -self.Q[z]
-
-        # -----------------------
-        # Condenser outer BC elements and adiabatic wall BC elements, no corners.
-        r = self.N_R - 1
-        for z in range(self.N_evap, self.N_Z - 1):
-            T_idx = z * stride + r  
-
-            M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
             M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][0]
 
             M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
-            M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2]  
-            M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3]  
-
-            C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_cond
-
-        # -----------------------
-        # Evaporator inner BC elements against vapor, no corners.
-        r = 0
-        for z in range(0, self.N_evap):
-            T_idx = z * stride + r 
-
-            M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2] + alpha[z][r][3])
-            M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1]
-
-            M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
-            M[T_idx][-1]             = h[z][r] * alpha[z][r][1]
             M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
             M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
 
+            if z < self.N_evap:
+                C[T_idx] = -self.Q[z]
+            else:
+                C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_cond
+
         # -----------------------
-        # Condenser inner BC elements against vapor and adiabatic wick BC elements, no corners.
+        # Wick BC elements against vapor, no corners.
         r = 0
-        for z in range(self.N_evap, self.N_Z - 1):
+        for z in range(0, self.N_Z-1):
             T_idx = z * stride + r 
 
             M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2] + alpha[z][r][3])
