@@ -3,6 +3,8 @@ from scipy.optimize import root, newton_krylov
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
+from models.sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_l
+
 class liquid_pressure_drop:
     def __init__(self, data):
         self.r_outer  = data.get("r_outer")
@@ -28,27 +30,7 @@ class liquid_pressure_drop:
         self.T_HP = data.get("T_HP")
         self.mdot_HP = data.get("mdot_HP")
 
-    def calculate_rho(self, T_liquid):
 
-        # Constants and formula taken from:
-        # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz 
-        # page 86. 
-        rho_C = 219.0
-        f = 275.32
-        g = 511.58
-        T_C = 2503.7 
-
-        return rho_C + f * (1 - T_liquid / T_C) + g * (1 - T_liquid / T_C)**(0.5) 
-    
-    def calculate_liquid_viscosity(self, T_liquid):
-        
-        # Constants and formula taken from:
-        # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz 
-        # page 207.
-
-        return np.exp(-6.4406 - 0.3958 * np.log(T_liquid) + 556.835 / T_liquid)
-
-    
     def calculate_K(self):
         R_star = self.r_2 / self.r_1
         R_star_m = np.sqrt((1 - R_star) / (2 * np.log(1 / R_star)))
@@ -60,14 +42,15 @@ class liquid_pressure_drop:
         K = D_h**2 / (2 * fRe_l)
 
         return K
+
     
     def calculate_pressure_drop(self):
         A_wick = np.pi * (self.r_1**2 - self.r_2**2) 
         
         T_wick = np.mean(np.array(self.T_HP)[:-1].reshape(self.N_Z, self.N_R)[:, :self.N_wick], axis=1) 
 
-        mu_l = self.calculate_liquid_viscosity(T_wick)  
-        rho_l = self.calculate_rho(T_wick)
+        mu_l = calculate_Na_viscosity_l(T_wick)  
+        rho_l = calculate_Na_rho_l(T_wick)
         K = self.calculate_K()
 
         delta_z = np.concatenate(
@@ -81,6 +64,7 @@ class liquid_pressure_drop:
         print(np.mean(mu_l), np.mean(rho_l), A_wick, K)
 
         return Delta_P_l
+
 
 if __name__ == "__main__":
     data = {

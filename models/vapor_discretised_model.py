@@ -73,7 +73,7 @@ class vapor_discretised:
         T_v = self.T_HP[-1]
 
         q_bis_surface = np.zeros(self.N_Z)
-        q_bis_surface[0: self.N_evap]           =  self.h_vap * (T_wick_lv_interface[0: self.N_evap]           - T_v)
+        q_bis_surface[0: self.N_evap]             =  self.h_vap * (T_wick_lv_interface[0: self.N_evap]           - T_v)
         q_bis_surface[self.N_Z - self.N_cond: -1] =  self.h_vap * (T_wick_lv_interface[self.N_Z - self.N_cond: -1] - T_v)
         
         # Heat transfer surface area density per unit volume.

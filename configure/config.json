@@ -21,6 +21,12 @@
     "h_vap": 1e6
   },
 
+  "boundary_conditions": {
+    "T_op": 850.0,
+    "Q_total": 1e3,
+    "h_vap": 1e6
+  },
+
   "network_model": {
     "k": [
       21.7,
