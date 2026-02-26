@@ -192,7 +192,7 @@ def run_discretised(cfg: dict[str, Any], out_dir: Path) -> int:
 
     data = build_discretised_data(cfg)
     data["Temperature_BC"] = True
-    data["T_cond"] = 300
+    data["T_cond"] = 1000
     heatpipe = heatpipe_discretised(data)
     T = heatpipe.solve_heatpipe_discretised()
 
@@ -210,7 +210,7 @@ def run_discretised(cfg: dict[str, Any], out_dir: Path) -> int:
     # print(Qout)
 
     data["Temperature_BC"] = False
-    data["T_op"] = 850
+    data["T_op"] = T[-1]
     heatpipe2 = heatpipe_discretised(data)
     T2 = heatpipe2.solve_heatpipe_discretised()
 
@@ -219,7 +219,7 @@ def run_discretised(cfg: dict[str, Any], out_dir: Path) -> int:
     # plot_temperature_cross_section(T2, data)
 
     display_temperature_distribution(
-        T,
+        T-T2,
         data,
         save_path=str(fig_path) if fig_path else None,
         show=out_settings.show_figures,

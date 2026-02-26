@@ -457,13 +457,17 @@ class heatpipe_discretised:
             T_idx = z * stride + r 
 
             M[T_idx][T_idx] = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
-            M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][0]
+            # M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][0]
 
             M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
             M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
             M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
 
             C[T_idx] = -self.Q[z]
+            # if z < self.N_evap:
+            #     C[T_idx] = -self.Q[z]
+            # else:
+            #     C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_cond
 
         # -----------------------
         # Wick BC elements against vapour, no corners.
@@ -480,6 +484,7 @@ class heatpipe_discretised:
             M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
 
             C[T_idx] = -h[z][r] * alpha[z][r][1] * self.T_op
+            
 
         # -----------------------
         # Corner next to evaporator entrance (z = 0, r = N_R-1).
@@ -501,7 +506,7 @@ class heatpipe_discretised:
         T_idx = z * stride + r 
 
         M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][3])
-        M[T_idx][T_idx] += -h[z][r] * alpha[z][r][0]
+        # M[T_idx][T_idx] += -h[z][r] * alpha[z][r][0]
 
         M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
         M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3]  
