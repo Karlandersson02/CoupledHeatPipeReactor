@@ -224,7 +224,7 @@ class heatpipe_discretised:
         return alpha_tensor
 
     def generate_matrix_form_temperature_bc(self, alpha: np.ndarray, k: np.ndarray, h: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        # Number of physical grid nodes + extra vapour node (stored at index -1).
+        # Number of physical grid nodes + extra vapor node (stored at index -1).
         N_phys = self.N_R * self.N_Z
         N = N_phys + 1
         stride = self.N_R 
@@ -284,9 +284,9 @@ class heatpipe_discretised:
 
 
         # -----------------------
-        # Wall BC elements, no corners.
+        # Evaporator outer BC elements, no corners.
         r = self.N_R - 1
-        for z in range(1, self.N_Z-1):
+        for z in range(1, self.N_Z-1): #
             T_idx = z * stride + r 
 
             M[T_idx][T_idx] = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
@@ -302,7 +302,7 @@ class heatpipe_discretised:
                 C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_cond
 
         # -----------------------
-        # Wick BC elements against vapour, no corners.
+        # Wick BC elements against vapor, no corners.
         r = 0
         for z in range(0, self.N_Z-1):
             T_idx = z * stride + r 
@@ -343,7 +343,7 @@ class heatpipe_discretised:
         C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_cond 
 
         # -----------------------
-        # Corner next to evaporator vapour inlet (z = 0, r = 0).
+        # Corner next to evaporator vapor inlet (z = 0, r = 0).
         z = 0
         r = 0
         T_idx = z * stride + r
@@ -356,7 +356,7 @@ class heatpipe_discretised:
         M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2]
 
         # -----------------------
-        # Corner next to condenser vapour inlet (z = N_Z - 1, r = 0).
+        # Corner next to condenser vapor outlet/inlet (z = N_Z - 1, r = 0).
         z = self.N_Z - 1
         r = 0
         T_idx = z * stride + r
@@ -369,7 +369,7 @@ class heatpipe_discretised:
         M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
 
         # -----------------------
-        # Vapour elements. 
+        # Vapor elements. 
 
         for z in range(0, self.N_evap):
             r = 0

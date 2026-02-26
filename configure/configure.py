@@ -219,7 +219,7 @@ def run_discretised(cfg: dict[str, Any], out_dir: Path) -> int:
     # plot_temperature_cross_section(T2, data)
 
     display_temperature_distribution(
-        T2,
+        T,
         data,
         save_path=str(fig_path) if fig_path else None,
         show=out_settings.show_figures,
