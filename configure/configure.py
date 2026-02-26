@@ -133,10 +133,12 @@ def build_discretised_data(cfg: dict[str, Any]) -> dict[str, Any]:
     l_adiabatic = float(g["l_adiabatic"])
     l_cond = float(g["l_cond"])
 
+    Temperature_BC = bool(bc["Temperature_BC"])
     T_infc = float(bc["T_infc"])
     Q_total = float(bc["Q_total"])
     h_vap = float(bc["h_vap"])
     h_cond = float(bc["h_cond"])
+    T_op = float(bc["T_op"])
 
     N_evap = int(dm["N_evap"])
 
@@ -152,9 +154,11 @@ def build_discretised_data(cfg: dict[str, Any]) -> dict[str, Any]:
         "N_evap": N_evap,
         "N_adiabatic": int(dm["N_adiabatic"]),
         "N_cond": int(dm["N_cond"]),
+        "Temperature_BC": Temperature_BC,
         "h_vap": h_vap,
         "h_cond": h_cond,
         "T_cond": T_infc,
+        "T_op": T_op,
         "k_wall": float(dm["k_wall"]),
         "k_wick": float(dm["k_wick"]),
         "Q": np.repeat(np.array([Q_total / N_evap], dtype=float), N_evap),
@@ -182,18 +186,40 @@ def run_network(cfg: dict[str, Any], out_dir: Path) -> int:
 
 def run_discretised(cfg: dict[str, Any], out_dir: Path) -> int:
     from models.heat_discretised_model import heatpipe_discretised
-    from visualisation.visualise_discretised_results import display_temperature_distribution
+    from visualisation.visualise_discretised_results import display_temperature_distribution, plot_temperature_cross_section
 
     out_settings = get_output_settings(cfg)
 
     data = build_discretised_data(cfg)
+    data["Temperature_BC"] = True
+    data["T_cond"] = 300
     heatpipe = heatpipe_discretised(data)
     T = heatpipe.solve_heatpipe_discretised()
 
+    N_evap = data["N_evap"]
+    N_adiabatic = data["N_adiabatic"]
+    N_cond = data["N_cond"]
+    N_Z = N_evap + N_adiabatic + N_cond
+
+    N_wick = data["N_wick"]
+    N_wall = data["N_wall"]
+    N_R = N_wick + N_wall
+
+    T_conds = T[N_R*(N_Z - N_cond) + N_R-1::N_R]
+    Qout = np.sum(data["h_cond"] * data["l_cond"] * np.pi * 2 * data["r_outer"] * (T_conds - data["T_cond"]) / N_cond)
+    # print(Qout)
+
+    data["Temperature_BC"] = False
+    data["T_op"] = 850
+    heatpipe2 = heatpipe_discretised(data)
+    T2 = heatpipe2.solve_heatpipe_discretised()
+
     fig_path = (out_dir / "temperature_distribution.png") if out_settings.save_figures else None
+    
+    # plot_temperature_cross_section(T2, data)
 
     display_temperature_distribution(
-        T,
+        T2,
         data,
         save_path=str(fig_path) if fig_path else None,
         show=out_settings.show_figures,

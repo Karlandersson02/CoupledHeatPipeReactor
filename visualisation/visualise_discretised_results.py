@@ -121,6 +121,9 @@ def plot_temperature_cross_section(T, data):
     ax.plot(Twall, label="Wall")
     ax.plot(Twick, label="Wick")
     ax.plot(Tvap, label="Vapour")
+    # ax.hlines((Twall[-1] + Twall[0])/2, 0, 120, colors="black")
+    ax.hlines(T[-1], 0, 120, colors="black")
+
 
     plt.legend()
     plt.show()
