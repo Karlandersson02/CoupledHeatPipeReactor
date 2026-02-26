@@ -31,11 +31,11 @@ class liquid_pressure_drop:
         self.mdot_HP = data.get("mdot_HP")
 
 
-    def calculate_K(self):
+    def calculate_K_annular_wick(self):
         R_star = self.r_2 / self.r_1
-        R_star_m = np.sqrt((1 - R_star) / (2 * np.log(1 / R_star)))
+        R_star_m = np.sqrt((1 - R_star**2) / (2 * np.log(1 / R_star)))
 
-        fRe_l = 16 * (1 - R_star)**2 / (1 + R_star**2 - 2*R_star_m**2)
+        fRe_l = 16 * (1 - R_star**2)**2 / (1 + R_star**2 - 2*R_star_m**2)
 
         D_h = 2 * (self.r_1 - self.r_2)
 
@@ -51,7 +51,7 @@ class liquid_pressure_drop:
 
         mu_l = calculate_Na_viscosity_l(T_wick)  
         rho_l = calculate_Na_rho_l(T_wick)
-        K = self.calculate_K()
+        K = self.calculate_K_annular_wick()
 
         delta_z = np.concatenate(
             [np.ones(self.N_evap) * self.l_evap / self.N_evap,
