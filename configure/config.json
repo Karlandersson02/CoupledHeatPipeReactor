@@ -15,6 +15,7 @@
   },
 
   "boundary_conditions": {
+    "adiabatic_radial_flux": false,
     "Temperature_BC": false,
     "T_infc": 300.0,
     "Q_total": 1e3,

@@ -3,7 +3,7 @@ from scipy.optimize import root, newton_krylov
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
-from models.sodium_properties import calculate_Na_h_fg
+from sodium_properties import calculate_Na_h_fg
 
 class vapor_discretised:
     def __init__(self, data):

@@ -25,6 +25,7 @@ class heatpipe_discretised:
         self.N_cond = data.get("N_cond")
         self.N_Z = self.N_evap + self.N_adiabatic + self.N_cond
 
+        self.adiabatic_radial_flux = data.get("adiabatic_radial_flux")
         self.Temperature_BC = data.get("Temperature_BC")
         self.h_vap = data.get("h_vap")
         self.h_cond = data.get("h_cond")
@@ -206,21 +207,23 @@ class heatpipe_discretised:
                     alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*delta_Z[i-1] + k_matrix[i-1, j]*delta_Z[i])
 
         # Init masks
-        adiabatic_mask = np.zeros_like(alpha_tensor, dtype=bool)
         vapour_mask = np.zeros_like(alpha_tensor, dtype=bool)
         cooling_mask = np.zeros_like(alpha_tensor, dtype=bool)
         
         # Configure masks
-        adiabatic_mask[self.N_evap:(self.N_evap + self.N_adiabatic), :, 0:2] = True
         vapour_mask[0:self.N_evap, 0, 1] = True
         vapour_mask[(self.N_evap + self.N_adiabatic):, 0, 1] = True
         cooling_mask[(self.N_evap + self.N_adiabatic):, -1, 0] = True
 
         # Apply masks
-        alpha_tensor[adiabatic_mask] = 0
         alpha_tensor[vapour_mask] = surface_tensor[vapour_mask]
         alpha_tensor[cooling_mask] = surface_tensor[cooling_mask]
 
+        # Adiabatic middle boundaries
+        if not self.adiabatic_radial_flux:
+            adiabatic_mask = np.zeros_like(alpha_tensor, dtype=bool)
+            adiabatic_mask[self.N_evap:(self.N_evap + self.N_adiabatic), :, 0:2] = True
+            alpha_tensor[adiabatic_mask] = 0
         return alpha_tensor
 
     def generate_matrix_form_temperature_bc(self, alpha: np.ndarray, k: np.ndarray, h: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -284,7 +287,7 @@ class heatpipe_discretised:
 
 
         # -----------------------
-        # Evaporator outer BC elements, no corners.
+        # Wall BC elements, no corners.
         r = self.N_R - 1
         for z in range(1, self.N_Z-1): #
             T_idx = z * stride + r 
@@ -457,7 +460,7 @@ class heatpipe_discretised:
             T_idx = z * stride + r 
 
             M[T_idx][T_idx] = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
-            
+
             M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
             M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
             M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 

@@ -30,3 +30,4 @@ def calculate_Na_h_fg(T_v):
     T_crit_Na = 2503.7
     h_fg_Na = (393.37 * (1 - T_v / T_crit_Na) + 4398.6 * (1 - T_v / T_crit_Na)**(0.29302)) * 1e3 # kJ -> J
 
+    return h_fg_Na

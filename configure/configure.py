@@ -134,6 +134,7 @@ def build_discretised_data(cfg: dict[str, Any]) -> dict[str, Any]:
     l_cond = float(g["l_cond"])
 
     Temperature_BC = bool(bc["Temperature_BC"])
+    adiabatic_radial_flux = bool(bc["adiabatic_radial_flux"])
     T_infc = float(bc["T_infc"])
     Q_total = float(bc["Q_total"])
     h_vap = float(bc["h_vap"])
@@ -154,6 +155,7 @@ def build_discretised_data(cfg: dict[str, Any]) -> dict[str, Any]:
         "N_evap": N_evap,
         "N_adiabatic": int(dm["N_adiabatic"]),
         "N_cond": int(dm["N_cond"]),
+        "adiabatic_radial_flux": adiabatic_radial_flux,
         "Temperature_BC": Temperature_BC,
         "h_vap": h_vap,
         "h_cond": h_cond,
@@ -189,28 +191,15 @@ def run_discretised(cfg: dict[str, Any], out_dir: Path) -> int:
     from visualisation.visualise_discretised_results import display_temperature_distribution, plot_temperature_cross_section
 
     out_settings = get_output_settings(cfg)
-
     data = build_discretised_data(cfg)
+
+    data["adiabatic_radial_flux"] = False
     data["Temperature_BC"] = True
-    data["T_cond"] = 1000
     heatpipe = heatpipe_discretised(data)
     T = heatpipe.solve_heatpipe_discretised()
 
-    N_evap = data["N_evap"]
-    N_adiabatic = data["N_adiabatic"]
-    N_cond = data["N_cond"]
-    N_Z = N_evap + N_adiabatic + N_cond
-
-    N_wick = data["N_wick"]
-    N_wall = data["N_wall"]
-    N_R = N_wick + N_wall
-
-    T_conds = T[N_R*(N_Z - N_cond) + N_R-1::N_R]
-    Qout = np.sum(data["h_cond"] * data["l_cond"] * np.pi * 2 * data["r_outer"] * (T_conds - data["T_cond"]) / N_cond)
-    # print(Qout)
-
+    data["adiabatic_radial_flux"] = False
     data["Temperature_BC"] = False
-    data["T_op"] = T[-1]
     heatpipe2 = heatpipe_discretised(data)
     T2 = heatpipe2.solve_heatpipe_discretised()
 
@@ -219,7 +208,7 @@ def run_discretised(cfg: dict[str, Any], out_dir: Path) -> int:
     # plot_temperature_cross_section(T2, data)
 
     display_temperature_distribution(
-        T-T2,
+        T,
         data,
         save_path=str(fig_path) if fig_path else None,
         show=out_settings.show_figures,
