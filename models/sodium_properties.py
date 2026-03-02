@@ -11,12 +11,19 @@ def calculate_Na_rho_l(T_liquid):
     g = 511.58
     T_C = 2503.7 
 
-    # units in kg / m^3
+    # units is kg / m^3
     return rho_C + f * (1 - T_liquid / T_C) + g * (1 - T_liquid / T_C)**(0.5) 
 
-def calculate_Na_rho_v(T_liquid):
-    # fix. 
-    return 1
+def calculate_Na_rho_v(T_vapour):
+    # Constants and formula taken from:
+    # MODELING OF TRANSIENT HEAT PIPE OPERATION - NASA GRANT NAG-1-392
+    # BY Gene T. Colwell, George W, Woodruff 
+    # page 190.
+
+    # Should probably be for saturated vapour(?)
+    
+    # Unit is kg / m^3
+    return 6.335e8 * (1 / T_vapour**(1.5)) * 10**(-5567 / T_vapour)
 
 def calculate_Na_viscosity_l(T_liquid):
     
@@ -24,7 +31,7 @@ def calculate_Na_viscosity_l(T_liquid):
     # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz 
     # page 207.
 
-    # unit in Pa * s
+    # unit is Pa * s
     return np.exp(-6.4406 - 0.3958 * np.log(T_liquid) + 556.835 / T_liquid)
 
 def calculate_Na_viscosity_v(T_vapour):
@@ -34,9 +41,11 @@ def calculate_Na_viscosity_v(T_vapour):
     # BY Gene T. Colwell, George W, Woodruff 
     # page 190.
 
+    # Should probably be for saturated vapour(?)
+
     print(T_vapour)
     
-    # Unit in N * s / m^2
+    # Unit is N * s / m^2
     return 6.083e-9 * T_vapour + 1.2606e-5
 
 def calculate_Na_h_fg(T_vapour):
