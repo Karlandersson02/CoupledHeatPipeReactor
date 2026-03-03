@@ -42,8 +42,6 @@ def calculate_Na_viscosity_v(T_vapour):
     # page 190.
 
     # Should probably be for saturated vapour(?)
-
-    print(T_vapour)
     
     # Unit is N * s / m^2
     return 6.083e-9 * T_vapour + 1.2606e-5
