@@ -42,7 +42,7 @@ class heatpipe_discretised:
             Qnew[(self.N_evap + self.N_adiabatic):] = Qout
             self.Q = Qnew
 
-    def solve_heatpipe_discretised(self) -> np.ndarray:
+    def solve(self):
         
         R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
 
@@ -62,7 +62,7 @@ class heatpipe_discretised:
         if not self.Temperature_BC:
             T = np.concatenate([T, np.array([self.T_op])])
 
-        return T
+        self.temperature = T
 
 
     def initialize_discretization(self):
