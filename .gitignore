@@ -9,3 +9,4 @@ tests/vapour_discretised_model/__pycache__
 outputs/*
 .venv
 Figures/*
+CoupledSystems/__pycache__

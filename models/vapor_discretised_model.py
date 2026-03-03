@@ -3,7 +3,7 @@ from scipy.optimize import root, newton_krylov
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
-from sodium_properties import calculate_Na_h_fg
+from models.sodium_properties import calculate_Na_h_fg, calculate_Na_viscosity_v
 
 class vapour_discretised:
     def __init__(self, data):
@@ -28,7 +28,6 @@ class vapour_discretised:
 
         # heat transfer coefficient
         self.h_vap = data.get("h_vap")
-        self.viscosity_Na = data.get("viscosity_Na")
 
         self.T_HP = data.get("T_HP")
 
@@ -43,6 +42,7 @@ class vapour_discretised:
 
     def solve(self):
         Gamma, h_fg_Na = self.calculate_mass_flow_and_latent_heat()
+        self.viscosity_Na = calculate_Na_viscosity_v(self.T_HP[-1])
 
         T_v, u_v = self.solve_vapour_heat_profile(Gamma, h_fg_Na)
 
@@ -115,6 +115,17 @@ class vapour_discretised:
         u_guess = u_normalised * Qevap / (h_fg * rho_v * A_v)
 
         return u_guess
+    
+    def get_mdot(self):
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
+        T_v = self.T_HP[-1]
+        h_fg = calculate_Na_h_fg(T_v)
+
+        A_int = 2 * np.pi * self.r_vapour * self.l_evap / self.N_evap
+        Qevap = np.sum(self.h_vap * (T_wick_lv_interface[:self.N_evap] - T_v)) * A_int
+        mdot = Qevap / h_fg
+
+        return mdot
 
 
     def build_T_initial_guess(self) -> np.ndarray:
@@ -163,6 +174,7 @@ class vapour_discretised:
         T_v  = self.T_HP[-1]
         h_fg = calculate_Na_h_fg(T_v)
         rho_v = self.calculate_rho(T_v, h_fg)
+        self.viscosity_Na = calculate_Na_viscosity_v(self.T_HP[-1])
 
         Rv  = self.r_vapour          # make sure this is in meters
         mu_v = self.viscosity_Na
@@ -219,6 +231,11 @@ class vapour_discretised:
         rho_v = self.calculate_rho(T_v, h_fg_Na)
 
         return rho_v * self.R_Na * T_v
+
+    def calculate_temperature_profile(self, P, h_fg):
+        T = P / (self.calculate_rho(self.T_HP[-1], h_fg) * self.R_Na)
+
+        return T
     
     def update_Gamma(self, T_i: np.ndarray, Gami: np.ndarray, h_fg_Na: float):
         T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
