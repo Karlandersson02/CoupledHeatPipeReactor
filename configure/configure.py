@@ -133,10 +133,13 @@ def build_discretised_data(cfg: dict[str, Any]) -> dict[str, Any]:
     l_adiabatic = float(g["l_adiabatic"])
     l_cond = float(g["l_cond"])
 
+    Temperature_BC = bool(bc["Temperature_BC"])
+    adiabatic_radial_flux = bool(bc["adiabatic_radial_flux"])
     T_infc = float(bc["T_infc"])
     Q_total = float(bc["Q_total"])
     h_vap = float(bc["h_vap"])
     h_cond = float(bc["h_cond"])
+    T_op = float(bc["T_op"])
 
     N_evap = int(dm["N_evap"])
 
@@ -152,9 +155,12 @@ def build_discretised_data(cfg: dict[str, Any]) -> dict[str, Any]:
         "N_evap": N_evap,
         "N_adiabatic": int(dm["N_adiabatic"]),
         "N_cond": int(dm["N_cond"]),
+        "adiabatic_radial_flux": adiabatic_radial_flux,
+        "Temperature_BC": Temperature_BC,
         "h_vap": h_vap,
         "h_cond": h_cond,
         "T_cond": T_infc,
+        "T_op": T_op,
         "k_wall": float(dm["k_wall"]),
         "k_wick": float(dm["k_wick"]),
         "Q": np.repeat(np.array([Q_total / N_evap], dtype=float), N_evap),
@@ -182,15 +188,24 @@ def run_network(cfg: dict[str, Any], out_dir: Path) -> int:
 
 def run_discretised(cfg: dict[str, Any], out_dir: Path) -> int:
     from models.heat_discretised_model import heatpipe_discretised
-    from visualisation.visualise_discretised_results import display_temperature_distribution
+    from visualisation.visualise_discretised_results import display_temperature_distribution, plot_temperature_cross_section
 
     out_settings = get_output_settings(cfg)
-
     data = build_discretised_data(cfg)
+
+    data["adiabatic_radial_flux"] = False
+    data["Temperature_BC"] = True
     heatpipe = heatpipe_discretised(data)
     T = heatpipe.solve_heatpipe_discretised()
 
+    data["adiabatic_radial_flux"] = False
+    data["Temperature_BC"] = False
+    heatpipe2 = heatpipe_discretised(data)
+    T2 = heatpipe2.solve_heatpipe_discretised()
+
     fig_path = (out_dir / "temperature_distribution.png") if out_settings.save_figures else None
+    
+    # plot_temperature_cross_section(T2, data)
 
     display_temperature_distribution(
         T,

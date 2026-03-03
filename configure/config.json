@@ -9,22 +9,19 @@
     "D_v": 0.014,
     "delta_wick": 0.0005,
     "delta_wall": 0.001,
-    "l_evap": 0.1,
-    "l_adiabatic": 0.05,
-    "l_cond": 0.55
+    "l_evap": 0.2,
+    "l_adiabatic": 0.2,
+    "l_cond": 0.2
   },
 
   "boundary_conditions": {
+    "adiabatic_radial_flux": false,
+    "Temperature_BC": false,
     "T_infc": 300.0,
     "Q_total": 1e3,
     "h_cond": 62.6,
-    "h_vap": 1e6
-  },
-
-  "boundary_conditions": {
-    "T_op": 850.0,
-    "Q_total": 1e3,
-    "h_vap": 1e6
+    "h_vap": 1e6,
+    "T_op": 850.0
   },
 
   "network_model": {
@@ -42,9 +39,9 @@
   "discretised_model": {
     "N_wick": 15,
     "N_wall": 15,
-    "N_evap": 20,
-    "N_adiabatic": 10,
-    "N_cond": 110,
+    "N_evap": 40,
+    "N_adiabatic": 40,
+    "N_cond": 40,
     "k_wall": 21.7,
     "k_wick": 45.0
   }

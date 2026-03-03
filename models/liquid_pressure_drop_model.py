@@ -3,7 +3,7 @@ from scipy.optimize import root, newton_krylov
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
-from models.sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_l
+from sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_l
 
 class liquid_pressure_drop:
     def __init__(self, data):
@@ -59,11 +59,29 @@ class liquid_pressure_drop:
             np.ones(self.N_cond) * self.l_cond / self.N_cond]
             )
         
-        Delta_P_l = np.sum(mu_l * np.array(self.mdot_HP) / (rho_l * A_wick * K) * delta_z)
+        deltaP = np.sum(mu_l * np.array(self.mdot_HP) / (rho_l * A_wick * K) * delta_z)
 
-        print(np.mean(mu_l), np.mean(rho_l), A_wick, K)
+        return deltaP
+    
 
-        return Delta_P_l
+    def calculate_pressure(self):
+        A_wick = np.pi * (self.r_1**2 - self.r_2**2) 
+        
+        T_wick = np.mean(np.array(self.T_HP)[:-1].reshape(self.N_Z, self.N_R)[:, :self.N_wick], axis=1) 
+
+        mu_l = calculate_Na_viscosity_l(T_wick)  
+        rho_l = calculate_Na_rho_l(T_wick)
+        K = self.calculate_K()
+
+        delta_z = np.concatenate(
+            [np.ones(self.N_evap) * self.l_evap / self.N_evap,
+            np.ones(self.N_adia) * self.l_adia / self.N_adia,
+            np.ones(self.N_cond) * self.l_cond / self.N_cond]
+            )
+        
+        P = np.cumsum(mu_l * np.array(self.mdot_HP) / (rho_l * A_wick * K) * delta_z)
+
+        return np.array(self.mdot_HP)
 
 
 if __name__ == "__main__":
@@ -93,7 +111,9 @@ if __name__ == "__main__":
 
     lpd = liquid_pressure_drop(data)
 
-    print(lpd.calculate_pressure_drop()) 
+    P = lpd.calculate_pressure()
 
+    plt.plot(P) 
+    plt.show()
     
 

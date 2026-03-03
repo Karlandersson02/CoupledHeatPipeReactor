@@ -25,17 +25,25 @@ class heatpipe_discretised:
         self.N_cond = data.get("N_cond")
         self.N_Z = self.N_evap + self.N_adiabatic + self.N_cond
 
+        self.adiabatic_radial_flux = data.get("adiabatic_radial_flux")
+        self.Temperature_BC = data.get("Temperature_BC")
         self.h_vap = data.get("h_vap")
         self.h_cond = data.get("h_cond")
         self.T_cond = data.get("T_cond")
+        self.T_op = data.get("T_op")
 
         self.k_wall = data.get("k_wall")
         self.k_wick = data.get("k_wick")
         self.Q = data.get("Q")
+        if not self.Temperature_BC:
+            Qnew = np.zeros(self.N_Z)
+            Qnew[:self.N_evap] = self.Q
+            Qout = -np.ones(self.N_cond) * np.sum(self.Q) / self.N_cond
+            Qnew[(self.N_evap + self.N_adiabatic):] = Qout
+            self.Q = Qnew
 
     def solve_heatpipe_discretised(self) -> np.ndarray:
         
-        time1_start = time()
         R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
 
         surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm, delta_Z)
@@ -44,15 +52,16 @@ class heatpipe_discretised:
         h_matrix = self.generate_h_matrix()
 
         alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k_matrix)
-
-        M, C = self.generate_matrix_form(alpha, k_matrix, h_matrix)
-        time1_stop = time()
+        
+        if self.Temperature_BC:
+            M, C = self.generate_matrix_form_temperature_bc(alpha, k_matrix, h_matrix)
+        else:
+            M, C = self.generate_matrix_form_heat_bc(alpha, k_matrix, h_matrix)
 
         T = np.linalg.solve(M, C)
-        time2_stop = time()
+        if not self.Temperature_BC:
+            T = np.concatenate([T, np.array([self.T_op])])
 
-        print(f"First time: {time1_stop - time1_start} s")
-        print(f"Second time: {time2_stop - time1_stop} s")
         return T
 
 
@@ -198,24 +207,26 @@ class heatpipe_discretised:
                     alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*delta_Z[i-1] + k_matrix[i-1, j]*delta_Z[i])
 
         # Init masks
-        adiabatic_mask = np.zeros_like(alpha_tensor, dtype=bool)
         vapour_mask = np.zeros_like(alpha_tensor, dtype=bool)
         cooling_mask = np.zeros_like(alpha_tensor, dtype=bool)
         
         # Configure masks
-        adiabatic_mask[self.N_evap:(self.N_evap + self.N_adiabatic), :, 0:2] = True
         vapour_mask[0:self.N_evap, 0, 1] = True
         vapour_mask[(self.N_evap + self.N_adiabatic):, 0, 1] = True
         cooling_mask[(self.N_evap + self.N_adiabatic):, -1, 0] = True
 
         # Apply masks
-        alpha_tensor[adiabatic_mask] = 0
         alpha_tensor[vapour_mask] = surface_tensor[vapour_mask]
         alpha_tensor[cooling_mask] = surface_tensor[cooling_mask]
 
+        # Adiabatic middle boundaries
+        if not self.adiabatic_radial_flux:
+            adiabatic_mask = np.zeros_like(alpha_tensor, dtype=bool)
+            adiabatic_mask[self.N_evap:(self.N_evap + self.N_adiabatic), :, 0:2] = True
+            alpha_tensor[adiabatic_mask] = 0
         return alpha_tensor
 
-    def generate_matrix_form(self, alpha: np.ndarray, k: np.ndarray, h: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def generate_matrix_form_temperature_bc(self, alpha: np.ndarray, k: np.ndarray, h: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         # Number of physical grid nodes + extra vapor node (stored at index -1).
         N_phys = self.N_R * self.N_Z
         N = N_phys + 1
@@ -276,52 +287,27 @@ class heatpipe_discretised:
 
 
         # -----------------------
-        # Evaporator outer BC elements, no corners.
+        # Wall BC elements, no corners.
         r = self.N_R - 1
-        for z in range(1, self.N_evap):
+        for z in range(1, self.N_Z-1): #
             T_idx = z * stride + r 
 
             M[T_idx][T_idx] = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
-
-            M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
-            M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
-            M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
-
-            C[T_idx] = -self.Q[z]
-
-        # -----------------------
-        # Condenser outer BC elements and adiabatic wall BC elements, no corners.
-        r = self.N_R - 1
-        for z in range(self.N_evap, self.N_Z - 1):
-            T_idx = z * stride + r  
-
-            M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
             M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][0]
 
             M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
-            M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2]  
-            M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3]  
-
-            C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_cond
-
-        # -----------------------
-        # Evaporator inner BC elements against vapor, no corners.
-        r = 0
-        for z in range(0, self.N_evap):
-            T_idx = z * stride + r 
-
-            M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2] + alpha[z][r][3])
-            M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1]
-
-            M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
-            M[T_idx][-1]             = h[z][r] * alpha[z][r][1]
             M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
             M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
 
+            if z < self.N_evap:
+                C[T_idx] = -self.Q[z]
+            else:
+                C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_cond
+
         # -----------------------
-        # Condenser inner BC elements against vapor and adiabatic wick BC elements, no corners.
+        # Wick BC elements against vapor, no corners.
         r = 0
-        for z in range(self.N_evap, self.N_Z - 1):
+        for z in range(0, self.N_Z-1):
             T_idx = z * stride + r 
 
             M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2] + alpha[z][r][3])
@@ -404,5 +390,152 @@ class heatpipe_discretised:
 
         # -----------------------
         # Return matrix and vector
+
+        return M, C
+
+    def generate_matrix_form_heat_bc(self, alpha: np.ndarray, k: np.ndarray, h: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        # Number of physical grid nodes + extra vapour node (stored at index -1).
+        N_phys = self.N_R * self.N_Z
+        N = N_phys
+        stride = self.N_R 
+
+        M = np.zeros((N, N), dtype=float)
+        C = np.zeros(N, dtype=float)
+
+        # -----------------------
+        # Bulk elements.
+        for z in range(1, self.N_Z - 1):
+            for r in range(1, self.N_R - 1):
+                T_idx = (stride * z) + r
+
+                M[T_idx][T_idx] = -k[z][r] * (
+                    alpha[z][r][0] +
+                    alpha[z][r][1] +
+                    alpha[z][r][2] +
+                    alpha[z][r][3]
+                )
+
+                M[T_idx][T_idx + 1]       = k[z][r] * alpha[z][r][0]
+                M[T_idx][T_idx - 1]       = k[z][r] * alpha[z][r][1]
+                M[T_idx][T_idx + stride]  = k[z][r] * alpha[z][r][2]  
+                M[T_idx][T_idx - stride]  = k[z][r] * alpha[z][r][3] 
+
+        # -----------------------
+        # Insulated wall at z = 0
+        z = 0
+        for r in range(1, self.N_R - 1):
+            T_idx = (stride * z) + r
+
+            M[T_idx][T_idx] = -k[z][r] * (
+                alpha[z][r][0] +
+                alpha[z][r][1] +
+                alpha[z][r][2]
+            )
+
+            M[T_idx][T_idx + 1]       = k[z][r] * alpha[z][r][0]
+            M[T_idx][T_idx - 1]       = k[z][r] * alpha[z][r][1]
+            M[T_idx][T_idx + stride]  = k[z][r] * alpha[z][r][2]  
+
+        # -----------------------
+        # Insulated wall at z = N_Z - 1
+        z = self.N_Z - 1
+        for r in range(1, self.N_R - 1):
+            T_idx = (stride * z) + r
+
+            M[T_idx][T_idx] = -k[z][r] * (
+                alpha[z][r][0] +
+                alpha[z][r][1] +
+                alpha[z][r][3]
+            )
+
+            M[T_idx][T_idx + 1]       = k[z][r] * alpha[z][r][0]
+            M[T_idx][T_idx - 1]       = k[z][r] * alpha[z][r][1]
+            M[T_idx][T_idx - stride]  = k[z][r] * alpha[z][r][3]  
+
+
+        # -----------------------
+        # Wall BC elements, no corners.
+        r = self.N_R - 1
+        for z in range(1, self.N_Z-1):
+            T_idx = z * stride + r 
+
+            M[T_idx][T_idx] = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
+
+            M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
+            M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
+            M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
+
+            C[T_idx] = -self.Q[z]
+
+        # -----------------------
+        # Wick BC elements against vapour, no corners.
+        r = 0
+        for z in range(0, self.N_Z-1):
+            T_idx = z * stride + r 
+
+            M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2] + alpha[z][r][3])
+            M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1]
+
+            M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
+            M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
+            M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
+
+            C[T_idx] = -h[z][r] * alpha[z][r][1] * self.T_op
+            
+
+        # -----------------------
+        # Corner next to evaporator entrance (z = 0, r = N_R-1).
+        z = 0
+        r = self.N_R - 1
+        T_idx = z * stride + r 
+
+        M[T_idx][T_idx] = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2])
+
+        M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
+        M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
+
+        C[T_idx] = -self.Q[z]
+
+        # -----------------------
+        # Corner next to condenser outlet (z = N_Z - 1, r = N_R - 1).
+        z = self.N_Z - 1
+        r = self.N_R - 1
+        T_idx = z * stride + r 
+
+        M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][3])
+
+        M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
+        M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3]  
+
+        C[T_idx] = -self.Q[z]
+
+        # -----------------------
+        # Corner next to evaporator vapour inlet (z = 0, r = 0).
+        z = 0
+        r = 0
+        T_idx = z * stride + r
+
+        M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2])
+        M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1] 
+
+        M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
+        M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2]
+
+        C[T_idx] = -h[z][r] * alpha[z][r][1] * self.T_op
+
+        # -----------------------
+        # Corner next to condenser vapour inlet (z = N_Z - 1, r = 0).
+        z = self.N_Z - 1
+        r = 0
+        T_idx = z * stride + r
+
+        M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][3])
+        M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1]
+
+        M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
+        M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3]
+
+        C[T_idx] = -h[z][r] * alpha[z][r][1] * self.T_op
+
 
         return M, C

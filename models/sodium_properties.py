@@ -72,3 +72,4 @@ def calculate_Na_surface_tension(T_liquid):
     # Original unit is mN / m, converting it to N / m. 
     return 1e-3 * sigma_0 * (1 - T_liquid / T_crit_Na)**(n)
 
+    return h_fg_Na
