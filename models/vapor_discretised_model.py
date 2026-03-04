@@ -26,56 +26,32 @@ class vapour_discretised:
         self.N_wall = data.get("N_wall")
         self.N_R  = self.N_wick + self.N_wall
 
-        # heat transfer coefficient
         self.h_vap = data.get("h_vap")
 
         self.T_HP = data.get("T_HP")
+        self.h_fg_Na = calculate_Na_h_fg(self.T_HP[-1])
+        self.viscosity_Na = calculate_Na_viscosity_v(self.T_HP[-1])
 
         self.T_C = data.get("T_C")
         self.P_C = data.get("P_C")
 
-        # Molar gas constant
-        self.R = 8.314472 
-
-        # Specific gas constant, 0.022990 being the molar mass.
+        self.R = 8.314472
         self.R_Na = self.R / 0.022990
 
-    def solve(self):
-        Gamma, h_fg_Na = self.calculate_mass_flow_and_latent_heat()
-        self.viscosity_Na = calculate_Na_viscosity_v(self.T_HP[-1])
+        self.r1r2_bias = 1300
 
-        T_v, u_v = self.solve_vapour_heat_profile(Gamma, h_fg_Na)
+    def solve_numeric(self):
+        Gamma = self.calculate_Gamma()
 
-        P_v = self.calculate_pressure_profile(T_v, h_fg_Na)
+        T, u = self.converge_numeric(Gamma)
 
-        P_analytic = self.analytical_pressure_drop()
-        # print(P_v[-1] - P_v[0], P_analytic)
+        P = self.calculate_pressure_from_temperature(T)
 
-        T_full = T_v
+        self.T = T
+        self.P_numeric = P
 
-        rhoim1 = self.calculate_rho(T_full[:-1], h_fg_Na)
-        mdot = rhoim1*u_v
-        # mdot_pre = self.build_u_initial_guess() * self.calculate_rho(self.T_HP[-1], h_fg_Na)
 
-        Rei = self.calculate_rho((T_full[1:] + T_full[:-1])/2, h_fg_Na) * np.abs(u_v) * 2*self.r_vapour / self.viscosity_Na
-        lami = np.zeros_like(Rei)
-        lami[Rei <= 2200] = 64 / Rei[Rei <= 2200]
-        lami[Rei > 3000] = 0.316 / Rei[Rei > 3000]**0.25
-        lami[(Rei > 2200) & (Rei <= 3000)] = Rei[(Rei > 2200) & (Rei <= 3000)] * 1.70088e-5 - 0.00832838               # interpolation (behöver dubbelkollas)
-        lami[Rei == 0] = 1e10
-
-        dxi = np.zeros_like(T_full)
-        dxi[:self.N_evap] = self.l_evap / self.N_evap
-        dxi[self.N_evap:(self.N_evap + self.N_adiabatic)] = self.l_adiabatic / self.N_adiabatic
-        dxi[(self.N_evap + self.N_adiabatic):] = self.l_cond / self.N_cond
-
-        self.temperature = T_v
-        self.pressure = P_v
-
-        # return T_v, P_v, Gamma*dxi, mdot, Rei, lami, u_v, P_analytic
-    
-
-    def calculate_mass_flow_and_latent_heat(self):
+    def calculate_Gamma(self):
         T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
 
         T_v = self.T_HP[-1]
@@ -88,166 +64,176 @@ class vapour_discretised:
         # a_W = 2 * np.pi * self.r_vapour * delta_Z / np.pi * self.r_vapour**2 * delta_Z
         a_W = 2 / self.r_vapour
 
-        h_fg_Na = calculate_Na_h_fg(T_v)
+        Gamma = a_W * q_bis_surface / self.h_fg_Na
 
-        Gamma = a_W * q_bis_surface / h_fg_Na
-
-        return Gamma, h_fg_Na
+        return Gamma
     
 
-    def calculate_rho(self, T: np.ndarray, h_fg_Na: float):
-        rho = ( self.P_C / (self.R_Na * T) ) * np.exp(h_fg_Na / self.R_Na * (1 / self.T_C - 1 / T))
-        return rho
+    def converge_numeric(self, Gamma: np.ndarray, verbose: bool=True):
+        initial_guess = np.ones(self.N_Z - 1 + self.N_Z)
+        initial_guess[:self.N_Z-1] = self.build_initial_velocity()
+        P = self.get_pressure_drop_analytic()
+        T = self.calculate_temperature_from_pressure(P + self.P_C)
+        # print(T)
+        initial_guess[self.N_Z-1:] = T
 
+        self.P_guess = self.calculate_pressure_from_temperature(T)
+        # self.P_guess = 
+
+        def calculate_residuals_wrapper(initial_guess):
+            return self.calculate_residuals(
+                initial_guess[:(self.N_Z - 1)],
+                initial_guess[(self.N_Z - 1):],
+                Gamma
+            )
+
+        niter = 100
+        self.train_history = np.zeros((1, len(initial_guess)))
+        def history_append(x, f):
+            self.train_history = np.append(self.train_history, x[None], axis=0)
+
+        sol_krylov = newton_krylov(
+            calculate_residuals_wrapper,
+            initial_guess,
+            iter = 2,
+            verbose = verbose,
+            method = "lgmres",
+            callback = history_append
+        )
+
+        self.train_history = self.train_history[1:]
+
+        T = sol_krylov[(self.N_Z - 1):]
+        u = sol_krylov[:(self.N_Z - 1)]
+
+        return T, u
+
+
+    # def calculate_rho(self, T: np.ndarray):
+        # rho = ( self.P_C / (self.R_Na * T) ) * np.exp(self.h_fg_Na / self.R_Na * (1 / self.T_C - 1 / T))
+        
+        # return rho
+
+    def calculate_rho(self, T: np.ndarray):
+        P = self.calculate_pressure_from_temperature(T)
+        return P / (self.R_Na * T)  # ideal gas law: rho = P/RT
+
+
+    def calculate_friction_factor(self, T, u):
+        Rei = self.calculate_reynolds(T, u)
+
+        lami = np.zeros_like(Rei)
+        lami[Rei <= 2200] = 64 / Rei[Rei <= 2200]
+        lami[Rei > 3000] = 0.316 / Rei[Rei > 3000]**0.25
+        lami[(Rei > 2200) & (Rei <= 3000)] = Rei[(Rei > 2200) & (Rei <= 3000)] * 1.70088e-5 - 0.00832838               # interpolation (behöver dubbelkollas)
+        lami[Rei < 1e-10] = 1e-10
+
+        return lami
     
-    def build_u_initial_guess(self):
-        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
-        T_v = self.T_HP[-1]
 
-        A_int = 2 * np.pi * self.r_vapour * self.l_evap / self.N_evap
+    def calculate_reynolds(self, T, u):
+        Rei = self.calculate_rho((T[1:] + T[:-1])/2) * np.abs(u) * 2*self.r_vapour / self.viscosity_Na
+        # Rei[Rei < 1e-1] = 1
+        
+        return Rei
+    
+    
+    def build_initial_velocity(self):
+        # T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
+        # T_v = self.T_HP[-1]
+
+        # A_int = 2 * np.pi * self.r_vapour * self.l_evap / self.N_evap
+        # A_v = np.pi * self.r_vapour**2
+        # Qevap = np.sum(self.h_vap * (T_wick_lv_interface[:self.N_evap] - T_v)) * A_int
+        # h_fg = calculate_Na_h_fg(T_v)
+        # rho_v = self.calculate_rho(T_v, h_fg)
+
+        # u_shape = np.array([0.07810245, 0.15620481, 0.23430684, 0.31240859, 0.39051026, 0.46861212, 0.54671421, 0.62481634, 0.70291819, 0.7810199, 0.85912161, 0.93722368, 1.01532644, 1.09342929, 1.17153219, 1.24963485, 1.32773731, 1.40583935, 1.48393355, 1.56174227, 1.56174184, 1.56174126, 1.56174057, 1.56174046, 1.56174099, 1.56174192, 1.56174299, 1.561744,   1.56174489, 1.56174572, 1.54783865, 1.53364632, 1.51944598, 1.50524516, 1.49104431, 1.47684384, 1.4626438,  1.44844357, 1.4342428,  1.42004181, 1.40584097, 1.39164058, 1.37744032, 1.36324051, 1.34904079, 1.33484092, 1.32064108, 1.30644105, 1.29224103, 1.27804115, 1.26384077, 1.24964012, 1.23543916, 1.22123884, 1.20703852, 1.19283811, 1.17863743, 1.16443672, 1.15023611, 1.13603599, 1.12183574, 1.10763584, 1.09343659, 1.07923738, 1.0650379,  1.05083841, 1.0366393,  1.02243946, 1.00823923, 0.99403854, 0.97983745, 0.96563596, 0.95143382, 0.93723274, 0.92303139, 0.9088297,  0.89462788, 0.88042592, 0.86622391, 0.85202234, 0.837821,   0.8236198,  0.80941873, 0.79521783, 0.78101771, 0.76681744, 0.75261726, 0.73841769, 0.72421857, 0.71001976, 0.69582092, 0.68162228, 0.66742358, 0.65322438, 0.6390244,  0.62482395, 0.61062363, 0.59642297, 0.58222231, 0.56802169, 0.55382078, 0.53961971, 0.52541961, 0.51121881, 0.49701744, 0.48281564, 0.46861366, 0.45441181, 0.4402102,  0.42600836, 0.41180717, 0.39760609, 0.38340523, 0.36920421, 0.35500445, 0.34080469, 0.32660507, 0.31240588, 0.29820726, 0.2840084, 0.2698095,  0.25561013, 0.2414097,  0.22720912, 0.21300832, 0.19880726, 0.18460593, 0.1704047,  0.15620322, 0.14200221, 0.12780148, 0.11360088, 0.0994005,  0.0851985,  0.07099711, 0.05679684, 0.04259744, 0.02839852, 0.01420016])
+        # u_normalised = u_shape / np.max(u_shape)
+        # u_guess = u_normalised * Qevap / (h_fg * rho_v * A_v)
+
+        # return u_guess
+
+        mdot = self.get_mdot()
+        rho_v = self.calculate_rho(self.T_HP[-1])
         A_v = np.pi * self.r_vapour**2
-        Qevap = np.sum(self.h_vap * (T_wick_lv_interface[:self.N_evap] - T_v)) * A_int
-        h_fg = calculate_Na_h_fg(T_v)
-        rho_v = self.calculate_rho(T_v, h_fg)
-
-        u_shape = np.array([0.07810245, 0.15620481, 0.23430684, 0.31240859, 0.39051026, 0.46861212, 0.54671421, 0.62481634, 0.70291819, 0.7810199, 0.85912161, 0.93722368, 1.01532644, 1.09342929, 1.17153219, 1.24963485, 1.32773731, 1.40583935, 1.48393355, 1.56174227, 1.56174184, 1.56174126, 1.56174057, 1.56174046, 1.56174099, 1.56174192, 1.56174299, 1.561744,   1.56174489, 1.56174572, 1.54783865, 1.53364632, 1.51944598, 1.50524516, 1.49104431, 1.47684384, 1.4626438,  1.44844357, 1.4342428,  1.42004181, 1.40584097, 1.39164058, 1.37744032, 1.36324051, 1.34904079, 1.33484092, 1.32064108, 1.30644105, 1.29224103, 1.27804115, 1.26384077, 1.24964012, 1.23543916, 1.22123884, 1.20703852, 1.19283811, 1.17863743, 1.16443672, 1.15023611, 1.13603599, 1.12183574, 1.10763584, 1.09343659, 1.07923738, 1.0650379,  1.05083841, 1.0366393,  1.02243946, 1.00823923, 0.99403854, 0.97983745, 0.96563596, 0.95143382, 0.93723274, 0.92303139, 0.9088297,  0.89462788, 0.88042592, 0.86622391, 0.85202234, 0.837821,   0.8236198,  0.80941873, 0.79521783, 0.78101771, 0.76681744, 0.75261726, 0.73841769, 0.72421857, 0.71001976, 0.69582092, 0.68162228, 0.66742358, 0.65322438, 0.6390244,  0.62482395, 0.61062363, 0.59642297, 0.58222231, 0.56802169, 0.55382078, 0.53961971, 0.52541961, 0.51121881, 0.49701744, 0.48281564, 0.46861366, 0.45441181, 0.4402102,  0.42600836, 0.41180717, 0.39760609, 0.38340523, 0.36920421, 0.35500445, 0.34080469, 0.32660507, 0.31240588, 0.29820726, 0.2840084, 0.2698095,  0.25561013, 0.2414097,  0.22720912, 0.21300832, 0.19880726, 0.18460593, 0.1704047,  0.15620322, 0.14200221, 0.12780148, 0.11360088, 0.0994005,  0.0851985,  0.07099711, 0.05679684, 0.04259744, 0.02839852, 0.01420016])
-        u_normalised = u_shape / np.max(u_shape)
-        u_guess = u_normalised * Qevap / (h_fg * rho_v * A_v)
-
-        return u_guess
-    
-    def get_mdot(self):
-        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
-        T_v = self.T_HP[-1]
-        h_fg = calculate_Na_h_fg(T_v)
-
-        A_int = 2 * np.pi * self.r_vapour * self.l_evap / self.N_evap
-        Qevap = np.sum(self.h_vap * (T_wick_lv_interface[:self.N_evap] - T_v)) * A_int
-        mdot = Qevap / h_fg
-
-        return mdot
+        u_guess = mdot / (rho_v * A_v)
+        
+        return u_guess[1:]
 
 
-    def build_T_initial_guess(self) -> np.ndarray:
-        # cell-centered z positions (same indexing as your Gamma and T arrays)
+    def build_initial_temperature(self):
         dxi = np.zeros(self.N_Z)
         dxi[:self.N_evap] = self.l_evap / self.N_evap
         dxi[self.N_evap:self.N_evap + self.N_adiabatic] = self.l_adiabatic / self.N_adiabatic
         dxi[self.N_evap + self.N_adiabatic:] = self.l_cond / self.N_cond
-        zc = np.cumsum(dxi) - 0.5 * dxi  # cell centers
+        zc = np.cumsum(dxi) - 0.5 * dxi
 
-        # --- pick reasonable temperature levels from what you already have ---
-        # A good "hot end" estimate: average wick-LV interface temperature in evaporator
-        # (Fix the extraction if needed; see note at the end.)
         T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
         T_hot = float(np.mean(T_wick_lv_interface[:self.N_evap]))
 
-        # A good "cold end" estimate: average wick-LV interface temperature in condenser
         T_cold_wall = float(np.mean(T_wick_lv_interface[-self.N_cond:]))
 
-        # Use a drop magnitude similar to the paper (about 12–18 K). Tie it to your data:
-        dT_drop = np.clip(T_hot - T_cold_wall, 8.0, 18.0)
+        dT_drop = np.clip(T_hot - T_cold_wall, 15.0, 18.0)
 
         T0   = T_hot
         Tmin = T0 - dT_drop
-        Tend = Tmin + 0.55 * dT_drop   # recovery in condenser (tune 0.45–0.70)
+        Tend = Tmin + 0.55 * dT_drop
 
-        # anchor locations: start, end of evap, end of adiabatic (min), end
         z0   = 0.0
         zE   = self.l_evap
         zEA  = self.l_evap + self.l_adiabatic
         zL   = self.l_tot
 
-        # anchor temperatures: sharp drop in evaporator, slight further drop to min
         anchors_z = np.array([z0,  zE,          zEA,  zL])
         anchors_T = np.array([T0,  Tmin + 0.25*dT_drop, Tmin, Tend])
 
         T_guess = np.interp(zc, anchors_z, anchors_T)
 
-        # Optional: enforce your Neumann ends in the initial guess
         T_guess[0]  = T_guess[1]
         T_guess[-1] = T_guess[-2]
+
         return T_guess
 
     
-    def analytical_pressure_drop(self):
-        T_v  = self.T_HP[-1]
-        h_fg = calculate_Na_h_fg(T_v)
-        rho_v = self.calculate_rho(T_v, h_fg)
-        self.viscosity_Na = calculate_Na_viscosity_v(self.T_HP[-1])
+    # def calculate_pressure_from_temperature(self, T_v):
+    #     rho_v = self.calculate_rho(T_v)
 
-        Rv  = self.r_vapour          # make sure this is in meters
-        mu_v = self.viscosity_Na
-
-        Av = np.pi * Rv**2
-        mdot = self.build_u_initial_guess() * rho_v * Av
-
-        dmdx_evap = mdot[self.N_evap] / self.l_evap
-        dmdx_adia = 0.0
-        dmdx_cond = -mdot[self.N_evap] / self.l_cond
-
-        dpdx = np.zeros_like(mdot, dtype=float)
-
-        # Evaporator: q>0 => s=1, a=0
-        dpdx[:self.N_evap] = -(1.0) * (mdot[:self.N_evap] * dmdx_evap) / (4.0 * rho_v * Rv**4)
-
-        # Adiabatic: q=0 => s=0, a=1
-        i0 = self.N_evap
-        i1 = self.N_evap + self.N_adiabatic
-        dpdx[i0:i1] = -(8.0 * mu_v * mdot[i0:i1]) / (rho_v * np.pi * Rv**4)
-
-        # Condenser: q<0 => s=4/pi^2, a=0
-        j0 = self.N_Z - self.N_cond
-        dpdx[j0:] = -(4.0 / np.pi**2) * (mdot[j0:] * dmdx_cond) / (4.0 * rho_v * Rv**4)
-
-        # Integrate dp/dx over x
-        dx = self.l_tot / (self.N_Z - 1)
-        # return np.sum(dpdx) * dx
-        return np.cumsum(dpdx) * dx
+    #     return rho_v * self.R_Na * T_v
 
 
-    def solve_vapour_heat_profile(self, Gamma: np.ndarray, h_fg_Na: float):
-        initial_guess = np.ones(self.N_Z - 1 + self.N_Z)
-        initial_guess[self.N_Z-1:] = self.build_T_initial_guess()
-        initial_guess[:self.N_Z-1] = self.build_u_initial_guess()
+    # def calculate_temperature_from_pressure(self, P):
+    #     T = P / (self.calculate_rho(self.T_HP[-1]) * self.R_Na)
 
-        coupled_system_lambda = lambda S: self.coupled_system(S[:(self.N_Z - 1)], S[(self.N_Z - 1):], Gamma, h_fg_Na) 
+    #     return T
 
-        sol_krylov = newton_krylov(
-            coupled_system_lambda,
-            initial_guess,
-            iter = 2000,
-            verbose = True,
-            method = "lgmres"
+    def calculate_temperature_from_pressure(self, P):
+        """
+        Analytically inverts the Clausius-Clapeyron + ideal gas relation.
+        P = P_C * exp(h_fg/R * (1/T_C - 1/T))
+        => T = 1 / (1/T_C - R/h_fg * ln(P/P_C))
+        """
+        inv_T = (1 / self.T_C) - (self.R_Na / self.h_fg_Na) * np.log(P / self.P_C)
+        return 1.0 / inv_T
+
+    def calculate_pressure_from_temperature(self, T_v):
+        """Clausius-Clapeyron + ideal gas: P = rho*R*T, with rho from C-C."""
+        return self.P_C * np.exp(
+            (self.h_fg_Na / self.R_Na) * (1 / self.T_C - 1 / T_v)
         )
-
-        T_v = sol_krylov[(self.N_Z - 1):]
-        u_v = sol_krylov[:(self.N_Z - 1)]
-
-        return T_v, u_v
-
-
-    def calculate_pressure_profile(self, T_v: np.ndarray, h_fg_Na: float):
-        rho_v = self.calculate_rho(T_v, h_fg_Na)
-
-        return rho_v * self.R_Na * T_v
-
-    def calculate_temperature_profile(self, P, h_fg):
-        T = P / (self.calculate_rho(self.T_HP[-1], h_fg) * self.R_Na)
-
-        return T
     
-    def update_Gamma(self, T_i: np.ndarray, Gami: np.ndarray, h_fg_Na: float):
+
+    def update_Gamma(self, T_i: np.ndarray, Gami: np.ndarray):
         T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
 
         a_W = 2 / self.r_vapour
 
-        Gami[-1: ] = (a_W / h_fg_Na) * self.h_vap * (T_wick_lv_interface[-1: ] - T_i[-1: ])
+        Gami[-1: ] = (a_W / self.h_fg_Na) * self.h_vap * (T_wick_lv_interface[-1: ] - T_i[-1: ])
 
         return Gami
 
 
-    def coupled_system(self, u: np.ndarray, T: np.ndarray, Gami: np.ndarray, h_fg_Na: float):
+    def calculate_residuals(self, u: np.ndarray, T: np.ndarray, Gami: np.ndarray):
         T_full = T
         Ti = T_full[1:]
         Tim1 = T_full[:-1]
@@ -259,24 +245,21 @@ class vapour_discretised:
         uim1 = u_full[:-2]
         uip1 = u_full[2:]
 
-        rho_full = self.calculate_rho(T_full, h_fg_Na)
+        rho_full = self.calculate_rho(T_full)
         rhoi = rho_full[1:]
         rhoim1 = rho_full[:-1]
-        rhobar = self.calculate_rho(Tbar, h_fg_Na)
+        rhobar = self.calculate_rho(Tbar)
 
         dxi = np.zeros_like(T_full)
         dxi[:self.N_evap] = self.l_evap / self.N_evap
         dxi[self.N_evap:(self.N_evap + self.N_adiabatic)] = self.l_adiabatic / self.N_adiabatic
         dxi[(self.N_evap + self.N_adiabatic):] = self.l_cond / self.N_cond
 
-        Rei = rhobar * np.abs(ui) * 2*self.r_vapour / self.viscosity_Na
-        lami = np.zeros_like(Rei)
-        lami[Rei <= 2200] = 64 / Rei[Rei <= 2200]
-        lami[Rei > 3000] = 0.316 / Rei[Rei > 3000]**0.25
-        lami[(Rei > 2200) & (Rei <= 3000)] = Rei[(Rei > 2200) & (Rei <= 3000)] * 1.70088e-5 - 0.00832838               # interpolation (behöver dubbelkollas)
-        lami[Rei == 0] = 1e10
+        lami = self.calculate_friction_factor(T, u)
+        reynolds = self.calculate_reynolds(T, u)
+        Gami = self.update_Gamma(T_full, Gami)
 
-        Gami = self.update_Gamma(T_full, Gami, h_fg_Na)
+        # print(np.mean(reynolds), np.min(reynolds), np.max(reynolds))
 
         r1 = np.zeros_like(T_full)
         r1[1:-1] = (uip1[:-1]*rhoi[:-1] - ui[:-1]*rhoim1[:-1]) - dxi[1:-1] * Gami[1:-1]
@@ -284,10 +267,66 @@ class vapour_discretised:
         r1[-1] = -u_full[-2]*rho_full[-2] - dxi[-1]*Gami[-1]
 
         r2 = 1 * ((rhoi * ui**2 - rhoim1 * uim1**2)
-               + (rhobar * h_fg_Na) / Tbar * (Ti - Tim1) 
+               + (rhobar * self.h_fg_Na) / Tbar * (Ti - Tim1) 
                + dxi[1:] * lami / (2*2*self.r_vapour) * rhobar * ui * np.abs(ui))
 
-        return np.concatenate([1000 * r1 , r2])
+        return np.concatenate([self.r1r2_bias * r1 , r2])
+
+
+    def get_pressure_drop_analytic(self):
+        T_v  = self.T_HP[-1]
+        h_fg = calculate_Na_h_fg(T_v)
+        rho_v = self.calculate_rho(T_v)
+
+        Rv  = self.r_vapour
+        mu_v = self.viscosity_Na
+
+        mdot = self.get_mdot()
+
+        dmdx_evap = mdot[self.N_evap] / self.l_evap
+        dmdx_adia = 0.0
+        dmdx_cond = -mdot[self.N_evap] / self.l_cond
+
+        dpdx = np.zeros_like(mdot, dtype=float)
+
+        # Evaporator: q>0 => s=1, a=0
+        dpdx[:self.N_evap] = -(1.0) * (mdot[:self.N_evap] * dmdx_evap) / (4.0 * rho_v * Rv**4)
+
+        # Adiabatic: q=0 => s=0, a=1
+        dpdx[self.N_evap:self.N_evap + self.N_adiabatic] = -(8.0 * mu_v * mdot[self.N_evap:self.N_evap + self.N_adiabatic]) / (rho_v * np.pi * Rv**4)
+
+        # Condenser: q<0 => s=4/pi^2, a=0
+        dpdx[self.N_Z - self.N_cond:] = -1 * (mdot[self.N_Z - self.N_cond:] * dmdx_cond) / (4.0 * rho_v * Rv**4)
+        # dpdx[self.N_Z - self.N_cond:] = -(4 / np.pi**2) * (mdot[self.N_Z - self.N_cond:] * dmdx_cond) / (4.0 * rho_v * Rv**4)
+
+        dx = self.l_tot / (self.N_Z - 1)
+
+        return np.cumsum(dpdx) * dx
+
+
+    def get_mdot(self):
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
+        T_v = self.T_HP[-1]
+
+        A_int = 2 * np.pi * self.r_vapour * self.l_evap / self.N_evap
+        Qevap = np.sum(self.h_vap * (T_wick_lv_interface[:self.N_evap] - T_v)) * A_int
+        mdot_peak = Qevap / self.h_fg_Na
+
+        mdot = np.concatenate([
+            np.repeat(np.array([mdot_peak/self.N_evap]), self.N_evap) * np.arange(self.N_evap),
+            np.repeat(np.array([mdot_peak]), self.N_adiabatic),
+            np.repeat(np.array([mdot_peak/self.N_cond]), self.N_cond) * np.arange(self.N_cond)[::-1]
+        ])
+
+        return mdot
+    
+
+    def get_temperature(self):
+        return self.T
+    
+    
+    def get_pressure_numeric(self):
+        return self.P_numeric
 
 
 if __name__ == "__main__":
@@ -316,11 +355,7 @@ if __name__ == "__main__":
 
     vapor = vapour_discretised(data) 
 
-    vapor.solve()
-    T_v = vapor.temperature
-    P_v = vapor.pressure
-
-    mpl.rcParams["font.size"] = 22
+    # mpl.rcParams["font.size"] = 22
     # mpl.rcParams["font.family"] = "computer modern"
     #mpl.rcParams["text.usetex"] = True
 
@@ -437,15 +472,15 @@ if __name__ == "__main__":
 
     # --------------------------------
 
-    P_v_subtracted = P_v - np.max(P_v)
+    # P_v_subtracted = P_v - np.max(P_v)
 
-    fig = plt.figure(figsize=(16,9))
-    ax = fig.add_subplot(111)
-    ax.grid(alpha=0.4)
-    ax.plot(P_v_subtracted, color='red', label=rf"solver $\Delta P$: {P_v_subtracted[-1]:.0f}")
-    ax.plot(P_analytic, color='blue', label=rf"analytic $\Delta P$: {P_analytic[-1]:.0f}")
+    # fig = plt.figure(figsize=(16,9))
+    # ax = fig.add_subplot(111)
+    # ax.grid(alpha=0.4)
+    # ax.plot(P_v_subtracted, color='red', label=rf"solver $\Delta P$: {P_v_subtracted[-1]:.0f}")
+    # ax.plot(P_analytic, color='blue', label=rf"analytic $\Delta P$: {P_analytic[-1]:.0f}")
 
-    ax.legend()
-    ax.set_xlabel(r"$n$")
-    ax.set_ylabel(r"$P$")
-    plt.show()
+    # ax.legend()
+    # ax.set_xlabel(r"$n$")
+    # ax.set_ylabel(r"$P$")
+    # plt.show()

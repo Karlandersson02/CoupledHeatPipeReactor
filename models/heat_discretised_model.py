@@ -1,7 +1,5 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from time import time
-
 
 class heatpipe_discretised:
     def __init__(self, data):
@@ -62,7 +60,7 @@ class heatpipe_discretised:
         if not self.Temperature_BC:
             T = np.concatenate([T, np.array([self.T_op])])
 
-        self.temperature = T
+        self.T = T
 
 
     def initialize_discretization(self):
@@ -539,3 +537,6 @@ class heatpipe_discretised:
 
 
         return M, C
+    
+    def get_temperature_profile(self):
+        return self.T
