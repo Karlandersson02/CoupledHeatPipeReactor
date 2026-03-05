@@ -2,11 +2,18 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+import copy
 
 from models.heat_discretised_model import heatpipe_discretised
 from models.vapor_discretised_model import vapour_discretised
 from models.liquid_discretised_model import liquid_discretised
 from visualisation.visualise_discretised_results import display_temperature_distribution
+
+import seaborn as sns
+
+# Physical constants
+gamma = 7 / 5
+R_g   = 361.6  # J kg^-1 K^-1, specific gas constant for Na
 
 class Heatpipe:
 
@@ -20,8 +27,8 @@ class Heatpipe:
     def setup_fluid_models(self):
         T = self.get_heatpipe_temperature()
         self.data["T_HP"] = T
-        self.vapour_discretised = vapour_discretised(data)
-        self.liquid_discretised = liquid_discretised(data)
+        self.vapour_discretised = vapour_discretised(self.data)
+        self.liquid_discretised = liquid_discretised(self.data)
 
     def get_heatpipe_temperature(self):
         T = self.calculated_quantities.get("heatpipe_T")
@@ -98,7 +105,7 @@ if __name__ == "__main__":
         "h_vap": 1e6,
         "h_cond": 62.6,
         "T_cond": 300,
-        "T_op": 870,
+        "T_op": 800,
 
         "k_wick": 45.0,
         "k_wall": 21.7,
@@ -107,57 +114,74 @@ if __name__ == "__main__":
         "T_C": 856
     }
 
-    Q_total = 1050
-    Q_total2 = 1052
+    Q_total = 1000
     Q = np.repeat(np.array([Q_total / data["N_evap"]], dtype=float), data["N_evap"])
-    Q2 = np.repeat(np.array([Q_total2 / data["N_evap"]], dtype=float), data["N_evap"])
-    
     data["Q"] = Q
-    data2 = data
-    data2["Q"] = Q2
-
     HP = Heatpipe(data)
     HP.setup_fluid_models()
-    HP2 = Heatpipe(data2)
-    HP2.setup_fluid_models()
-
+    # P = HP.get_vapour_pressure_drop_profile_analytic()
     T = HP.get_vapour_temperature()
-    T2 = HP2.get_vapour_temperature()
-
     train_history = HP.vapour_discretised.train_history
-    train_history2 = HP2.vapour_discretised.train_history
-
     T, u = train_history[-1][HP.vapour_discretised.N_Z-1:], train_history[-1][:HP.vapour_discretised.N_Z-1]
-    T2, u2 = train_history2[-1][HP2.vapour_discretised.N_Z-1:], train_history2[-1][:HP2.vapour_discretised.N_Z-1]
+    # rey = HP.vapour_discretised.calculate_reynolds(T, u)
 
-    rey = HP.vapour_discretised.calculate_reynolds(T, u)
-    rey2 = HP2.vapour_discretised.calculate_reynolds(T2, u2)
+
+    # Q_total2 = 1720
+    # Q2 = np.repeat(np.array([Q_total2 / data["N_evap"]], dtype=float), data["N_evap"])
+    # data["Q"] = Q2
+    # HP2 = Heatpipe(data)
+    # HP2.setup_fluid_models()
+    # # P2 = HP2.get_vapour_pressure_drop_profile_analytic()
+    # T2 = HP2.get_vapour_temperature()
+    # train_history2 = HP2.vapour_discretised.train_history
+    # T2, u2 = train_history2[-1][HP2.vapour_discretised.N_Z-1:], train_history2[-1][:HP2.vapour_discretised.N_Z-1]
+    # # rey2 = HP2.vapour_discretised.calculate_reynolds(T2, u2)
+
+    # mdot = u * HP.vapour_discretised.calculate_rho(T) * HP.vapour_discretised.r_vapour**2 * np.pi
+    # mdot2 = u2 * HP.vapour_discretised.calculate_rho(T2) * HP.vapour_discretised.r_vapour**2 * np.pi
+
+    # print(u[-1], u2[-1])
 
     fig = plt.figure(figsize=(16,9))
     ax = fig.add_subplot(111)
 
+    ax.plot(T, color="blue")
+    # ax.plot(u2, color="red")
+
+    plt.show()
 
 
-    # display_temperature_distribution(T, data)
-    
-    # mpl.rcParams["font.size"] = 22
+    # Sonic velocity field and Mach-like ratio u/c_0
+    # c  = np.sqrt(gamma * R_g * T)
+    # c2 = np.sqrt(gamma * R_g * T2)
 
-    # fig = plt.figure(figsize=(16,9))
-    # ax = fig.add_subplot(111)
-    # ax_twin = ax.twinx()
+    # u_over_c  = u  / c
+    # u_over_c2 = u2 / c2
 
-    # ax.grid(alpha=0.4)
-    # ax.plot(P_numeric, color="red", label=rf"Numeric: $\Delta P =$ {P_numeric[-1]:.0f}")
-    # ax.plot(P_analytic, color="blue", label=rf"Analytic: $\Delta P =$ {P_analytic[-1]:.0f}")
-    # ax.plot(HP.vapour_discretised.P_guess, color="green")
-    # ax.plot(T, color="black")
-    # ax.plot(reynolds, color="black")
-    # ax_twin.plot(lam, color="red")
-    # ax.plot(T)
+    # # Axial coordinate — evaporator section only
+    # z_evap = np.linspace(0, data["l_evap"], data["N_evap"])
 
-    # ax.set_ylabel(r"$P$")
-    # ax.set_xlabel(r"$n$")
+    # sns.set_theme(style="whitegrid")
 
-    # ax.legend()
+    # fig, axes = plt.subplots(1, 2, figsize=(14, 5), sharey=True)
 
+    # for ax, uc, Q_val, label in zip(
+    #     axes,
+    #     [u_over_c, u_over_c2],
+    #     [Q_total, Q_total2],
+    #     [rf"$Q = {Q_total}$ W", rf"$Q = {Q_total2}$ W"]
+    # ):
+    #     ax.plot(z_evap * 1e2, uc[:data["N_evap"]], linewidth=2, label=label)
+    #     ax.axhline(1.0, color="red", linestyle="--", linewidth=1.5,
+    #             alpha=0.7, label=r"Sonic limit ($u/c_0 = 1$)")
+    #     ax.set_xlabel(r"$z$ [dm]", fontsize=16)
+    #     ax.set_title(label, fontsize=13)
+    #     ax.tick_params(labelsize=12)
+    #     ax.grid(True, linestyle="--", alpha=0.6)
+    #     ax.legend(fontsize=12)
+
+    # axes[0].set_ylabel(r"$u \, / \, c_0 \; [-]$", fontsize=16)
+
+    # fig.suptitle(r"Mach number proxy $u/c_0$ along evaporator", fontsize=15)
+    # plt.tight_layout()
     # plt.show()

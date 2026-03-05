@@ -59,7 +59,7 @@ class liquid_discretised:
 
         K = D_h**2 / (2 * fRe_l)
 
-        return K    
+        return K
 
     def get_pressure_drop_profile(self):
         A_wick = np.pi * (self.r_1**2 - self.r_2**2) 

@@ -38,7 +38,7 @@ class vapour_discretised:
         self.R = 8.314472
         self.R_Na = self.R / 0.022990
 
-        self.r1r2_bias = 1300
+        self.r1r2_bias = 1000
 
     def solve_numeric(self):
         Gamma = self.calculate_Gamma()
@@ -74,11 +74,9 @@ class vapour_discretised:
         initial_guess[:self.N_Z-1] = self.build_initial_velocity()
         P = self.get_pressure_drop_analytic()
         T = self.calculate_temperature_from_pressure(P + self.P_C)
-        # print(T)
         initial_guess[self.N_Z-1:] = T
 
         self.P_guess = self.calculate_pressure_from_temperature(T)
-        # self.P_guess = 
 
         def calculate_residuals_wrapper(initial_guess):
             return self.calculate_residuals(
@@ -87,7 +85,7 @@ class vapour_discretised:
                 Gamma
             )
 
-        niter = 100
+        niter = 200
         self.train_history = np.zeros((1, len(initial_guess)))
         def history_append(x, f):
             self.train_history = np.append(self.train_history, x[None], axis=0)
@@ -95,7 +93,7 @@ class vapour_discretised:
         sol_krylov = newton_krylov(
             calculate_residuals_wrapper,
             initial_guess,
-            iter = 2,
+            iter = niter,
             verbose = verbose,
             method = "lgmres",
             callback = history_append
@@ -110,9 +108,9 @@ class vapour_discretised:
 
 
     # def calculate_rho(self, T: np.ndarray):
-        # rho = ( self.P_C / (self.R_Na * T) ) * np.exp(self.h_fg_Na / self.R_Na * (1 / self.T_C - 1 / T))
+    #     rho = ( self.P_C / (self.R_Na * T) ) * np.exp(self.h_fg_Na / self.R_Na * (1 / self.T_C - 1 / T))
         
-        # return rho
+    #     return rho
 
     def calculate_rho(self, T: np.ndarray):
         P = self.calculate_pressure_from_temperature(T)
@@ -139,21 +137,6 @@ class vapour_discretised:
     
     
     def build_initial_velocity(self):
-        # T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
-        # T_v = self.T_HP[-1]
-
-        # A_int = 2 * np.pi * self.r_vapour * self.l_evap / self.N_evap
-        # A_v = np.pi * self.r_vapour**2
-        # Qevap = np.sum(self.h_vap * (T_wick_lv_interface[:self.N_evap] - T_v)) * A_int
-        # h_fg = calculate_Na_h_fg(T_v)
-        # rho_v = self.calculate_rho(T_v, h_fg)
-
-        # u_shape = np.array([0.07810245, 0.15620481, 0.23430684, 0.31240859, 0.39051026, 0.46861212, 0.54671421, 0.62481634, 0.70291819, 0.7810199, 0.85912161, 0.93722368, 1.01532644, 1.09342929, 1.17153219, 1.24963485, 1.32773731, 1.40583935, 1.48393355, 1.56174227, 1.56174184, 1.56174126, 1.56174057, 1.56174046, 1.56174099, 1.56174192, 1.56174299, 1.561744,   1.56174489, 1.56174572, 1.54783865, 1.53364632, 1.51944598, 1.50524516, 1.49104431, 1.47684384, 1.4626438,  1.44844357, 1.4342428,  1.42004181, 1.40584097, 1.39164058, 1.37744032, 1.36324051, 1.34904079, 1.33484092, 1.32064108, 1.30644105, 1.29224103, 1.27804115, 1.26384077, 1.24964012, 1.23543916, 1.22123884, 1.20703852, 1.19283811, 1.17863743, 1.16443672, 1.15023611, 1.13603599, 1.12183574, 1.10763584, 1.09343659, 1.07923738, 1.0650379,  1.05083841, 1.0366393,  1.02243946, 1.00823923, 0.99403854, 0.97983745, 0.96563596, 0.95143382, 0.93723274, 0.92303139, 0.9088297,  0.89462788, 0.88042592, 0.86622391, 0.85202234, 0.837821,   0.8236198,  0.80941873, 0.79521783, 0.78101771, 0.76681744, 0.75261726, 0.73841769, 0.72421857, 0.71001976, 0.69582092, 0.68162228, 0.66742358, 0.65322438, 0.6390244,  0.62482395, 0.61062363, 0.59642297, 0.58222231, 0.56802169, 0.55382078, 0.53961971, 0.52541961, 0.51121881, 0.49701744, 0.48281564, 0.46861366, 0.45441181, 0.4402102,  0.42600836, 0.41180717, 0.39760609, 0.38340523, 0.36920421, 0.35500445, 0.34080469, 0.32660507, 0.31240588, 0.29820726, 0.2840084, 0.2698095,  0.25561013, 0.2414097,  0.22720912, 0.21300832, 0.19880726, 0.18460593, 0.1704047,  0.15620322, 0.14200221, 0.12780148, 0.11360088, 0.0994005,  0.0851985,  0.07099711, 0.05679684, 0.04259744, 0.02839852, 0.01420016])
-        # u_normalised = u_shape / np.max(u_shape)
-        # u_guess = u_normalised * Qevap / (h_fg * rho_v * A_v)
-
-        # return u_guess
-
         mdot = self.get_mdot()
         rho_v = self.calculate_rho(self.T_HP[-1])
         A_v = np.pi * self.r_vapour**2
@@ -269,6 +252,8 @@ class vapour_discretised:
         r2 = 1 * ((rhoi * ui**2 - rhoim1 * uim1**2)
                + (rhobar * self.h_fg_Na) / Tbar * (Ti - Tim1) 
                + dxi[1:] * lami / (2*2*self.r_vapour) * rhobar * ui * np.abs(ui))
+
+        self.r1r2_bias = np.linalg.norm(r2) / np.linalg.norm(r1)
 
         return np.concatenate([self.r1r2_bias * r1 , r2])
 
