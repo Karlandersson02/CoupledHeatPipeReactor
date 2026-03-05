@@ -70,4 +70,14 @@ def calculate_Na_surface_tension(T_liquid):
     # Original unit is mN / m, converting it to N / m. 
     return 1e-3 * sigma_0 * (1 - T_liquid / T_crit_Na)**(n)
 
-    return h_fg_Na
+def calculate_Na_pressure_v(T_vapour):
+    # Constants and formula taken from:
+    # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz 
+    # page 55.
+
+    A = 11.9463
+    B = 12633.73
+    C = 0.4672
+
+    # Original unit is in MPa, converting it to Pa
+    return 1e6 * np.exp(A - B / T_vapour - C * np.log(T_vapour))
