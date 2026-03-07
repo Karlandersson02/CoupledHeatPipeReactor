@@ -51,6 +51,54 @@ class heatpipe_visualisations:
             plt.show()
         else:
             return ax
+        
+    def plot_vapour_pressure_drop(self, ax=None, **kwargs):
+        P = self.heatpipe.get_vapour_pressure_drop_profile_numeric()
+        P -= P[0]
+        l = np.linspace(0, self.l_tot, len(P))
+
+        if ax is None:
+            fig = self.setup_figure()        
+            ax = fig.add_subplot(111)
+
+            ax.grid(alpha=0.4)
+            ax.set_title("Vapour")
+            ax.set_xlabel("Length [m]")
+            ax.set_ylabel(r"Pressure $\Delta P$ [Pa]")
+
+        ax.plot(l, P, **kwargs)
+
+        if ax is None:
+            plt.show()
+        else:
+            return ax
+        
+    def plot_vapour_mach_number(self, ax=None, **kwargs):
+        T = self.heatpipe.get_vapour_temperature()
+        u = self.heatpipe.vapour_discretised.get_velocity()
+        gamma = 5/3
+        cs = np.sqrt(gamma * self.heatpipe.vapour_discretised.R_Na * T[:-1]) # ignore last temperature
+        Mach = u / cs
+
+        l = np.linspace(0, self.l_tot, len(T)-1)
+
+        if ax is None:
+            fig = self.setup_figure()        
+            ax = fig.add_subplot(111)
+
+            ax.grid(alpha=0.4)
+            ax.set_title("Vapour")
+            ax.set_xlabel("Length [m]")
+            ax.set_ylabel(r"Mach [1]")
+
+        ax.plot(l, Mach, **kwargs)
+
+        if ax is None:
+            plt.show()
+        else:
+            return ax
+        
+        
 
 
 class heatpipe_comparisons:
@@ -68,8 +116,8 @@ class heatpipe_comparisons:
         self.baseline_data = baseline_data
         self.comparison_data = comparison_data
 
-        self.heatpipes = []
-        self.heatpipe_visualisations = []
+        self.heatpipes: list[Heatpipe] = []
+        self.heatpipe_visualisations: list[heatpipe_visualisations] = []
         
         self.comparison_data_keys = list(comparison_data.keys())
         self.comparison_data_values = list(comparison_data.values())
@@ -94,7 +142,7 @@ class heatpipe_comparisons:
 
     def plot_vapour_temperature_comparison(self):
         fig = self.setup_figure()
-        ax = fig.add_subplot()
+        ax = fig.add_subplot(111)
 
         for i in range(len(self.heatpipes)):
             ax = self.heatpipe_visualisations[i].plot_vapour_temperature(ax=ax, label=i)
@@ -105,4 +153,34 @@ class heatpipe_comparisons:
         ax.set_ylabel(r"Temperature $T$ [K]")
         ax.legend()
         plt.show()
+
+    def plot_vapour_pressure_drop_comparison(self):
+        fig = self.setup_figure()
+        ax = fig.add_subplot(111)
+
+        for i in range(len(self.heatpipes)):
+            ax = self.heatpipe_visualisations[i].plot_vapour_pressure_drop(ax=ax, label=i)
+
+        ax.grid(alpha=0.4)
+        ax.set_title("Vapour")
+        ax.set_xlabel("Length [m]")
+        ax.set_ylabel(r"Pressure $\Delta P$ [Pa]")
+        ax.legend()
+        plt.show()
         
+    def plot_vapour_mach_number_comparison(self):
+        fig = self.setup_figure()
+        ax = fig.add_subplot(111)
+
+        l_bar = np.linspace(0, self.heatpipes[0].vapour_discretised.l_tot, 10)
+
+        for i in range(len(self.heatpipes)):
+            ax = self.heatpipe_visualisations[i].plot_vapour_mach_number(ax=ax, label=i)
+
+        ax.grid(alpha=0.4)
+        ax.hlines(1, l_bar[0], l_bar[-1], color="black", linestyle="--")
+        ax.set_title("Vapour")
+        ax.set_xlabel("Length [m]")
+        ax.set_ylabel(r"Mach [1]")
+        ax.legend()
+        plt.show()
