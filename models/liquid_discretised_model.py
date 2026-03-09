@@ -30,15 +30,15 @@ class liquid_discretised:
 
         self.T_HP = data.get("T_HP")
         self.h_vap = data.get("h_vap")
+        self.h_fg = calculate_Na_h_fg(self.T_HP[-1])
 
     def get_mdot(self):
         T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
         T_v = self.T_HP[-1]
-        h_fg = calculate_Na_h_fg(T_v)
 
         A_int = 2 * np.pi * self.r_vapour * self.l_evap / self.N_evap
         Qevap = np.sum(self.h_vap * (T_wick_lv_interface[:self.N_evap] - T_v)) * A_int
-        mdot = Qevap / h_fg
+        mdot = Qevap / self.h_fg
 
         mdot = np.concatenate([
             np.repeat(np.array([mdot/self.N_evap]), self.N_evap) * np.arange(self.N_evap),
@@ -61,29 +61,7 @@ class liquid_discretised:
 
         return K
 
-    
-    def calculate_pressure_drop(self):
-        A_wick = np.pi * (self.r_1**2 - self.r_2**2) 
-        
-        T_wick = np.mean(np.array(self.T_HP)[:-1].reshape(self.N_Z, self.N_R)[:, :self.N_wick], axis=1) 
-
-        mu_l = calculate_Na_viscosity_l(T_wick)  
-        rho_l = calculate_Na_rho_l(T_wick)
-        K = self.calculate_K_annular_wick()
-
-        delta_z = np.concatenate(
-            [np.ones(self.N_evap) * self.l_evap / self.N_evap,
-            np.ones(self.N_adia) * self.l_adia / self.N_adia,
-            np.ones(self.N_cond) * self.l_cond / self.N_cond]
-            )
-        
-        mdot = self.get_mdot()
-        deltaP = np.sum(mu_l * np.array(mdot) / (rho_l * A_wick * K) * delta_z)
-
-        return deltaP
-    
-
-    def calculate_pressure_drop_profile(self):
+    def get_pressure_drop_profile(self):
         A_wick = np.pi * (self.r_1**2 - self.r_2**2) 
         
         T_wick = np.mean(np.array(self.T_HP)[:-1].reshape(self.N_Z, self.N_R)[:, :self.N_wick], axis=1) 
@@ -101,7 +79,6 @@ class liquid_discretised:
         mdot = self.get_mdot()
         P = -np.cumsum(mu_l * np.array(mdot) / (rho_l * A_wick * K) * delta_z)
         self.pressure = P
-        print(K)
 
 
 if __name__ == "__main__":

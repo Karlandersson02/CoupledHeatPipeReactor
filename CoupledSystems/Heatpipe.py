@@ -1,6 +1,4 @@
-
 import numpy as np
-import matplotlib.pyplot as plt
 
 from models.heat_discretised_model import heatpipe_discretised
 from models.vapor_discretised_model import vapour_discretised
@@ -12,16 +10,20 @@ class Heatpipe:
         self.data = data
 
         self.heatpipe_discretised = heatpipe_discretised(data)
-        self.vapour_discretised = vapour_discretised(data)
-        self.liquid_discretised = liquid_discretised(data)
 
         self.calculated_quantities = dict()
+
+    def setup_fluid_models(self):
+        T = self.get_heatpipe_temperature()
+        self.data["T_HP"] = T
+        self.vapour_discretised = vapour_discretised(self.data)
+        self.liquid_discretised = liquid_discretised(self.data)
 
     def get_heatpipe_temperature(self):
         T = self.calculated_quantities.get("heatpipe_T")
         if T is None:
             self.heatpipe_discretised.solve()
-            T = self.heatpipe_discretised.temperature
+            T = self.heatpipe_discretised.get_temperature_profile()
 
             self.calculated_quantities["heatpipe_T"] = T
 
@@ -30,92 +32,68 @@ class Heatpipe:
     def get_vapour_temperature(self):
         T = self.calculated_quantities.get("vapour_T")
         if T is None:
-            T_heatpipe = self.get_heatpipe_temperature()
-            self.vapour_discretised.T_HP = T_heatpipe
+            self.vapour_discretised.solve_numeric()
+            T = self.vapour_discretised.get_temperature()
+            P = self.vapour_discretised.get_pressure_numeric()
 
-            self.vapour_discretised.solve()
-            T = self.vapour_discretised.temperature
-
-            T = self.vapour_discretised.temperature
-            P = self.vapour_discretised.pressure
             self.calculated_quantities["vapour_T"] = T
-            self.calculated_quantities["vapour_P"] = P
+            self.calculated_quantities["vapour_P_numeric"] = P
 
         return T
 
-    def get_vapour_pressure_drop_profile(self, mode="analytic"):
-        P = self.calculated_quantities.get("vapour_P" + "_" + mode)
+    # def get_vapour_pressure_drop_profile_analytic(self):
+    #     P = self.calculated_quantities.get("vapour_P_analytic")
+    #     if P is None:
+    #         P = self.vapour_discretised.get_pressure_drop_analytic()
+
+    #         self.calculated_quantities["vapour_P_analytic"] = P
+
+    #     return P
+    
+    def get_vapour_pressure_drop_profile_numeric(self):
+        P = self.calculated_quantities.get("vapour_P_numeric")
         if P is None:
-            T_heatpipe = self.get_heatpipe_temperature()
-            self.vapour_discretised.T_HP = T_heatpipe
+            self.vapour_discretised.solve_numeric()
+            P = self.vapour_discretised.get_pressure_numeric()
+            T = self.vapour_discretised.get_temperature()
 
-            if mode == "analytic":
-                P = self.vapour_discretised.analytical_pressure_drop()
-            elif mode == "numeric":
-                self.vapour_discretised.solve()
-                T = self.vapour_discretised.temperature
-                P = self.vapour_discretised.pressure
-                self.calculated_quantities["vapour_T"] = T
+            P = P - P[0]
 
-            self.calculated_quantities["vapour_P" + "_" + mode] = P
+            self.calculated_quantities["vapour_T"] = T
+            self.calculated_quantities["vapour_P_numeric"] = P
 
         return P
     
     def get_liquid_pressure_drop_profile(self):
         P = self.calculated_quantities.get("liquid_P")
         if P is None:
-            T_heatpipe = self.get_heatpipe_temperature()
-            self.liquid_discretised.T_HP = T_heatpipe
-
-            self.liquid_discretised.calculate_pressure_drop_profile()
-
-            P = self.liquid_discretised.pressure
+            P = self.liquid_discretised.get_pressure_drop_profile()
             self.calculated_quantities["liquid_P"] = P
 
         return P
     
-if __name__ == "__main__":
+    def solve_vapour_temperature_iteratively(self, Q_start, Q_stop, Q_step):
+        Q_cases = np.arange(Q_start, Q_stop, Q_step)
+        for ix, Q_tot in enumerate(Q_cases):
+            Q_profile = np.repeat(np.array([Q_tot / self.data["N_evap"]]), self.data["N_evap"])
+            self.data["Q"] = Q_profile
 
-    data = {
-        "r_outer": .007 + 0.001 + 0.0005,
-        "delta_wick": 0.0005,
-        "delta_wall": 0.001,
-        "l_evap": 0.1,
-        "l_adiabatic": 0.05,
-        "l_cond": 0.55,
+            self.heatpipe_discretised = heatpipe_discretised(self.data)
+            self.heatpipe_discretised.solve()
+            T = self.heatpipe_discretised.get_temperature_profile()
+            self.data["T_HP"] = T
 
-        "N_wick": 15,
-        "N_wall": 15,
-        "N_evap": 20,
-        "N_adiabatic": 10,
-        "N_cond": 110,
+            if ix == 0:
+                self.vapour_discretised = vapour_discretised(self.data)
+            else:
+                self.vapour_discretised = vapour_discretised(self.data, next_initial_temperature, next_initial_velocity)
 
-        "adiabatic_radial_flux": False,
-        "Temperature_BC": False,
-        "h_vap": 1e6,
-        "h_cond": 62.6,
-        "T_cond": 300,
-        "T_op": 850,
+            self.vapour_discretised.solve_numeric()
+            next_initial_temperature = self.vapour_discretised.get_temperature()
+            next_initial_velocity = self.vapour_discretised.get_velocity()
 
-        "k_wick": 45.0,
-        "k_wall": 21.7,
+        P = self.vapour_discretised.get_pressure_numeric()
+        self.calculated_quantities["vapour_T"] = next_initial_temperature
+        self.calculated_quantities["vapour_u"] = next_initial_velocity
+        self.calculated_quantities["vapour_P_numeric"] = P
 
-        "P_C": 2476,
-        "T_C": 856
-    }
-
-    Q_total = 1000
-    Q = np.repeat(np.array([Q_total / data["N_evap"]], dtype=float), data["N_evap"])
-    
-    data["Q"] = Q
-
-    HP = Heatpipe(data)
-
-    P = HP.get_liquid_pressure_drop_profile()
-    
-    fig = plt.figure(figsize=(16,9))
-    ax = fig.add_subplot(111)
-
-    ax.plot(P, color="black")
-
-    plt.show()
