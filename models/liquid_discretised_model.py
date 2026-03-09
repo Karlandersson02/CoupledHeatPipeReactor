@@ -86,7 +86,7 @@ class liquid_discretised:
             )
         
         mdot = self.get_mdot()
-        P = -np.cumsum(mu_l * np.array(mdot) / (rho_l * A_wick * K) * delta_z)
+        P = -np.cumsum(mu_l * np.array(mdot) / (rho_l * A_wick * self.K) * delta_z)
         self.pressure = P
 
 
