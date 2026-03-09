@@ -145,7 +145,7 @@ class heatpipe_comparisons:
         ax = fig.add_subplot(111)
 
         for i in range(len(self.heatpipes)):
-            ax = self.heatpipe_visualisations[i].plot_vapour_temperature(ax=ax, label=i)
+            ax = self.heatpipe_visualisations[i].plot_vapour_temperature(ax=ax, label=f"{self.heatpipes[i].vapour_discretised.T_HP[-1]:.0f}")
 
         ax.grid(alpha=0.4)
         ax.set_title("Vapour")
