@@ -69,7 +69,7 @@ class liquid_discretised:
         return K
 
     def get_pressure_drop_profile(self):
-        A_wick = np.pi * (self.r_1**2 - self.r_2**2) 
+        A_wick = np.pi * (self.r_gap**2 - self.r_wick**2) 
         
         T_wick = np.mean(np.array(self.T_HP)[:-1].reshape(self.N_Z, self.N_R)[:, :self.N_wick], axis=1) 
 
@@ -111,10 +111,11 @@ if __name__ == "__main__":
         "k_wall": 21.7,
         "P_C": 2476,
         "T_C": 856,
+        "T_HP":[0],
         "Is_annular": True,
-        "K":1e-10
+        "K":1e-10,
     }   
 
     lpd = liquid_discretised(data)
 
-    P = lpd.calculate_pressure_drop_profile()
+    P = lpd.get_pressure_drop_profile()
