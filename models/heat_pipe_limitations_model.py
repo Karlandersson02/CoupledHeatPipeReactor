@@ -14,8 +14,8 @@ from models.sodium_properties import (
 class heat_pipe_limitations:
     def __init__(self, data):
         self.r_outer  = data.get("r_outer")
-        self.r_gap  = data.get("r_gap")
-        self.r_wick  = data.get("r_wick")
+        self.r_gap    = data.get("r_gap")
+        self.r_wick   = data.get("r_wick")
         self.r_1 = data.get("r_wall")
         self.r_2 = data.get("r_wick")
         self.r_vapour = data.get("r_vapour")
@@ -45,10 +45,31 @@ class heat_pipe_limitations:
         self.R = 8.314472
         self.R_Na = self.R / 0.022990
 
-    def calculate_analytical_heat_pipe_limitations(self):
-        return 0
+    def plot_analytical_limits(self, T_low, T_high):
+        T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
+
+        Q_sonic       = HP_limits.calculate_analytical_sonic_limit(T_span)
+        Q_cap         = HP_limits.calculate_analytical_capillary_limit(T_span)
+        Q_boil        = HP_limits.calculate_analytical_boiling_limit(T_span)
+        Q_entrainment = HP_limits.calculate_analytical_entrainment_limit(T_span)
+
+        plt.semilogy(T_span, Q_sonic,       label="Sonic")
+        plt.semilogy(T_span, Q_cap,         label="Capillary")
+        plt.semilogy(T_span, Q_boil,        label="Boiling")
+        plt.semilogy(T_span, Q_entrainment, label="Entrainment")
+        plt.legend()
+        plt.xlabel("Temperature [K]")
+        plt.ylabel("Heat transfer [W]")
+        plt.show()
+
+        Q_lim = np.min(np.vstack([Q_sonic, Q_cap, Q_boil, Q_entrainment]), axis=0)
+        plt.semilogy(T_span, Q_lim, label="Operating limit")
+        plt.legend()
+        plt.xlabel("Temperature [K]")
+        plt.ylabel("Heat transfer [W]")
+        plt.show()
     
-    def calculate_analytical_capillary_limit(self):
+    def calculate_analytical_capillary_limit(self, T_span):
         """ 
         Based on eq. (4.10) in Heat Pipe science and technology by Amir Faghri.
 
@@ -65,9 +86,6 @@ class heat_pipe_limitations:
             Vapour: eq. (3.76) in Faghri
             Liquid: Darcy's law in 1D, given by eq. (3.7) in Faghri
         """
-
-        T_low = 600; T_high = 1400
-        T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
 
         h_fg    = calculate_Na_h_fg(T_span)
         rho_l   = calculate_Na_rho_l(T_span)
@@ -101,25 +119,23 @@ class heat_pipe_limitations:
         F_v_inertial = inertial_fraction / (8 * rho_v * self.r_vapour**4 * h_fg**2)
 
         # Calculating Q_max based on the pressure drops.
-        Delta_p_cap_max = (2 * sigma_l / self.r_p)
+        Delta_p_cap_max = (2 * sigma_l / self.r_pore)
 
         # Equation is off the quadratic form.
         a = F_v_inertial
         b = F_v_viscous + F_l
         Q_cap = - (b / (2 * a)) + np.sqrt((b / (2 * a))**2 + Delta_p_cap_max / a)
 
-        plt.plot(T_span, Q_cap, label="Capillary limit")
-        plt.xlabel("Temperature [Kelvin]")
-        plt.ylabel("Heat transfer [W]")
+        # plt.plot(T_span, Q_cap, label="Capillary limit")
+        # plt.xlabel("Temperature [Kelvin]")
+        # plt.ylabel("Heat transfer [W]")
 
-        plt.show()
+        # plt.show()
 
-        return 0
+        return Q_cap
     
     
-    def calculate_analytical_boiling_limit(self):
-        T_low = 600; T_high = 1400
-        T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
+    def calculate_analytical_boiling_limit(self, T_span):
 
         h_fg    = calculate_Na_h_fg(T_span)
         rho_l   = calculate_Na_rho_l(T_span)
@@ -156,17 +172,16 @@ class heat_pipe_limitations:
             else:
                 Q_boil[i] = brentq(residual, a=a, b=b, args=(i,))
 
-        plt.semilogy(T_span, Q_boil, label="Boiling limit")
-        plt.xlabel("Temperature [Kelvin]")
-        plt.ylabel("Heat transfer [W]")
+        # plt.semilogy(T_span, Q_boil, label="Boiling limit")
+        # plt.xlabel("Temperature [Kelvin]")
+        # plt.ylabel("Heat transfer [W]")
 
-        plt.show()
-        return 0
+        # plt.show()
+
+        return Q_boil
     
     
-    def calculate_analytical_sonic_limit(self):
-        T_low = 600; T_high = 1400
-        T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
+    def calculate_analytical_sonic_limit(self, T_span):
 
         h_fg    = calculate_Na_h_fg(T_span)
         rho_v   = calculate_Na_rho_v(T_span)
@@ -176,16 +191,15 @@ class heat_pipe_limitations:
 
         Q_sonic = A_v * rho_v * h_fg * np.sqrt( (gamma * self.R_Na * T_span) / (2 * (gamma + 1)) )
 
-        plt.plot(T_span, Q_sonic, label="Sonic limit")
-        plt.xlabel("Temperature [Kelvin]")
-        plt.ylabel("Heat transfer [W]")
+        # plt.plot(T_span, Q_sonic, label="Sonic limit")
+        # plt.xlabel("Temperature [Kelvin]")
+        # plt.ylabel("Heat transfer [W]")
 
-        plt.show()
-        return 0
+        # plt.show()
+
+        return Q_sonic
     
-    def calculate_analytical_entrainment_limit(self):
-        T_low = 600; T_high = 1400
-        T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
+    def calculate_analytical_entrainment_limit(self, T_span):
 
         h_fg    = calculate_Na_h_fg(T_span)
         rho_v   = calculate_Na_rho_v(T_span)
@@ -201,11 +215,11 @@ class heat_pipe_limitations:
         
         Q_entrainment = A_v * h_fg * np.sqrt( (sigma_l * rho_v) / (2 * R_h_w) )
 
-        plt.plot(T_span, Q_entrainment, label="Entrainment limit")
-        plt.xlabel("Temperature [Kelvin]")
-        plt.ylabel("Heat transfer [W]")
+        # plt.plot(T_span, Q_entrainment, label="Entrainment limit")
+        # plt.xlabel("Temperature [Kelvin]")
+        # plt.ylabel("Heat transfer [W]")
 
-        plt.show()
+        # plt.show()
 
         return Q_entrainment
     
@@ -248,8 +262,7 @@ if __name__ == "__main__":
     }   
 
     HP_limits = heat_pipe_limitations(data)
-
-    HP_limits.calculate_analytical_sonic_limit()
+    HP_limits.plot_analytical_limits(600, 1500)
 
 
     
