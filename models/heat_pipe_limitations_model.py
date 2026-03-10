@@ -1,13 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.optimize import brentq
 
-from sodium_properties import (
+from models.sodium_properties import (
     calculate_Na_h_fg,
     calculate_Na_rho_l,
     calculate_Na_rho_v,
     calculate_Na_surface_tension,
     calculate_Na_viscosity_l,
     calculate_Na_viscosity_v,
+    calculate_Na_thermal_conductivity_l,
 )
 class heat_pipe_limitations:
     def __init__(self, data):
@@ -32,10 +34,16 @@ class heat_pipe_limitations:
         self.N_cond = data.get("N_cond")
         self.N_Z = self.N_evap + self.N_adia + self.N_cond
 
-        self.r_p = data.get("r_p")
+        self.k_wall = data.get("k_wall")
+        self.k_wick = data.get("k_wick")
+
+        self.r_pore = data.get("r_pore")
         self.porosity = data.get("porosity")
         self.T_op = data.get("T_op")
         self.mdot_HP = data.get("mdot_HP")
+
+        self.R = 8.314472
+        self.R_Na = self.R / 0.022990
 
     def calculate_analytical_heat_pipe_limitations(self):
         return 0
@@ -110,19 +118,96 @@ class heat_pipe_limitations:
     
     
     def calculate_analytical_boiling_limit(self):
+        T_low = 600; T_high = 1400
+        T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
+
+        h_fg    = calculate_Na_h_fg(T_span)
+        rho_l   = calculate_Na_rho_l(T_span)
+        rho_v   = calculate_Na_rho_v(T_span)
+        sigma_l = calculate_Na_surface_tension(T_span)
+        k_l     = calculate_Na_thermal_conductivity_l(T_span)
+
+        nu_v = 1.0 / rho_v
+        nu_l = 1.0 / rho_l
+        k_eff = (1 - self.porosity) * self.k_wick + self.porosity * k_l
+
+        def residual(Q, i):
+            q_r   = Q / (np.pi * self.r_vapour**2)
+            R_b   = np.sqrt((2 * sigma_l[i] * T_span[i] * k_l[i] * (nu_v[i] - nu_l[i]))
+                            / (h_fg[i] * q_r))
+            dT    = (2 * sigma_l[i] * T_span[i]) / (h_fg[i] * rho_v[i]) * (1/R_b - 1/self.r_pore)
+            Q_rhs = (2 * np.pi * self.l_evap * k_eff[i] * dT) / np.log(self.r_wick / self.r_vapour)
+            return Q - Q_rhs
+
+        def find_bracket(residual, i, Q_min=1e-3, Q_max=1e12, n_search=500):
+            Q_vals = np.logspace(np.log10(Q_min), np.log10(Q_max), n_search)
+            r_vals = np.array([residual(Q, i) for Q in Q_vals])
+            sign_changes = np.where(np.diff(np.sign(r_vals)))[0]
+            if len(sign_changes) == 0:
+                return None, None
+            idx = sign_changes[0]
+            return Q_vals[idx], Q_vals[idx + 1]
+
+        Q_boil = np.zeros_like(T_span)
+        for i in range(len(T_span)):
+            a, b = find_bracket(residual, i)
+            if a is None:
+                Q_boil[i] = np.nan
+            else:
+                Q_boil[i] = brentq(residual, a=a, b=b, args=(i,))
+
+        plt.semilogy(T_span, Q_boil, label="Boiling limit")
+        plt.xlabel("Temperature [Kelvin]")
+        plt.ylabel("Heat transfer [W]")
+
+        plt.show()
         return 0
     
     
     def calculate_analytical_sonic_limit(self):
+        T_low = 600; T_high = 1400
+        T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
+
+        h_fg    = calculate_Na_h_fg(T_span)
+        rho_v   = calculate_Na_rho_v(T_span)
+
+        A_v = np.pi * self.r_vapour**2 
+        gamma = 5/3
+
+        Q_sonic = A_v * rho_v * h_fg * np.sqrt( (gamma * self.R_Na * T_span) / (2 * (gamma + 1)) )
+
+        plt.plot(T_span, Q_sonic, label="Sonic limit")
+        plt.xlabel("Temperature [Kelvin]")
+        plt.ylabel("Heat transfer [W]")
+
+        plt.show()
         return 0
-    
-    
-    def calculate_analytical_vacuum_limit(self):
-        return 0
-    
     
     def calculate_analytical_entrainment_limit(self):
-        return 0
+        T_low = 600; T_high = 1400
+        T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
+
+        h_fg    = calculate_Na_h_fg(T_span)
+        rho_v   = calculate_Na_rho_v(T_span)
+        sigma_l = calculate_Na_surface_tension(T_span)
+
+        A_v = np.pi * self.r_vapour**2 
+
+        # Assuming that the area of the individual pore is a half sphere (best case scenario)
+        #R_h_w = self.r_pore / 3
+
+        # Assuming that the area of the individual pore is flat (worst case scenario)
+        R_h_w = self.r_pore
+        
+        Q_entrainment = A_v * h_fg * np.sqrt( (sigma_l * rho_v) / (2 * R_h_w) )
+
+        plt.plot(T_span, Q_entrainment, label="Entrainment limit")
+        plt.xlabel("Temperature [Kelvin]")
+        plt.ylabel("Heat transfer [W]")
+
+        plt.show()
+
+        return Q_entrainment
     
     def calculate_K_annular_wick(self):
         R_star = self.r_2 / self.r_1
@@ -157,14 +242,15 @@ if __name__ == "__main__":
         "k_wall": 21.7,
         "P_C": 2476,
         "T_C": 856,
-        "r_p": 2.e-5,
+        "r_pore": 2.e-5,
         "porosity": 0.7,
         "mdot_HP": [1.5],
     }   
 
     HP_limits = heat_pipe_limitations(data)
 
-    HP_limits.calculate_analytical_capillary_limit() 
+    HP_limits.calculate_analytical_sonic_limit()
+
 
     
 

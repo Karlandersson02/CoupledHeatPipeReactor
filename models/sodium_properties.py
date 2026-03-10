@@ -72,6 +72,7 @@ def calculate_Na_surface_tension(T_liquid):
     return 1e-3 * sigma_0 * (1 - T_liquid / T_crit_Na)**(n)
 
 def calculate_Na_pressure_v(T_vapour):
+
     # Constants and formula taken from:
     # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz 
     # page 55.
@@ -84,11 +85,11 @@ def calculate_Na_pressure_v(T_vapour):
     return 1e6 * np.exp(A - B / T_vapour - C * np.log(T_vapour))
 
 def calculate_Na_temperature_v(p_vapour):
-    """
-    Numerical inversion of calculate_Na_pressure_v().
-    Pressure in Pa. Valid range: ~2923 Pa (864 K) to ~25.6 MPa (2503.7 K).
-    Returns NaN outside valid range.
-    """
+
+    # Numerical inversion of calculate_Na_pressure_v().
+    # Pressure in Pa. Valid range: ~2923 Pa (864 K) to ~25.6 MPa (2503.7 K).
+    # Returns NaN outside valid range.
+
     T_min, T_max = 200, 2503.7
     P_min = calculate_Na_pressure_v(T_min)
     P_max = calculate_Na_pressure_v(T_max)
@@ -103,3 +104,17 @@ def calculate_Na_temperature_v(p_vapour):
         return brentq(lambda T: calculate_Na_pressure_v(T) - p, T_min, T_max)
 
     return np.vectorize(invert_single)(np.asarray(p_vapour, dtype=float))
+
+def calculate_Na_thermal_conductivity_l(T_liquid):
+
+    # Constants and formula taken from:
+    # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz
+    # ANL/RE-95/2, page 181, equation (1).
+
+    A = 124.67
+    B = -0.11381
+    C = 5.5226e-5
+    D = -1.1842e-8
+
+    # Units is W/(m * K).
+    return A + B * T_liquid + C * T_liquid**2 + D * T_liquid**3
