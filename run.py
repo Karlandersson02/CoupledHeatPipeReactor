@@ -30,7 +30,6 @@ data = {
     "N_adiabatic": 90,
     "N_cond": 30,
 
-    "adiabatic_radial_flux": False,
     "Temperature_BC": False,
     "h_vap": 1e6,
     "h_cond": 62.6,
@@ -38,10 +37,7 @@ data = {
     "T_op": 850,
 
     "k_wick": 45.0,
-    "k_wall": 21.7,
-
-    "P_C": 2476,
-    "T_C": 856
+    "k_wall": 21.7
 }
 
 data_Guoju_1 = {
@@ -102,15 +98,26 @@ data_Guoju_2 = {
 
 # -------------- Normal
 
-# Qs = build_flat_profiles(1400, 1700, 100, data["N_evap"])
-Qs = [build_flat_profile(560, data["N_evap"]), ]
+# # Qs = build_flat_profiles(1400, 1700, 100, data["N_evap"])
+# Qs = [build_flat_profile(560, data["N_evap"]), ]
 
-comparison_data = {"Q": Qs}
+# comparison_data = {"Q": Qs}
 
-HP_visuals = heatpipe_comparisons(data_Guoju_1, comparison_data)
-# HP_visuals.plot_vapour_mach_number_comparison()
-HP_visuals.plot_vapour_temperature_comparison()
-# HP_visuals.plot_vapour_pressure_drop_comparison()
+# HP_visuals = heatpipe_comparisons(data_Guoju_1, comparison_data)
+# # HP_visuals.plot_vapour_mach_number_comparison()
+# HP_visuals.plot_vapour_temperature_comparison()
+# # HP_visuals.plot_vapour_pressure_drop_comparison()
+
+# -------------- Total pressure drop
+
+Q = build_flat_profile(560, data_Guoju_1["N_evap"])
+data_Guoju_1["Q"] = Q
+
+heatpipe = Heatpipe(data_Guoju_1)
+heatpipe.setup_fluid_models()
+heatpipe_vis = heatpipe_visualisations(heatpipe)
+heatpipe_vis.plot_total_pressure_drop()
+
 
 # -------------- Iterative
 
