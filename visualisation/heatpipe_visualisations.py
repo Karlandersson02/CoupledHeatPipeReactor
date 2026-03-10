@@ -98,6 +98,60 @@ class heatpipe_visualisations:
         else:
             return ax
         
+    def plot_total_pressure_drop(self, ax=None, **kwargs):
+        P_v = np.array(self.heatpipe.get_vapour_pressure_drop_profile_numeric(), dtype=float)
+        P_l = np.array(self.heatpipe.get_liquid_pressure_drop_profile(), dtype=float)
+
+        P_v -= P_v[0]
+        P_l -= P_l[0]
+
+        P_l_rev = P_l[::-1]
+
+        l = np.linspace(0, self.l_tot, len(P_v))
+
+        shift_touch = np.min(P_v - P_l_rev)
+        P_v_touch = P_v - shift_touch
+
+        diff = P_v_touch - P_l_rev
+        i_contact = np.argmin(np.abs(diff))
+
+        shift_zero = P_v_touch[0]
+        P_v_plot = P_v_touch - shift_zero
+        P_l_plot = P_l_rev - shift_zero
+
+        l_total = np.concatenate([
+            l[:i_contact + 1],
+            l[:i_contact + 1][::-1]
+        ])
+
+        P_total = np.concatenate([
+            P_v_plot[:i_contact + 1],
+            P_l_plot[:i_contact + 1][::-1]
+        ])
+
+        plot = False
+        if ax is None:
+            plot = True
+            fig = self.setup_figure()
+            ax = fig.add_subplot(111)
+
+            ax.grid(alpha=0.4)
+            ax.set_title(rf"Total pressure drop: $\Delta P =$ {P_total[0] - P_total[-1]:.0f} Pa")
+            ax.set_xlabel("Length [m]")
+            ax.set_ylabel(r"Pressure $\Delta P$ [Pa]")
+
+        ax.plot(l, P_v_plot, "--", label="Vapour drop")
+        ax.plot(l, P_l_plot, "--", label="Liquid drop")
+        ax.plot(l_total, P_total, linewidth=2, label="Total pressure drop", **kwargs)
+        ax.plot(l[i_contact], P_v_plot[i_contact], "o", label="Contact point")
+
+        ax.legend()
+
+        if plot:
+            plt.show()
+        else:
+            return ax
+        
         
 
 
