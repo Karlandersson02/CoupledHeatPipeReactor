@@ -11,45 +11,51 @@ from models.sodium_properties import (
     calculate_Na_viscosity_v,
     calculate_Na_thermal_conductivity_l,
 )
+
+from CoupledSystems.Heatpipe import Heatpipe
+
 class heat_pipe_limitations:
-    def __init__(self, data):
-        self.r_outer  = data.get("r_outer")
-        self.r_gap    = data.get("r_gap")
-        self.r_wick   = data.get("r_wick")
-        self.r_1 = data.get("r_wall")
-        self.r_2 = data.get("r_wick")
-        self.r_vapour = data.get("r_vapour")
+    def __init__(self, HP):
+        self.HP = HP
+        self.r_outer    = HP.data.get("r_outer")
+        self.delta_wall = HP.data.get("delta_wall")
+        self.delta_gap  = HP.data.get("delta_gap")
+        self.delta_wick = HP.data.get("delta_wick")
+        self.r_gap    = self.r_outer - self.delta_wall
+        self.r_wick   = self.r_gap   - self.delta_gap
+        self.r_vapour = self.r_wick  - self.delta_wick
 
-        self.l_evap  = data.get("l_evap")
-        self.l_adia  = data.get("l_adia")
-        self.l_cond  = data.get("l_cond")
-        self.l_tot = self.l_evap + self.l_adia + self.l_cond
+        self.l_evap      = HP.data.get("l_evap")
+        self.l_adiabatic = HP.data.get("l_adiabatic")
+        self.l_cond      = HP.data.get("l_cond")
+        self.l_tot       = self.l_evap + self.l_adiabatic+ self.l_cond
 
-        self.N_wick = data.get("N_wick")
-        self.N_wall = data.get("N_wall")
-        self.N_R = self.N_wick + self.N_wall
+        self.N_wick   = HP.data.get("N_wick")
+        self.N_wall   = HP.data.get("N_wall")
+        self.N_R      = self.N_wick + self.N_wall
 
-        self.N_evap = data.get("N_evap")
-        self.N_adia = data.get("N_adia")
-        self.N_cond = data.get("N_cond")
-        self.N_Z = self.N_evap + self.N_adia + self.N_cond
+        self.N_evap      = HP.data.get("N_evap")
+        self.N_adiabatic = HP.data.get("N_adiabatic")
+        self.N_cond      = HP.data.get("N_cond")
+        self.N_Z         = self.N_evap + self.N_adiabatic+ self.N_cond
 
-        self.k_wall = data.get("k_wall")
-        self.k_wick = data.get("k_wick")
+        self.k_wall   = HP.data.get("k_wall")
+        self.k_wick   = HP.data.get("k_wick")
 
-        self.r_pore = data.get("r_pore")
-        self.porosity = data.get("porosity")
-        self.T_op = data.get("T_op")
-        self.mdot_HP = data.get("mdot_HP")
+        self.r_pore   = HP.data.get("r_pore")
+        self.porosity = HP.data.get("porosity")
+        self.T_op     = HP.data.get("T_op")
+        self.mdot_HP  = HP.data.get("mdot_HP")
 
         self.R = 8.314472
         self.R_Na = self.R / 0.022990
+
 
     def plot_analytical_limits(self, T_low, T_high):
         T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
 
         Q_sonic       = HP_limits.calculate_analytical_sonic_limit(T_span)
-        Q_cap         = HP_limits.calculate_analytical_capillary_limit(T_span)
+        Q_cap         = HP_limits.calculate_analytical_capillary_limit_Busse(T_span)
         Q_boil        = HP_limits.calculate_analytical_boiling_limit(T_span)
         Q_entrainment = HP_limits.calculate_analytical_entrainment_limit(T_span)
 
@@ -69,6 +75,7 @@ class heat_pipe_limitations:
         plt.ylabel("Heat transfer [W]")
         plt.show()
     
+
     def calculate_analytical_capillary_limit(self, T_span):
         """ 
         Based on eq. (4.10) in Heat Pipe science and technology by Amir Faghri.
@@ -100,7 +107,7 @@ class heat_pipe_limitations:
     
         A_wick = np.pi * (self.r_1**2 - self.r_2**2)  
 
-        L_cap_max = (0.5 * self.l_evap + self.l_adia + 0.5 * self.l_cond)
+        L_cap_max = (0.5 * self.l_evap + self.l_adiabatic+ 0.5 * self.l_cond)
 
         F_l = mu_l * L_cap_max / (rho_l * A_wick * K * h_fg)
 
@@ -133,6 +140,89 @@ class heat_pipe_limitations:
         # plt.show()
 
         return Q_cap
+    
+
+    def calculate_analytical_capillary_limit_Busse(self, T_span):
+        """
+        Uses Busse instead of Cotter and calculates the wet point after both pressure drop profiles has been computed.
+        """
+        def build_flat_profile(Qtot, N):
+            Q = np.repeat(np.array([Qtot / N], dtype=float), N)
+            return Q
+        
+        # Must have flux BC for this to work.
+        self.HP.data["Temperature_BC"] = False
+
+        # Initial condition for Q. Might worth looking in to.
+        Q = 50
+
+        # Initialize the Q vector to store results.
+        Q_cap = np.array([])
+        
+        # Iterate over all the temperatures in the span.
+        for T in T_span:
+            # Calculate the max capillary head for the current temperature.
+            sigma_l = calculate_Na_surface_tension(T)
+            Delta_p_cap_max = (2 * sigma_l / self.r_pore)
+
+            # Set margin to 0 to force atleast two iterations, due to "< 0." and "> 0." in break condition 
+            Delta_p_margin = 0.
+
+            max_iter = 100
+            for i in range(max_iter):
+                # Changing the setting in the heat pipe.
+                Q_array = build_flat_profile(Q, self.HP.data)
+                self.HP.data["Q"] = Q_array
+                self.data["T_HP"] = None
+
+                self.T_op.data["Temperature_BC"] = T
+
+                # Solve for the total pressure profile with a variable wet point.
+                P_l = self.HP.get_liquid_pressure_drop_profile()
+                P_v = self.analytical_pressure_drop_Busse()
+
+                P_v -= P_v[0]
+                P_l -= P_l[0]
+
+                P_l_rev = P_l[::-1]
+
+                shift_touch = np.min(P_v - P_l_rev)
+                P_v_touch = P_v - shift_touch
+
+                diff = P_v_touch - P_l_rev
+                i_contact = np.argmin(np.abs(diff))
+
+                shift_zero = P_v_touch[0]
+                P_v_plot = P_v_touch - shift_zero
+                P_l_plot = P_l_rev - shift_zero
+
+                Delta_P_profile_v_l = np.concatenate([
+                    P_v_plot[:i_contact + 1],
+                    P_l_plot[:i_contact + 1][::-1]
+                ])
+
+                Total_Delta_P_drop_v_l = (Delta_P_profile_v_l[0] - Delta_P_profile_v_l[-1])
+
+                # Calculate the new pressure margin
+                new_Delta_p_margin = Delta_p_cap_max - Total_Delta_P_drop_v_l
+
+                # Break if there is a sign difference between new and old margin (Crossed the limit)
+                if Delta_p_margin * new_Delta_p_margin < 0.:
+                    Q_cap = np.append(Q_cap, Q)
+                    break
+
+                # Change Q based on the margin
+                if new_Delta_p_margin > 0.:
+                    Q += 10
+
+                if new_Delta_p_margin < 0.:
+                    Q -= 10
+
+                Delta_p_margin = new_Delta_p_margin
+                     
+
+
+
     
     
     def calculate_analytical_boiling_limit(self, T_span):
@@ -199,6 +289,7 @@ class heat_pipe_limitations:
 
         return Q_sonic
     
+
     def calculate_analytical_entrainment_limit(self, T_span):
 
         h_fg    = calculate_Na_h_fg(T_span)
@@ -223,6 +314,7 @@ class heat_pipe_limitations:
 
         return Q_entrainment
     
+
     def calculate_K_annular_wick(self):
         R_star = self.r_2 / self.r_1
 
@@ -232,37 +324,125 @@ class heat_pipe_limitations:
 
         K = D_h**2 / (2 * fRe_l)
 
-        return K
+        return K    
+    
+
+    def analytical_pressure_drop_Busse(self):
+        T_v   = self.T_HP[-1]
+        h_fg  = calculate_Na_h_fg(T_v)
+        rho_v = calculate_Na_rho_v(T_v)
+        mu_v  = calculate_Na_viscosity_v(T_v)
+
+        Rv  = self.r_vapour
+        d_v = 2.0 * Rv
+        L_C = self.l_cond
+        L_e = self.l_evap
+
+        Q_tot = self.get_mdot()[self.N_evap] * h_fg
+
+        Re_re = Q_tot / (2 * np.pi * L_e * h_fg * mu_v)
+        Re_rc = Q_tot / (2 * np.pi * L_C * h_fg * mu_v)
+
+        # if Re_rc >= -2.25:
+        #     raise ValueError(
+        #         f"Busse (1967) invalid: Re_{{r,c}} = {Re_rc:.4f} <= -2.25."
+        #     )
+
+        def _alpha(Re_r):
+            inner = 5.0 + 18.0 / Re_r
+            disc  = inner**2 - 44.0 / 5.0
+            if disc < 0:
+                raise ValueError(
+                    f"Busse (1967): negative discriminant at Re_r = {Re_r:.4f}."
+                )
+            return (15.0 / 22.0) * (inner + np.sqrt(disc))**0.5
+
+        # --- Evaporator + adiabatic (combined, Busse 1967) ---
+        F = (7.0/9.0 - 1.7 * Re_re / (36 + 10*Re_re) * np.exp(-7.5 * self.l_adiabatic / (Re_re * L_e)))
+        
+        dP_evap = ((-4.0/np.pi) * (mu_v * Q_tot) / (rho_v * Rv**4 * h_fg) * (L_e * (1.0 + Re_re * F)))
+        
+        dP_adiabatic = -(8.0 * mu_v * Q_tot * self.l_adiabatic) / (rho_v * np.pi * Rv**4 * h_fg)
+
+        # --- Condenser pressure recovery (Busse 1967, eq. 11) ---
+        dP_cond = -dP_evap + -dP_adiabatic - (4.0/np.pi) * (mu_v * Q_tot) / (rho_v * Rv**4 * h_fg) * (self.l_evap + 2*self.l_adiabatic + self.l_cond)
+
+        # --- Distribute onto spatial grid ---
+        dx   = np.zeros(self.N_Z, dtype=float)
+
+        dx[:self.N_evap] = self.l_evap / (self.N_evap)
+        dx[self.N_evap: self.N_evap + self.N_adiabatic] = self.l_adiabatic / (self.N_adiabatic)
+        dx[self.N_evap + self.N_adiabatic:] = self.l_cond / (self.N_cond)
+        
+        dpdx = np.zeros(self.N_Z, dtype=float)
+
+        x_evap  = np.linspace(0, L_e, self.N_evap)
+        profile = (x_evap / L_e)**2
+        norm    = np.sum(profile) * (L_e / self.N_evap)
+        dpdx[:self.N_evap] = dP_evap * profile / norm
+
+        dpdx[self.N_evap:self.N_evap + self.N_adiabatic] = (
+            dP_adiabatic / (self.l_adiabatic)
+        )
+
+        j0 = self.N_evap + self.N_adiabatic
+        x2     = L_e + self.l_adiabatic
+        x_cond = np.linspace(x2, x2 + L_C, self.N_cond)
+        xi     = 1.0 - (x_cond - x2) / L_C
+        dP_cond_total = dP_cond  # scalar total
+        # distribute as (1 - xi)^2 profile, normalised to integrate to dP_cond_total
+        profile    = (xi)**2
+        dpdx[j0:] = dP_cond_total * profile / (np.sum(profile) * dx[self.N_evap + self.N_adiabatic:])
+
+        return np.cumsum(dpdx * dx) 
 
 if __name__ == "__main__":
-    data = {
-        "r_outer": 0.01410/2,
-        "r_wall":   0.01410/2,
-        "r_wick":   0.0130/2, 
-        "r_vapour": 0.012310/2,
-        "delta_wall": 0.,
-        "l_evap": 0.3,
-        "l_adia": 0.2,
-        "l_cond": 0.3,
+    data_Guoju_2 = {
+        "r_outer": .007 + 0.001 + 0.0005,
+        "delta_wick": 0.0005,
+        "delta_wall": 0.001,
+        "l_evap": 0.1,
+        "l_adiabatic": 0.05,
+        "l_cond": 0.55,
+
         "N_wick": 15,
         "N_wall": 15,
-        "N_evap": 20,
-        "N_adia": 10,
-        "N_cond": 110,
+        "N_evap": 30,
+        "N_adiabatic": 15,
+        "N_cond": 165,
+
+        "adiabatic_radial_flux": False,
+        "Temperature_BC": False,
         "h_vap": 1e6,
         "h_cond": 62.6,
         "T_cond": 300,
-        "k_wick": 45.0,
-        "k_wall": 21.7,
+        "T_op": 850,
+
+        "k_wick": 66.2,
+        "k_wall": 19.0,
+
         "P_C": 2476,
         "T_C": 856,
+
+        "Is_annular": True,
+        "K":1e-10,
         "r_pore": 2.e-5,
         "porosity": 0.7,
-        "mdot_HP": [1.5],
-    }   
+    }
 
-    HP_limits = heat_pipe_limitations(data)
-    HP_limits.plot_analytical_limits(600, 1500)
+    def build_flat_profile(Qtot, N):
+        Q = np.repeat(np.array([Qtot / N], dtype=float), N)
+        return Q
+
+    Q = build_flat_profile(560, data_Guoju_2["N_evap"])
+    data_Guoju_2["Q"] = Q
+    HP = Heatpipe(data_Guoju_2)
+    HP_limits = heat_pipe_limitations(HP)
+
+    T_low = 800
+    T_high = 850
+    T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
+    HP_limits.calculate_analytical_capillary_limit_Busse(T_span)
 
 
     

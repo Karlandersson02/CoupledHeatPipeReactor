@@ -295,7 +295,7 @@ class vapour_discretised:
 
         return np.cumsum(dpdx * dx) 
 
-    def analytical_pressure_drop(self):
+    def analytical_pressure_drop_cotter(self):
         T_v  = self.T_HP[-1]
         h_fg = calculate_Na_h_fg(T_v)
         rho_v = calculate_Na_rho_v(T_v)
