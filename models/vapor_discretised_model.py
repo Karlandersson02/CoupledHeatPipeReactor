@@ -7,6 +7,336 @@ from scipy.optimize import root, newton_krylov
 from models.sodium_properties import calculate_Na_h_fg, calculate_Na_viscosity_v, calculate_Na_pressure_v, calculate_Na_rho_v, calculate_Na_temperature_v
 
 class vapour_discretised:
+    def __init__(self, data):
+        self.r_outer  = data.get("r_outer")
+        self.delta_wick  = data.get("delta_wick")
+        self.delta_wall  = data.get("delta_wall")
+        self.r_vapour = self.r_outer - self.delta_wick - self.delta_wall
+
+        self.l_evap  = data.get("l_evap")
+        self.l_adiabatic  = data.get("l_adiabatic")
+        self.l_cond  = data.get("l_cond")
+        self.l_tot = self.l_evap + self.l_adiabatic + self.l_cond
+
+        self.N_evap = data.get("N_evap")
+        self.N_adiabatic = data.get("N_adiabatic")
+        self.N_cond = data.get("N_cond")
+        self.N_Z = self.N_evap + self.N_adiabatic + self.N_cond
+
+        self.N_wick = data.get("N_wick")
+        self.N_wall = data.get("N_wall")
+        self.N_R  = self.N_wick + self.N_wall
+
+        self.h_vap = data.get("h_vap")
+
+        self.T_HP = data.get("T_HP")
+        self.h_fg_Na = calculate_Na_h_fg(self.T_HP[-1])
+        self.viscosity_Na = calculate_Na_viscosity_v(self.T_HP[-1])
+
+        self.T_C = data.get("T_C")
+        self.P_C = data.get("P_C")
+
+        self.R = 8.314472
+        self.R_Na = self.R / 0.022990
+
+        self.niter = 1000
+
+    def calculate_Gamma(self):
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
+
+        T_v = self.T_HP[-1]
+
+        q_bis_surface = np.zeros(self.N_Z)
+        q_bis_surface[0: self.N_evap]          =  self.h_vap * (T_wick_lv_interface[0: self.N_evap]          - T_v)
+        q_bis_surface[self.N_Z - self.N_cond:] =  self.h_vap * (T_wick_lv_interface[self.N_Z - self.N_cond:] - T_v)
+        
+        # Heat transfer surface area density per unit volume.
+        # a_W = 2 * np.pi * self.r_vapour * delta_Z / np.pi * self.r_vapour**2 * delta_Z
+        a_W = 2 / self.r_vapour
+
+        Gamma = a_W * q_bis_surface / self.h_fg_Na
+
+        return Gamma
+
+    def calculate_friction_factor(self, T, u):
+        Rei = self.calculate_reynolds(T, u)
+
+        lami = np.zeros_like(Rei)
+        lami[Rei <= 2200] = 64 / Rei[Rei <= 2200]
+        lami[Rei > 3000] = 0.316 / Rei[Rei > 3000]**0.25
+        lami[(Rei > 2200) & (Rei <= 3000)] = Rei[(Rei > 2200) & (Rei <= 3000)] * 1.70088e-5 - 0.00832838
+        lami[Rei < 1e-10] = 1e-10
+
+        return lami
+
+    def calculate_reynolds(self, T, u):
+        Tbar = 0.5 * (T[1:] + T[:-1])
+        rhobar = calculate_Na_rho_v(Tbar)
+        Rei = rhobar * np.abs(u) * 2 * self.r_vapour / self.viscosity_Na
+        return Rei
+    
+    def get_mdot(self):
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
+        T_v = self.T_HP[-1]
+
+        A_int = 2 * np.pi * self.r_vapour * self.l_evap / self.N_evap
+        Qevap = np.sum(self.h_vap * (T_wick_lv_interface[:self.N_evap] - T_v)) * A_int
+        mdot_peak = Qevap / self.h_fg_Na
+
+        mdot = np.concatenate([
+            np.repeat(np.array([mdot_peak/self.N_evap]), self.N_evap) * np.arange(self.N_evap),
+            np.repeat(np.array([mdot_peak]), self.N_adiabatic),
+            np.repeat(np.array([mdot_peak/self.N_cond]), self.N_cond) * np.arange(self.N_cond)[::-1]
+        ])
+
+        return mdot
+    
+    def update_Gamma(self, T_i: np.ndarray, Gami: np.ndarray):
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R] 
+        a_W = 2 / self.r_vapour 
+        Gami[-1: ] = (a_W / self.h_fg_Na) * self.h_vap * (T_wick_lv_interface[-1: ] - T_i[-1: ])
+        return Gami
+
+    def calculate_residuals(
+        self,
+        u: np.ndarray,
+        T: np.ndarray,
+        Gamma: np.ndarray
+    ):
+        u_full = np.zeros(len(u) + 2)
+        u_full[1:-1] = u
+        ui   = u
+        uim1 = u_full[:-2]
+        uip1 = u_full[2:]
+
+        T_full = T
+        Ti    = T_full[1:]
+        Tim1  = T_full[:-1]
+        Tbar  = 0.5 * (Ti + Tim1)
+
+        Pi   = calculate_Na_pressure_v(Ti)
+        Pim1 = calculate_Na_pressure_v(Tim1)
+
+        rho_full = calculate_Na_rho_v(T_full)
+        rhoi     = rho_full[1:]
+        rhoim1   = rho_full[:-1]
+        rhobar   = calculate_Na_rho_v(Tbar)
+
+        dxi = np.zeros_like(T_full)
+        dxi[:self.N_evap] = self.l_evap / self.N_evap
+        dxi[self.N_evap:(self.N_evap + self.N_adiabatic)] = self.l_adiabatic / self.N_adiabatic
+        dxi[(self.N_evap + self.N_adiabatic):] = self.l_cond / self.N_cond
+
+        lami = self.calculate_friction_factor(T_full, u)
+
+        r1 = np.zeros_like(T_full)
+
+        r1[1:-1] = (
+            (uip1[:-1] * rhoi[:-1] - ui[:-1] * rhoim1[:-1])
+            - dxi[1:-1] * Gamma[1:-1]
+        )
+
+        r1[0] = (
+            (u_full[1] * rho_full[0])
+            - dxi[0] * Gamma[0]
+        )
+
+        r1[-1] = (
+            (-u_full[-2] * rho_full[-2])
+            - dxi[-1] * Gamma[-1]
+        )
+
+        r2 = (
+            (rhoi * ui**2 - rhoim1 * uim1**2)
+            # (rhoi * (ui + uip1) / 2 * ui - rhoim1 * (ui + uim1) / 2 * uim1)
+            # + self.h_fg_Na * rhobar * ((Ti - Tim1) / Tbar)
+            + (Pi - Pim1)
+            + dxi[1:] * lami * (1.0 / (4.0 * self.r_vapour)) * rhobar * ui * np.abs(ui)
+        )
+
+        return np.concatenate([self.r2r1 * r1, r2])
+    
+    def build_initial_velocity(self):
+        mdot = self.get_mdot()
+        rho_v = calculate_Na_rho_v(self.T_HP[-1])
+        A_v = np.pi * self.r_vapour**2
+        u_guess = mdot / (rho_v * A_v)
+        
+        return u_guess[1:]
+
+    def build_initial_temperature(self) -> np.ndarray:
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
+
+        # A good "cold end" estimate: average wick-LV interface temperature in condenser
+        T_cold_wall = float(np.mean(T_wick_lv_interface[-self.N_cond:]))
+
+        analytical_pressure_drop_q = self.analytical_pressure_drop_Busse()
+        P_cond_end = calculate_Na_pressure_v(T_cold_wall)
+        P_profile = np.array(analytical_pressure_drop_q) + P_cond_end - analytical_pressure_drop_q[-1]
+        T_profile_analytic = calculate_Na_temperature_v(P_profile)
+
+        return T_profile_analytic
+    
+    def analytical_pressure_drop_Busse(self):
+        T_v   = self.T_HP[-1]
+        h_fg  = calculate_Na_h_fg(T_v)
+        rho_v = calculate_Na_rho_v(T_v)
+        mu_v  = calculate_Na_viscosity_v(T_v)
+
+        Rv  = self.r_vapour
+        d_v = 2.0 * Rv
+        L_C = self.l_cond
+        L_e = self.l_evap
+
+        Q_tot = self.get_mdot()[self.N_evap] * h_fg
+
+        Re_re = Q_tot / (2 * np.pi * L_e * h_fg * mu_v)
+        Re_rc = Q_tot / (2 * np.pi * L_C * h_fg * mu_v)
+
+        # if Re_rc >= -2.25:
+        #     raise ValueError(
+        #         f"Busse (1967) invalid: Re_{{r,c}} = {Re_rc:.4f} <= -2.25."
+        #     )
+
+        def _alpha(Re_r):
+            inner = 5.0 + 18.0 / Re_r
+            disc  = inner**2 - 44.0 / 5.0
+            if disc < 0:
+                raise ValueError(
+                    f"Busse (1967): negative discriminant at Re_r = {Re_r:.4f}."
+                )
+            return (15.0 / 22.0) * (inner + np.sqrt(disc))**0.5
+
+        # --- Evaporator + adiabatic (combined, Busse 1967) ---
+        F = (7.0/9.0 - 1.7 * Re_re / (36 + 10*Re_re) * np.exp(-7.5 * self.l_adiabatic / (Re_re * L_e)))
+        
+        dP_evap = ((-4.0/np.pi) * (mu_v * Q_tot) / (rho_v * Rv**4 * h_fg) * (L_e * (1.0 + Re_re * F)))
+        
+        dP_adiabatic = -(8.0 * mu_v * Q_tot * self.l_adiabatic) / (rho_v * np.pi * Rv**4 * h_fg)
+
+        # --- Condenser pressure recovery (Busse 1967, eq. 11) ---
+        dP_cond = -dP_evap + -dP_adiabatic - (4.0/np.pi) * (mu_v * Q_tot) / (rho_v * Rv**4 * h_fg) * (self.l_evap + 2*self.l_adiabatic + self.l_cond)
+
+        # --- Distribute onto spatial grid ---
+        dx   = np.zeros(self.N_Z, dtype=float)
+
+        dx[:self.N_evap] = self.l_evap / (self.N_evap)
+        dx[self.N_evap: self.N_evap + self.N_adiabatic] = self.l_adiabatic / (self.N_adiabatic)
+        dx[self.N_evap + self.N_adiabatic:] = self.l_cond / (self.N_cond)
+        
+        dpdx = np.zeros(self.N_Z, dtype=float)
+
+        x_evap  = np.linspace(0, L_e, self.N_evap)
+        profile = (x_evap / L_e)**2
+        norm    = np.sum(profile) * (L_e / self.N_evap)
+        dpdx[:self.N_evap] = dP_evap * profile / norm
+
+        dpdx[self.N_evap:self.N_evap + self.N_adiabatic] = (
+            dP_adiabatic / (self.l_adiabatic)
+        )
+
+        j0 = self.N_evap + self.N_adiabatic
+        x2     = L_e + self.l_adiabatic
+        x_cond = np.linspace(x2, x2 + L_C, self.N_cond)
+        xi     = 1.0 - (x_cond - x2) / L_C
+        dP_cond_total = dP_cond  # scalar total
+        # distribute as (1 - xi)^2 profile, normalised to integrate to dP_cond_total
+        profile    = (xi)**2
+        dpdx[j0:] = dP_cond_total * profile / (np.sum(profile) * dx[self.N_evap + self.N_adiabatic:])
+
+        return np.cumsum(dpdx * dx) 
+
+    def analytical_pressure_drop(self):
+        T_v  = self.T_HP[-1]
+        h_fg = calculate_Na_h_fg(T_v)
+        rho_v = calculate_Na_rho_v(T_v)
+        self.viscosity_Na = calculate_Na_viscosity_v(self.T_HP[-1])
+
+        Rv  = self.r_vapour          # make sure this is in meters
+        mu_v = self.viscosity_Na
+
+        Av = np.pi * Rv**2
+        mdot = self.build_initial_velocity() * rho_v * Av
+
+        dmdx_evap = mdot[self.N_evap] / self.l_evap
+        dmdx_adia = 0.0
+        dmdx_cond = -mdot[self.N_evap] / self.l_cond
+
+        dpdx = np.zeros_like(mdot, dtype=float)
+
+        # Evaporator: q>0 => s=1, a=0
+        dpdx[:self.N_evap] = -(1.0) * (mdot[:self.N_evap] * dmdx_evap) / (4.0 * rho_v * Rv**4)
+
+        # Adiabatic: q=0 => s=0, a=1
+        i0 = self.N_evap
+        i1 = self.N_evap + self.N_adiabatic
+        dpdx[i0:i1] = -(8.0 * mu_v * mdot[i0:i1]) / (rho_v * np.pi * Rv**4)
+
+        # Condenser: q<0 => s=4/pi^2, a=0
+        j0 = self.N_Z - self.N_cond
+        dpdx[j0:] = -(4.0 / np.pi**2*1.0) * (mdot[j0:] * dmdx_cond) / (4.0 * rho_v * Rv**4)
+
+        # Integrate dp/dx over x
+        dx = self.l_tot / (self.N_Z - 1)
+        # return np.sum(dpdx) * dx
+        return np.cumsum(dpdx) * dx
+    
+    def converge_numeric(self, Gamma):
+        initial_guess = np.ones(self.N_Z - 1 + self.N_Z)
+        initial_guess[:self.N_Z-1] = self.build_initial_velocity()
+        initial_guess[self.N_Z-1:] = self.build_initial_temperature()
+
+        def residual_wrapper(initial_guess):
+            return self.calculate_residuals(
+                initial_guess[:(self.N_Z - 1)],
+                initial_guess[(self.N_Z - 1):],
+                Gamma
+            )
+
+        self.r2r1 = 1e3
+        self.train_history = np.zeros((1, len(initial_guess)))
+        def iteration_callback(x, f):
+            self.train_history = np.append(self.train_history, x[None], axis=0)
+            print(f"i: {len(self.train_history)-1}\t|F| = {np.linalg.norm(f, np.inf):.3g}\t|r1| = {np.linalg.norm(f[:self.N_Z], np.inf):.3g}\t|r2| = {np.linalg.norm(f[self.N_Z:], np.inf):.3g}")
+
+        sol_krylov = newton_krylov(
+            residual_wrapper,
+            initial_guess,
+            iter = self.niter,
+            verbose = False,
+            method = "lgmres",
+            callback = iteration_callback
+        )
+
+        self.train_history = self.train_history[1:]
+
+        T = sol_krylov[(self.N_Z - 1):]
+        u = sol_krylov[:(self.N_Z - 1)]
+
+        return T, u
+
+    def solve_numeric(self):
+        Gamma_hat = self.calculate_Gamma()
+
+        T, u = self.converge_numeric(Gamma_hat)
+
+        P = calculate_Na_pressure_v(T)
+
+        self.T = T
+        self.P_numeric = P
+        self.u = u
+
+    def get_temperature(self):
+        return self.T
+    
+    def get_pressure_numeric(self):
+        return self.P_numeric
+
+    def get_velocity(self):
+        return self.u
+
+
+class vapour_discretised_dimensionless:
     def __init__(self, data, initial_temperature_guess = None, initial_velocity_guess = None):
         # Geometry
 

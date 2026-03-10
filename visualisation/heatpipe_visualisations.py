@@ -36,7 +36,9 @@ class heatpipe_visualisations:
         T = self.heatpipe.get_vapour_temperature()
         l = np.linspace(0, self.l_tot, len(T))
 
+        plot = False
         if ax is None:
+            plot = True
             fig = self.setup_figure()        
             ax = fig.add_subplot(111)
 
@@ -47,7 +49,7 @@ class heatpipe_visualisations:
 
         ax.plot(l, T, **kwargs)
 
-        if ax is None:
+        if plot:
             plt.show()
         else:
             return ax
