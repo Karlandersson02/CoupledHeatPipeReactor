@@ -55,8 +55,8 @@ class liquid_discretised:
 
 
     def calculate_K_annular_wick(self):
-        self.r2 = self.r_wick
-        self.r1 = self.r_gap
+        self.r_2 = self.r_wick
+        self.r_1 = self.r_gap
 
         R_star = self.r_2 / self.r_1
 

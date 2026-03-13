@@ -161,6 +161,7 @@ class heat_pipe_limitations:
         
         # Iterate over all the temperatures in the span.
         for T in T_span:
+            print(f"Progress: {(T - np.min(T_span)) / (np.max(T_span) - np.min(T_span))} %")
             # Calculate the max capillary head for the current temperature.
             sigma_l = calculate_Na_surface_tension(T)
             Delta_p_cap_max = (2 * sigma_l / self.r_pore)
@@ -171,15 +172,16 @@ class heat_pipe_limitations:
             max_iter = 100
             for i in range(max_iter):
                 # Changing the setting in the heat pipe.
-                Q_array = build_flat_profile(Q, self.HP.data)
+                Q_array = build_flat_profile(Q, self.HP.data["N_evap"])
                 self.HP.data["Q"] = Q_array
-                self.data["T_HP"] = None
+                self.HP.data["T_HP"] = None
 
-                self.T_op.data["Temperature_BC"] = T
+                self.HP.data["T_op"] = T
 
                 # Solve for the total pressure profile with a variable wet point.
-                P_l = self.HP.get_liquid_pressure_drop_profile()
+                self.HP.setup_fluid_models()
                 P_v = self.analytical_pressure_drop_Busse()
+                P_l = self.HP.get_liquid_pressure_drop_profile()
 
                 P_v -= P_v[0]
                 P_l -= P_l[0]
@@ -219,10 +221,14 @@ class heat_pipe_limitations:
                     Q -= 10
 
                 Delta_p_margin = new_Delta_p_margin
-                     
 
+        plt.plot(T_span, Q_sonic, label="Sonic limit")
+        plt.xlabel("Temperature [Kelvin]")
+        plt.ylabel("Heat transfer [W]")
+ 
+        plt.show()
 
-
+        return Q_cap 
     
     
     def calculate_analytical_boiling_limit(self, T_span):
@@ -328,7 +334,7 @@ class heat_pipe_limitations:
     
 
     def analytical_pressure_drop_Busse(self):
-        T_v   = self.T_HP[-1]
+        T_v   = self.HP.calculated_quantities["heatpipe_T"][-1]
         h_fg  = calculate_Na_h_fg(T_v)
         rho_v = calculate_Na_rho_v(T_v)
         mu_v  = calculate_Na_viscosity_v(T_v)
@@ -338,7 +344,7 @@ class heat_pipe_limitations:
         L_C = self.l_cond
         L_e = self.l_evap
 
-        Q_tot = self.get_mdot()[self.N_evap] * h_fg
+        Q_tot = self.HP.liquid_discretised.get_mdot()[self.N_evap] * h_fg
 
         Re_re = Q_tot / (2 * np.pi * L_e * h_fg * mu_v)
         Re_rc = Q_tot / (2 * np.pi * L_C * h_fg * mu_v)
@@ -399,8 +405,9 @@ class heat_pipe_limitations:
 if __name__ == "__main__":
     data_Guoju_2 = {
         "r_outer": .007 + 0.001 + 0.0005,
-        "delta_wick": 0.0005,
         "delta_wall": 0.001,
+        "delta_gap": 0.,
+        "delta_wick": 0.0005,
         "l_evap": 0.1,
         "l_adiabatic": 0.05,
         "l_cond": 0.55,
