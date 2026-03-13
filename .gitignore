@@ -10,3 +10,5 @@ outputs/*
 .venv
 Figures/*
 CoupledSystems/__pycache__
+NuclearData/*
+openMC/fuelAssembly/__pycache__
