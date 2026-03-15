@@ -44,6 +44,8 @@ class heat_pipe_limitations:
 
         self.r_pore   = HP.data.get("r_pore")
         self.porosity = HP.data.get("porosity")
+        self.K          = HP.data.get("K")
+        self.Is_annular = HP.data.get("Is_annular")
         self.T_op     = HP.data.get("T_op")
         self.mdot_HP  = HP.data.get("mdot_HP")
 
@@ -102,10 +104,13 @@ class heat_pipe_limitations:
         sigma_l = calculate_Na_surface_tension(T_span)
 
         
-        # Calculating the pressure drop due to viscous forces in the liquid flow. 
-        K = self.calculate_K_annular_wick()
-    
-        A_wick = np.pi * (self.r_1**2 - self.r_2**2)  
+        # Calculating the pressure drop due to viscous forces in the liquid flow.     
+        if self.Is_annular == True:
+            K = self.calculate_K_annular_wick()
+            A_wick = np.pi * (self.r_gap**2 - self.r_wick**2) 
+        else:
+            K = self.K
+            A_wick = np.pi * (self.r_wick**2 - self.r_vapour**2)
 
         L_cap_max = (0.5 * self.l_evap + self.l_adiabatic+ 0.5 * self.l_cond)
 
@@ -153,35 +158,42 @@ class heat_pipe_limitations:
         # Must have flux BC for this to work.
         self.HP.data["Temperature_BC"] = False
 
-        # Initial condition for Q. Might worth looking in to.
-        Q = 50
+        # Initial condition for Q. Might be worth looking in to.
+        Q = 1000.
+        Q_old = 1000.
+        Delta_Q = 10.
 
         # Initialize the Q vector to store results.
         Q_cap = np.array([])
         
         # Iterate over all the temperatures in the span.
         for T in T_span:
-            print(f"Progress: {(T - np.min(T_span)) / (np.max(T_span) - np.min(T_span))} %")
+            print(f"Progress: {(T - np.min(T_span))*100 / (np.max(T_span) - np.min(T_span))} %")
             # Calculate the max capillary head for the current temperature.
             sigma_l = calculate_Na_surface_tension(T)
             Delta_p_cap_max = (2 * sigma_l / self.r_pore)
 
-            # Set margin to 0 to force atleast two iterations, due to "< 0." and "> 0." in break condition 
+            # Set margin to 0 to force atleast two iterations, due to "< 0." in break condition.
             Delta_p_margin = 0.
 
-            max_iter = 100
+            max_iter = 200
             for i in range(max_iter):
-                # Changing the setting in the heat pipe.
+                # Changing the data in the heat pipe to reflect current Q and T.
                 Q_array = build_flat_profile(Q, self.HP.data["N_evap"])
                 self.HP.data["Q"] = Q_array
-                self.HP.data["T_HP"] = None
-
                 self.HP.data["T_op"] = T
 
-                # Solve for the total pressure profile with a variable wet point.
+                # Recalculate the conduction model temperature profile with the current settings for Q and T.
+                # Since the conduction model data cannot be changed once the heatpipe is initialized, 
+                # the heat pipe object needs to be reinitialized each iteration. 
+                # !!! Definetly needs to be changed if this approach gives enough of a different answer
+                # compared to the version in Faghri 1995.!!!
+                self.HP = Heatpipe(self.HP.data)
                 self.HP.setup_fluid_models()
+
+                # Solve for the total pressure profile with a variable wet point.
                 P_v = self.analytical_pressure_drop_Busse()
-                P_l = self.HP.get_liquid_pressure_drop_profile()
+                P_l = self.HP.liquid_discretised.get_pressure_drop_profile()
 
                 P_v -= P_v[0]
                 P_l -= P_l[0]
@@ -209,24 +221,21 @@ class heat_pipe_limitations:
                 new_Delta_p_margin = Delta_p_cap_max - Total_Delta_P_drop_v_l
 
                 # Break if there is a sign difference between new and old margin (Crossed the limit)
+                print(Total_Delta_P_drop_v_l, Delta_p_cap_max, Q, Delta_p_margin * new_Delta_p_margin / np.abs(Delta_p_margin * new_Delta_p_margin))
                 if Delta_p_margin * new_Delta_p_margin < 0.:
-                    Q_cap = np.append(Q_cap, Q)
+                    Q_cap = np.append(Q_cap, (Q + Q_old)/2)
                     break
 
                 # Change Q based on the margin
                 if new_Delta_p_margin > 0.:
-                    Q += 10
+                    Q_old = Q
+                    Q += Delta_Q
 
                 if new_Delta_p_margin < 0.:
-                    Q -= 10
+                    Q_old = Q
+                    Q -= Delta_Q
 
                 Delta_p_margin = new_Delta_p_margin
-
-        plt.plot(T_span, Q_sonic, label="Sonic limit")
-        plt.xlabel("Temperature [Kelvin]")
-        plt.ylabel("Heat transfer [W]")
- 
-        plt.show()
 
         return Q_cap 
     
@@ -322,6 +331,9 @@ class heat_pipe_limitations:
     
 
     def calculate_K_annular_wick(self):
+        self.r_2 = self.r_wick
+        self.r_1 = self.r_gap
+
         R_star = self.r_2 / self.r_1
 
         fRe_l = 16 * (1 - R_star)**2 / (1 + R_star**2 - (1 - R_star**2)/np.log(1/R_star))
@@ -330,7 +342,7 @@ class heat_pipe_limitations:
 
         K = D_h**2 / (2 * fRe_l)
 
-        return K    
+        return K  
     
 
     def analytical_pressure_drop_Busse(self):
@@ -345,6 +357,8 @@ class heat_pipe_limitations:
         L_e = self.l_evap
 
         Q_tot = self.HP.liquid_discretised.get_mdot()[self.N_evap] * h_fg
+
+        print(f"Q_tot = {Q_tot}")
 
         Re_re = Q_tot / (2 * np.pi * L_e * h_fg * mu_v)
         Re_rc = Q_tot / (2 * np.pi * L_C * h_fg * mu_v)
@@ -405,9 +419,9 @@ class heat_pipe_limitations:
 if __name__ == "__main__":
     data_Guoju_2 = {
         "r_outer": .007 + 0.001 + 0.0005,
-        "delta_wall": 0.001,
-        "delta_gap": 0.,
         "delta_wick": 0.0005,
+        "delta_gap": 0.,
+        "delta_wall": 0.001,
         "l_evap": 0.1,
         "l_adiabatic": 0.05,
         "l_cond": 0.55,
@@ -431,7 +445,7 @@ if __name__ == "__main__":
         "P_C": 2476,
         "T_C": 856,
 
-        "Is_annular": True,
+        "Is_annular": False,
         "K":1e-10,
         "r_pore": 2.e-5,
         "porosity": 0.7,
@@ -446,10 +460,18 @@ if __name__ == "__main__":
     HP = Heatpipe(data_Guoju_2)
     HP_limits = heat_pipe_limitations(HP)
 
-    T_low = 800
-    T_high = 850
+    T_low = 700
+    T_high = 900
     T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
-    HP_limits.calculate_analytical_capillary_limit_Busse(T_span)
+    Q_cap_analytic = HP_limits.calculate_analytical_capillary_limit(T_span)
+    Q_cap_Busse = HP_limits.calculate_analytical_capillary_limit_Busse(T_span)
+
+    plt.plot(T_span, Q_cap_Busse, label="Busse")
+    plt.plot(T_span, Q_cap_analytic, label="Analytic")
+    plt.xlabel("Temperature [Kelvin]")
+    plt.ylabel("Heat transfer [W]")
+
+    plt.show()
 
 
     

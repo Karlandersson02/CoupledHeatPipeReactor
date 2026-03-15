@@ -178,7 +178,7 @@ def create_heat_pipe_universe(HP):
     vapour_cell = openmc.Cell(name='vapour',   fill=None,            region=-s_vapour)
     wick_cell   = openmc.Cell(name='wick',     fill=wick_material,   region=+s_vapour & -s_wick)
     gap_cell    = openmc.Cell(name='gap',      fill=sodium,          region=+s_wick   & -s_gap)
-    wall_cell   = openmc.Cell(name='wall',     fill=fecral_alloy, region=+s_gap    & -s_wall)
+    wall_cell   = openmc.Cell(name='wall',     fill=fecral_alloy,    region=+s_gap    & -s_wall)
     mod_cell    = openmc.Cell(name='graphite', fill=graphite,        region=+s_wall)
 
     return openmc.Universe(cells=(vapour_cell, wick_cell, gap_cell, wall_cell, mod_cell))
