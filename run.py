@@ -117,6 +117,7 @@ heatpipe = Heatpipe(data_Guoju_1)
 heatpipe.setup_fluid_models()
 heatpipe_vis = heatpipe_visualisations(heatpipe)
 heatpipe_vis.plot_vapour_temperature()
+heatpipe_vis.plot_vapour_pressure_drop()
 
 
 # -------------- Iterative

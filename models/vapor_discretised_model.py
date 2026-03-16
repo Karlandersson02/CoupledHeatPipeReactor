@@ -6,7 +6,7 @@ from scipy.optimize import root, newton_krylov
 
 from models.sodium_properties import calculate_Na_h_fg, calculate_Na_viscosity_v, calculate_Na_pressure_v, calculate_Na_rho_v, calculate_Na_temperature_v
 
-class vapour_discretised:
+class vapour_discretised_2:
     def __init__(self, data):
         self.r_outer  = data.get("r_outer")
         self.delta_wick  = data.get("delta_wick")
@@ -114,8 +114,8 @@ class vapour_discretised:
         Tim1  = T_full[:-1]
         Tbar  = 0.5 * (Ti + Tim1)
 
-        Pi   = calculate_Na_pressure_v(Ti)
-        Pim1 = calculate_Na_pressure_v(Tim1)
+        # Pi   = calculate_Na_pressure_v(Ti)
+        # Pim1 = calculate_Na_pressure_v(Tim1)
 
         rho_full = calculate_Na_rho_v(T_full)
         rhoi     = rho_full[1:]
@@ -149,8 +149,8 @@ class vapour_discretised:
         r2 = (
             (rhoi * ui**2 - rhoim1 * uim1**2)
             # (rhoi * (ui + uip1) / 2 * ui - rhoim1 * (ui + uim1) / 2 * uim1)
-            # + self.h_fg_Na * rhobar * ((Ti - Tim1) / Tbar)
-            + (Pi - Pim1)
+            + self.h_fg_Na * rhobar * ((Ti - Tim1) / Tbar)
+            # + (Pi - Pim1)
             + dxi[1:] * lami * (1.0 / (4.0 * self.r_vapour)) * rhobar * ui * np.abs(ui)
         )
 
@@ -293,7 +293,7 @@ class vapour_discretised:
                 Gamma
             )
 
-        self.r2r1 = 1e3
+        self.r2r1 = 50
         self.train_history = np.zeros((1, len(initial_guess)))
         def iteration_callback(x, f):
             self.train_history = np.append(self.train_history, x[None], axis=0)
@@ -336,7 +336,7 @@ class vapour_discretised:
         return self.u
 
 
-class vapour_discretised_dimensionless:
+class vapour_discretised:
     def __init__(self, data, initial_temperature_guess = None, initial_velocity_guess = None):
         # Geometry
 
@@ -528,8 +528,8 @@ class vapour_discretised_dimensionless:
         r2_hat = (
             (rhoi_hat * ui_hat**2 - rhoim1_hat * uim1_hat**2)
             # (rhoi_hat * (ui_hat + uip1_hat) / 2 * ui_hat - rhoim1_hat * (ui_hat + uim1_hat) / 2 * uim1_hat)
-            # + hfg_over_U2 * rhobar_hat * ((Ti_hat - Tim1_hat) / Tbar_hat)
-            + (self.P0 / (self.rho0 * self.U0**2)) * (Pi_hat - Pim1_hat)
+            + hfg_over_U2 * rhobar_hat * ((Ti_hat - Tim1_hat) / Tbar_hat)
+            # + (self.P0 / (self.rho0 * self.U0**2)) * (Pi_hat - Pim1_hat)
             + dxi_hat[1:] * lami * geom * rhobar_hat * ui_hat * np.abs(ui_hat)
         )
 

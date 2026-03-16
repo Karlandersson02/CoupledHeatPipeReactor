@@ -9,10 +9,10 @@ from visualisation.visualise_discretised_results import display_temperature_dist
 class heatpipe_visualisations:
     def __init__(self, heatpipe: Heatpipe):
         self.heatpipe = heatpipe
-        l_evap = self.heatpipe.data["l_evap"]
-        l_adiabatic = self.heatpipe.data["l_adiabatic"]
-        l_cond = self.heatpipe.data["l_cond"]
-        self.l_tot = l_evap + l_adiabatic + l_cond
+        self.l_evap = self.heatpipe.data["l_evap"]
+        self.l_adiabatic = self.heatpipe.data["l_adiabatic"]
+        self.l_cond = self.heatpipe.data["l_cond"]
+        self.l_tot = self.l_evap + self.l_adiabatic + self.l_cond
 
         self.fontsize = 26
         self.fontfamily = "Computer modern"
@@ -47,7 +47,7 @@ class heatpipe_visualisations:
             ax.set_xlabel("Length [m]")
             ax.set_ylabel(r"Temperature $T$ [K]")
 
-        ax.plot(l, T, **kwargs)
+        ax.plot(l, T, color="black", label="Discretised")
 
         if plot:
             plt.show()
@@ -59,7 +59,9 @@ class heatpipe_visualisations:
         P -= P[0]
         l = np.linspace(0, self.l_tot, len(P))
 
+        plot = False
         if ax is None:
+            plot = True
             fig = self.setup_figure()        
             ax = fig.add_subplot(111)
 
@@ -68,9 +70,9 @@ class heatpipe_visualisations:
             ax.set_xlabel("Length [m]")
             ax.set_ylabel(r"Pressure $\Delta P$ [Pa]")
 
-        ax.plot(l, P, **kwargs)
+        ax.plot(l, P, color = "black", label = "Discretised")
 
-        if ax is None:
+        if plot:
             plt.show()
         else:
             return ax
