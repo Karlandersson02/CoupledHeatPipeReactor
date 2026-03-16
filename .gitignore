@@ -10,3 +10,9 @@ outputs/*
 .venv
 Figures/*
 CoupledSystems/__pycache__
+NuclearData/*
+openMC/fuelAssembly/__pycache__
+walkthrough_gmsh_tutorials
+openMC/fuelAssembly/*
+!openMC/fuelAssembly/fuel_assembly_openmc.py
+openMC/test

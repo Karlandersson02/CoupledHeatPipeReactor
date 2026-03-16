@@ -8,9 +8,9 @@ from models.sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_
 class liquid_discretised:
     def __init__(self, data):
         self.r_outer  = data.get("r_outer")
-        self.delta_wall  = data.get("delta_wall")
-        self.delta_gap   = data.get("delta_gap")
         self.delta_wick  = data.get("delta_wick")
+        self.delta_gap   = data.get("delta_gap")
+        self.delta_wall  = data.get("delta_wall")
         self.r_gap    = self.r_outer - self.delta_wall
         self.r_wick   = self.r_gap   - self.delta_gap
         self.r_vapour = self.r_wick  - self.delta_wick
@@ -55,8 +55,8 @@ class liquid_discretised:
 
 
     def calculate_K_annular_wick(self):
-        self.r2 = self.r_wick
-        self.r1 = self.r_gap
+        self.r_2 = self.r_wick
+        self.r_1 = self.r_gap
 
         R_star = self.r_2 / self.r_1
 
@@ -69,7 +69,10 @@ class liquid_discretised:
         return K
 
     def get_pressure_drop_profile(self):
-        A_wick = np.pi * (self.r_gap**2 - self.r_wick**2) 
+        if self.Annular == True:
+            A_wick = np.pi * (self.r_gap**2 - self.r_wick**2) 
+        else:
+            A_wick = np.pi * (self.r_wick**2 - self.r_vapour**2)
         
         T_wick = np.mean(np.array(self.T_HP)[:-1].reshape(self.N_Z, self.N_R)[:, :self.N_wick], axis=1) 
 
@@ -77,7 +80,9 @@ class liquid_discretised:
         rho_l = calculate_Na_rho_l(T_wick)
 
         if self.Annular == True:
-            self.K = self.calculate_K_annular_wick()
+            K = self.calculate_K_annular_wick()
+        else:
+            K = self.K
 
         delta_z = np.concatenate(
             [np.ones(self.N_evap) * self.l_evap / self.N_evap,
@@ -86,8 +91,11 @@ class liquid_discretised:
             )
         
         mdot = self.get_mdot()
-        P = -np.cumsum(mu_l * np.array(mdot) / (rho_l * A_wick * self.K) * delta_z)
+        
+        P = -np.cumsum(mu_l * np.array(mdot) / (rho_l * A_wick * K) * delta_z)
         self.pressure = P
+
+        return P
 
 
 if __name__ == "__main__":
