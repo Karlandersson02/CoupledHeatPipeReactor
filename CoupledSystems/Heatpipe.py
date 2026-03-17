@@ -17,7 +17,7 @@ class Heatpipe:
         T = self.get_heatpipe_temperature()
         self.data["T_HP"] = T
         self.vapour_discretised = vapour_discretised(self.data)
-        self.liquid_discretised = liquid_discretised(self.data)
+        # self.liquid_discretised = liquid_discretised(self.data)
 
     def get_heatpipe_temperature(self):
         T = self.calculated_quantities.get("heatpipe_T")
