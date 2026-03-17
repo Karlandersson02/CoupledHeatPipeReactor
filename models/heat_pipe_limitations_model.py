@@ -57,7 +57,7 @@ class heat_pipe_limitations:
         T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
 
         Q_sonic       = HP_limits.calculate_analytical_sonic_limit(T_span)
-        Q_cap         = HP_limits.calculate_analytical_capillary_limit_Busse(T_span)
+        Q_cap         = HP_limits.calculate_analytical_capillary_limit(T_span)
         Q_boil        = HP_limits.calculate_analytical_boiling_limit(T_span)
         Q_entrainment = HP_limits.calculate_analytical_entrainment_limit(T_span)
 
@@ -260,7 +260,7 @@ class heat_pipe_limitations:
             Q_rhs = (2 * np.pi * self.l_evap * k_eff[i] * dT) / np.log(self.r_wick / self.r_vapour)
             return Q - Q_rhs
 
-        def find_bracket(residual, i, Q_min=1e-3, Q_max=1e12, n_search=500):
+        def find_bracket(residual, i, Q_min=1e-3, Q_max=1e13, n_search=500):
             Q_vals = np.logspace(np.log10(Q_min), np.log10(Q_max), n_search)
             r_vals = np.array([residual(Q, i) for Q in Q_vals])
             sign_changes = np.where(np.diff(np.sign(r_vals)))[0]
@@ -418,9 +418,9 @@ class heat_pipe_limitations:
 
 if __name__ == "__main__":
     data_Guoju_2 = {
-        "r_outer": .007 + 0.001 + 0.0005,
+        "r_outer": .007 + 0.001 + 0.0005 + 0.0005,
         "delta_wick": 0.0005,
-        "delta_gap": 0.,
+        "delta_gap": 0.0005,
         "delta_wall": 0.001,
         "l_evap": 0.1,
         "l_adiabatic": 0.05,
@@ -428,9 +428,9 @@ if __name__ == "__main__":
 
         "N_wick": 15,
         "N_wall": 15,
-        "N_evap": 30,
-        "N_adiabatic": 15,
-        "N_cond": 165,
+        "N_evap": 20,
+        "N_adiabatic": 10,
+        "N_cond": 160,
 
         "adiabatic_radial_flux": False,
         "Temperature_BC": False,
@@ -445,11 +445,42 @@ if __name__ == "__main__":
         "P_C": 2476,
         "T_C": 856,
 
-        "Is_annular": False,
+        "Is_annular": True,
         "K":1e-10,
         "r_pore": 2.e-5,
         "porosity": 0.7,
     }
+
+    data = {
+        "r_outer":  0.01410/2,
+        "r_wall":   0.01410/2,
+        "r_wick":   0.0130/2, 
+        "r_vapour": 0.012310/2,
+        "delta_wick": 0.0130/2 - 0.012310/2,
+        "delta_gap": 0.,
+        "delta_wall": 0.,
+        "delta_wall": 0.,
+        "l_evap": 0.3,
+        "l_adiabatic": 0.2,
+        "l_cond": 0.3,
+        "N_wick": 15,
+        "N_wall": 15,
+        "N_evap": 20,
+        "N_adiabatic": 10,
+        "N_cond": 110,
+        "h_vap": 1e6,
+        "h_cond": 62.6,
+        "T_cond": 300,
+        "k_wick": 45.0,
+        "k_wall": 21.7,
+        "P_C": 2476,
+        "T_C": 856,
+        "Is_annular": False,
+        "K":1e-10,
+        "r_pore": 2.e-5,
+        "porosity": 0.7,
+        "mdot_HP": [1.5],
+    }   
 
     def build_flat_profile(Qtot, N):
         Q = np.repeat(np.array([Qtot / N], dtype=float), N)
@@ -460,18 +491,20 @@ if __name__ == "__main__":
     HP = Heatpipe(data_Guoju_2)
     HP_limits = heat_pipe_limitations(HP)
 
-    T_low = 700
-    T_high = 900
-    T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
-    Q_cap_analytic = HP_limits.calculate_analytical_capillary_limit(T_span)
-    Q_cap_Busse = HP_limits.calculate_analytical_capillary_limit_Busse(T_span)
+    HP_limits.plot_analytical_limits(700, 1400)
 
-    plt.plot(T_span, Q_cap_Busse, label="Busse")
-    plt.plot(T_span, Q_cap_analytic, label="Analytic")
-    plt.xlabel("Temperature [Kelvin]")
-    plt.ylabel("Heat transfer [W]")
+    # T_low = 700
+    # T_high = 900
+    # T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
+    # Q_cap_analytic = HP_limits.calculate_analytical_capillary_limit(T_span)
+    # Q_cap_Busse = HP_limits.calculate_analytical_capillary_limit_Busse(T_span)
 
-    plt.show()
+    # plt.plot(T_span, Q_cap_Busse, label="Busse")
+    # plt.plot(T_span, Q_cap_analytic, label="Analytic")
+    # plt.xlabel("Temperature [Kelvin]")
+    # plt.ylabel("Heat transfer [W]")
+
+    # plt.show()
 
 
     
