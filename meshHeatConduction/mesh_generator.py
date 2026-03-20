@@ -13,7 +13,7 @@ r_f = 1.5
 
 theta_hex = (np.pi / 6)
 
-lc = 0.5
+lc = 0.25
 
 gmsh.initialize()
 gmsh.model.add("Cell of hex fuel assembly")
@@ -45,8 +45,8 @@ gmsh.model.add("Cell of hex fuel assembly")
 
 # p17 = gmsh.model.geo.addPoint(r_HP * np.sin(theta_hex), r_HP * np.cos(theta_hex), 0, lc)
 
-p1  = gmsh.model.geo.addPoint(0,                                                          0,                          0, lc)
-p2  = gmsh.model.geo.addPoint(0,                                                          r_HP,                       0, lc)
+p1  = gmsh.model.geo.addPoint(0,                                                          0,                            0, lc)
+p2  = gmsh.model.geo.addPoint(0,                                                          r_HP,                         0, lc)
 
 p3  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 3./2. - r_f,        0, lc)
 p4  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 3./2.,              0, lc)
@@ -66,7 +66,13 @@ p14 = gmsh.model.geo.addPoint(np.tan(theta_hex) * 2 * l_pitch,                  
 p15 = gmsh.model.geo.addPoint(np.tan(theta_hex) * 2 * l_pitch - r_HP,                     2 * l_pitch,                            0, lc)
 p16 = gmsh.model.geo.addPoint(np.tan(theta_hex) * 2 * l_pitch - r_HP * np.sin(theta_hex), 2 * l_pitch - r_HP * np.cos(theta_hex), 0, lc)
 
-p17 = gmsh.model.geo.addPoint(r_HP * np.sin(theta_hex),                                  r_HP * np.cos(theta_hex),   0, lc)
+p17 = gmsh.model.geo.addPoint(r_HP * np.sin(theta_hex),                                   r_HP * np.cos(theta_hex),   0, lc)
+
+p18 = gmsh.model.geo.addPoint(np.tan(theta_hex) * 2 * l_pitch,                            l_pitch * 7./2.,      0, lc)   
+p19 = gmsh.model.geo.addPoint(np.tan(theta_hex) * 2 * l_pitch+r_f,                        l_pitch * 7./2.,      0, lc)
+p20 = gmsh.model.geo.addPoint(np.tan(theta_hex) * 2 * l_pitch,                            l_pitch * 7./2.+r_f,  0, lc)
+p21 = gmsh.model.geo.addPoint(np.tan(theta_hex) * 2 * l_pitch-r_f,                        l_pitch * 7./2.,      0, lc)
+p22 = gmsh.model.geo.addPoint(np.tan(theta_hex) * 2 * l_pitch,                            l_pitch * 7./2.-r_f,  0, lc)
 
 # Hex-slice outer loop
 Outer_line1 = gmsh.model.geo.addLine(p1, p11)
@@ -91,6 +97,13 @@ Fuel2_line1       = gmsh.model.geo.addLine(p7, p10)
 Fuel2_circle_arc1 = gmsh.model.geo.addCircleArc(p10, p8, p9)
 Fuel2_circle_arc2 = gmsh.model.geo.addCircleArc(p9, p8, p7)
 gmsh.model.geo.addCurveLoop([Fuel2_line1, Fuel2_circle_arc1, Fuel2_circle_arc2], 4)
+
+# fuel 3
+Fuel3_circle_arc1 = gmsh.model.geo.addCircleArc(p19, p18, p20)
+Fuel3_circle_arc2 = gmsh.model.geo.addCircleArc(p20, p18, p21)
+Fuel3_circle_arc3 = gmsh.model.geo.addCircleArc(p21, p18, p22)
+Fuel3_circle_arc4 = gmsh.model.geo.addCircleArc(p22, p18, p19)
+gmsh.model.geo.addCurveLoop([Fuel3_circle_arc1, Fuel3_circle_arc2, Fuel3_circle_arc3, Fuel3_circle_arc4], 7)
 
 # Outer Heat pipe
 HP2_line1       = gmsh.model.geo.addLine(p13, p14)
@@ -149,8 +162,10 @@ gmsh.model.geo.addCurveLoop([
 # gmsh.model.geo.addPlaneSurface([2], 7)  # HP1
 # gmsh.model.geo.addPlaneSurface([3], 8)  # Fuel1
 # gmsh.model.geo.addPlaneSurface([4], 9)  # Fuel2
+# gmsh.model.geo.addPlaneSurface([7], 12)   # Fuel3
 # gmsh.model.geo.addPlaneSurface([5], 10)  # HP2
-gmsh.model.geo.addPlaneSurface([6], 11) # Moderator
+gmsh.model.geo.addPlaneSurface([6, 7], 11) # Moderator with circular hole
+
 
 gmsh.model.geo.synchronize()
 
