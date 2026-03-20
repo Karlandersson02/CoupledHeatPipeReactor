@@ -16,3 +16,4 @@ walkthrough_gmsh_tutorials
 openMC/fuelAssembly/*
 !openMC/fuelAssembly/fuel_assembly_openmc.py
 openMC/test
+meshHeatConduction/__pycache__

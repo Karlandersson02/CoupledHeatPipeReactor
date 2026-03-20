@@ -1,6 +1,10 @@
 import sys
 import gmsh
 import numpy as np
+import meshio
+
+from meshHeatConduction.triangle_mesh import UnstructuredMesh, Surface
+
 
 l_pitch = 10.
 r_HP = 3.
@@ -8,7 +12,7 @@ r_f = 1.5
 
 theta_hex = (np.pi / 6)
 
-lc = 1.
+lc = 0.5
 
 gmsh.initialize()
 gmsh.model.add("Cell of hex fuel assembly")
@@ -43,15 +47,15 @@ gmsh.model.add("Cell of hex fuel assembly")
 p1  = gmsh.model.geo.addPoint(0,                                                          0,                          0, lc)
 p2  = gmsh.model.geo.addPoint(0,                                                          r_HP,                       0, lc)
 
-p3  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 3/2 - r_f,        0, lc)
-p4  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 3/2,              0, lc)
-p5  = gmsh.model.geo.addPoint(r_f,                                                        l_pitch * 3/2,              0, lc)
-p6  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 3/2 + r_f,        0, lc)
+p3  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 3./2. - r_f,        0, lc)
+p4  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 3./2.,              0, lc)
+p5  = gmsh.model.geo.addPoint(r_f,                                                        l_pitch * 3./2.,              0, lc)
+p6  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 3./2. + r_f,        0, lc)
 
-p7  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 5/2 - r_f,        0, lc)
-p8  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 5/2,              0, lc)
-p9  = gmsh.model.geo.addPoint(r_f,                                                        l_pitch * 5/2,              0, lc)
-p10 = gmsh.model.geo.addPoint(0,                                                          l_pitch * 5/2 + r_f,        0, lc)
+p7  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 5./2. - r_f,        0, lc)
+p8  = gmsh.model.geo.addPoint(0,                                                          l_pitch * 5./2.,              0, lc)
+p9  = gmsh.model.geo.addPoint(r_f,                                                        l_pitch * 5./2.,              0, lc)
+p10 = gmsh.model.geo.addPoint(0,                                                          l_pitch * 5./2. + r_f,        0, lc)
 
 p11 = gmsh.model.geo.addPoint(0,                                                          l_pitch * 4,                0, lc)
 p12 = gmsh.model.geo.addPoint(np.tan(theta_hex) * 4 * l_pitch,                            4 * l_pitch ,                0, lc)
@@ -141,10 +145,10 @@ gmsh.model.geo.addCurveLoop([
 ], 6)
 
 # Adding the corresponding surfaces
-gmsh.model.geo.addPlaneSurface([2], 7)  # HP1
-gmsh.model.geo.addPlaneSurface([3], 8)  # Fuel1
-gmsh.model.geo.addPlaneSurface([4], 9)  # Fuel2
-gmsh.model.geo.addPlaneSurface([5], 10)  # HP2
+# gmsh.model.geo.addPlaneSurface([2], 7)  # HP1
+# gmsh.model.geo.addPlaneSurface([3], 8)  # Fuel1
+# gmsh.model.geo.addPlaneSurface([4], 9)  # Fuel2
+# gmsh.model.geo.addPlaneSurface([5], 10)  # HP2
 gmsh.model.geo.addPlaneSurface([6], 11) # Moderator
 
 gmsh.model.geo.synchronize()
@@ -152,5 +156,26 @@ gmsh.model.geo.synchronize()
 gmsh.model.mesh.generate(2)
 if '-nopopup' not in sys.argv:
     gmsh.fltk.run()
-
+gmsh.write("mesh.msh")
 gmsh.finalize()
+
+mesh = meshio.read("mesh.msh")
+
+points = mesh.points[:, :2]                 # x,y coordinates
+triangles = mesh.cells_dict["triangle"]     # element connectivity
+
+mesh = UnstructuredMesh(points, triangles)
+
+tri = 16
+neighbours, surfaces = mesh.get_faces_and_neighbours(tri)
+print("Neighbours of triangle 0:", neighbours)
+print("Center of triangle 0:", mesh.get_center_point(tri))
+print("Boundary triangles:", mesh.get_boundary_triangle())
+print("Surface normals of triangle 0:\n", mesh.get_surface_normals(tri))
+
+for i, s in enumerate(surfaces):
+    print(f"\nSurface {i}")
+    print("  nodes:", s.nodes)
+    print("  center:", s.center)
+    print("  length:", s.length)
+    print("  attached triangles:", s.triangles)
