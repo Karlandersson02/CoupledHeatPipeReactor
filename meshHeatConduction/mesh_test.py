@@ -1,7 +1,8 @@
 import sys
-import gmsh
 import numpy as np
-import meshio
+import gmsh # type: ignore
+import meshio # type: ignore
+
 
 from meshHeatConduction.triangle_mesh import UnstructuredMesh, Surface
 
@@ -171,7 +172,7 @@ neighbours, surfaces = mesh.get_faces_and_neighbours(tri)
 print("Neighbours of triangle 0:", neighbours)
 print("Center of triangle 0:", mesh.get_center_point(tri))
 print("Boundary triangles:", mesh.get_boundary_triangle())
-print("Surface normals of triangle 0:\n", mesh.get_surface_normals(tri))
+print("Surface normals of triangle 0:\n", mesh.get_triangle_surface_normals(tri))
 
 for i, s in enumerate(surfaces):
     print(f"\nSurface {i}")
