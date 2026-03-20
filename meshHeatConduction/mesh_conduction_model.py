@@ -1,6 +1,6 @@
 import numpy as np
-import meshio
-import pyvista as pv
+import meshio # type: ignore
+import pyvista as pv # type: ignore
 
 from meshHeatConduction.triangle_mesh import UnstructuredMesh, Surface
 
