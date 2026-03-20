@@ -138,7 +138,48 @@ class moderator_discretised_mesh:
 
 
     def calculate_cross_diffusion_correction(self):
-        ...
+
+        def calculate_cell_flux_gradient(triangle_idx: int):
+            # Utilizing the Green-Gauss gradient theorem.
+            V_C = self.mesh.triangle_area(triangle_idx)
+            neighbours_C, surfaces_C = self.mesh.get_faces_and_neighbours(triangle_idx)
+
+            return 0
+        
+
+        self.cross_diffusion_correction = np.zeros(self.mesh.triangles.shape[0])
+        
+        # Iterating over all triangles.
+        for triangle_idx in range(self.mesh.triangles.shape[0]):
+            
+            neighbours_C, surfaces_C = self.mesh.get_faces_and_neighbours(triangle_idx)
+            grad_flux_C = calculate_cell_flux_gradient(triangle_idx)
+            C_center = self.mesh._centers[triangle_idx]
+
+            # iterating over all surfaces in all triangles. Reduntant, since most surfaces are calculated twice, but simple. 
+            for neighbour_idx, surface in zip(neighbours_C, surfaces_C):
+
+                grad_flux_F = calculate_cell_flux_gradient(neighbour_idx)
+
+                F_center = self.mesh._centers[neighbour_idx]
+
+                d_CF = np.linalg.norm(C_center - F_center)
+                d_Cs = np.linalg.norm(C_center - surface.center)
+                d_sF = np.linalg.norm(surface.center - F_center)
+
+                g_F = d_Cs / (d_Cs + d_sF)
+                g_C = 1. - g_F
+
+                grad_flux_surface = g_C * grad_flux_C + g_F * grad_flux_F
+                k_surface = g_C * self.mesh.cell_k[triangle_idx] + g_F * self.mesh.cell_k[neighbour_idx] 
+
+                n = self.mesh.get_surface_normal(triangle_idx, surface)
+                e = C_center - F_center / d_CF
+
+                # Using the orthogonal correction approach
+                T_surface = (n - e) * surface.length
+
+                self.cross_diffusion_correction[triangle_idx] += k_surface * grad_flux_surface * T_surface
 
 
 if __name__ == "__main__":
