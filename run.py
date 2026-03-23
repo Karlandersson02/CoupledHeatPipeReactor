@@ -1,5 +1,5 @@
 from visualisation.heatpipe_visualisations import heatpipe_visualisations, heatpipe_comparisons
-from CoupledSystems.Heatpipe import Heatpipe
+from coupled_systems.Heatpipe import Heatpipe
 
 import numpy as np
 import matplotlib.pyplot as plt
