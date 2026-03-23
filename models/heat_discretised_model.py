@@ -63,24 +63,7 @@ class heatpipe_discretised:
         self.T = T
 
 
-    def initialize_discretization(self):
-        """
-        Discretises the 2D model based on the information given in the heatpipe initalization. // 
-
-        The radial discretisation results in constant area of the resulting concentric circles, while //
-        the axial discretisation instead results in axial elements that reflects the relationship between // 
-        the number of elements and length of the evaporator, adiabatic section and condenser.  
-        
-        :param self:
-        :param delta_Rp: shape (N_R,)
-        :type delta_Rp: np.ndarray
-        :param delta_Rm: shape (N_R,)
-        :type delta_Rm: np.ndarray
-        :param delta_Rm: shape (N_Z,)
-        :type delta_Rm: np.ndarray
-        :return: shape (N_z, N_r, 4)
-        :rtype: ndarray[Any, Any]
-        """        
+    def initialize_discretization(self):     
         R         = np.zeros(2 * self.N_R, dtype=float)
         delta_R   = np.zeros(2 * self.N_R, dtype=float)
         delta_R_m = np.zeros(self.N_R, dtype=float)
@@ -117,21 +100,7 @@ class heatpipe_discretised:
 
         return R, delta_R_p, delta_R_m, Z, delta_Z
 
-    def calculate_surfaces(self, delta_Rp: np.ndarray, delta_Rm: np.ndarray, delta_Z: np.ndarray) -> np.ndarray:
-        """
-        Calculates a surface tensor representing the areas in the positive and negative radial and axial directions at every discrete element. \\
-        The order is (positive radial, negative radial, positive axial, negative axial).
-        
-        :param self:
-        :param delta_Rp: shape (N_R,)
-        :type delta_Rp: np.ndarray
-        :param delta_Rm: shape (N_R,)
-        :type delta_Rm: np.ndarray
-        :param delta_Rm: shape (N_Z,)
-        :type delta_Rm: np.ndarray
-        :return: shape (N_z, N_r, 4)
-        :rtype: ndarray[Any, Any]
-        """
+    def calculate_surfaces(self, delta_Rp, delta_Rm, delta_Z):
         delta_R = delta_Rp + delta_Rm
         Rp = np.cumsum(delta_R) + self.r_vapour
         Rm = Rp - delta_R

@@ -4,10 +4,10 @@ import seaborn as sns
 import openmc
 import os
 
-os.environ["OPENMC_CROSS_SECTIONS"] = (
-    "/home/felixpersson/MasterThesisProject/NuclearData/endfb71/"
-    "endfb-vii.1-hdf5/cross_sections.xml"
-)
+# os.environ["OPENMC_CROSS_SECTIONS"] = (
+#     "/home/felixpersson/MasterThesisProject/NuclearData/endfb71/"
+#     "endfb-vii.1-hdf5/cross_sections.xml"
+# )
 
 from models.sodium_properties import calculate_Na_rho_l
 from CoupledSystems.Heatpipe import Heatpipe
