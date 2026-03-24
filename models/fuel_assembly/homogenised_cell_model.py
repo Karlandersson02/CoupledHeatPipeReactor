@@ -175,6 +175,10 @@ def build_mgxs_objects(domain, energy_group_edges):
             domain=domain, domain_type='cell',
             energy_groups=energy_groups, by_nuclide=False
         ),
+        "diffusion_coefficient": openmc.mgxs.DiffusionCoefficient(
+            domain=domain, domain_type="cell",
+            energy_groups=energy_groups, by_nuclide=False
+        )
     }
 
     mgxs_objects["scatter_matrix"].formulation = "consistent"
@@ -304,57 +308,62 @@ def load_homogenized_xs_from_statepoint(sp_filename, mgxs_objects):
         # OpenMC typically returns groups in its MGXS ordering.
         # We flatten to simple numpy arrays here.
         total_xs = np.squeeze(mgxs_objects["total"].get_xs())
-        scatter_matrix = np.squeeze(mgxs_objects["scatter_matrix"].get_xs())
+        scatter_matrix = np.squeeze(mgxs_objects["scatter_matrix"].get_xs(row_column="inout"))
         fission_xs = np.squeeze(mgxs_objects["fission"].get_xs())
         nu_fission_xs = np.squeeze(mgxs_objects["nu_fission"].get_xs())
         chi = np.squeeze(mgxs_objects["chi"].get_xs())
         kappa_fission_xs = np.squeeze(mgxs_objects["kappa_fission"].get_xs())
+        diffusion_coefficient = np.squeeze(mgxs_objects["diffusion_coefficient"].get_xs())
 
         # Derived quantities
         nu = _safe_divide(nu_fission_xs, fission_xs)
         kappa = _safe_divide(kappa_fission_xs, fission_xs)
 
         return {
-            "total_xs": total_xs,                      # [G]
-            "scatter_matrix_xs": scatter_matrix,       # [Gin, Gout] or [G, G]
-            "fission_xs": fission_xs,                  # [G]
-            "nu": nu,                                  # [G]
-            "chi": chi,                                # [G]
-            "kappa_fission_xs": kappa_fission_xs,      # [G]
-            "kappa": kappa,                            # [G]
-            "nu_fission_xs": nu_fission_xs,            # [G]
+            "total_xs": total_xs,                      
+            "scatter_matrix_xs": scatter_matrix,
+            "fission_xs": fission_xs,                  
+            "nu": nu,                                  
+            "chi": chi,                                
+            "kappa_fission_xs": kappa_fission_xs,      
+            "kappa": kappa,                            
+            "nu_fission_xs": nu_fission_xs,
+            "diffusion_coefficient": diffusion_coefficient
         }
 
 
 def print_homogenized_xs(results, energy_group_edges):
     np.set_printoptions(precision=6, suppress=False)
 
-    print("\nEnergy group edges [eV] (ascending):")
+    print("\nEnergy group edges (ascending):")
     print(energy_group_edges)
 
-    print("\nHomogenized multigroup total macroscopic XS [1/cm]:")
+    print("\nHomogenized multigroup total macroscopic XS:")
     print(results["total_xs"])
 
-    print("\nHomogenized multigroup scattering matrix XS [1/cm]:")
+    print("\nHomogenized multigroup scattering matrix XS:")
     print(results["scatter_matrix_xs"])
 
-    print("\nHomogenized multigroup fission macroscopic XS [1/cm]:")
+    print("\nHomogenized multigroup fission macroscopic XS:")
     print(results["fission_xs"])
 
-    print("\nHomogenized multigroup nu-fission macroscopic XS [1/cm]:")
+    print("\nHomogenized multigroup nu-fission macroscopic XS:")
     print(results["nu_fission_xs"])
 
-    print("\nDerived multigroup fission number nu [-]:")
+    print("\nDerived multigroup fission number nu:")
     print(results["nu"])
 
-    print("\nHomogenized multigroup fission spectrum chi [-]:")
+    print("\nHomogenized multigroup fission spectrum chi:")
     print(results["chi"])
 
-    print("\nHomogenized multigroup kappa-fission XS [eV/cm] or [energy·XS]:")
+    print("\nHomogenized multigroup kappa-fission XS:")
     print(results["kappa_fission_xs"])
 
-    print("\nDerived multigroup kappa [energy/fission]:")
+    print("\nDerived multigroup kappa:")
     print(results["kappa"])
+
+    print("\nDerived multigroup diffusion:")
+    print(results["diffusion_coefficient"])
 
 
 # =============================================================================
@@ -406,17 +415,3 @@ if __name__ == "__main__":
 
     results = load_homogenized_xs_from_statepoint(statepoint_path, mgxs_objects)
     print_homogenized_xs(results, energy_group_edges)
-
-    # Save for later use
-    np.savez(
-        "homogenized_multigroup_xs.npz",
-        energy_group_edges=energy_group_edges,
-        total_xs=results["total_xs"],
-        scatter_matrix_xs=results["scatter_matrix_xs"],
-        fission_xs=results["fission_xs"],
-        nu_fission_xs=results["nu_fission_xs"],
-        nu=results["nu"],
-        chi=results["chi"],
-        kappa_fission_xs=results["kappa_fission_xs"],
-        kappa=results["kappa"],
-    )

@@ -8,94 +8,22 @@ from scipy.sparse.linalg import spsolve
 
 N_G = 8  # adjust as needed
 
-def calculate_diffusivity(T):
-    T = np.asarray(T)
-    return np.full((len(T), N_G), 0.5*1e-2)   # cm
+MODEL_PATH = r"./utils/rgi_surrogate.joblib"
+from utils.interpolator import OpenMCTallyGridSurrogate
+interpolator_model = OpenMCTallyGridSurrogate()
+interpolator_model = interpolator_model.load(MODEL_PATH)
 
-def calculate_Sigma_t(T):
-    T = np.asarray(T)
-    return np.full((len(T), N_G), 1*1e2)   # 1/cm
+# def calculate_diffusivity(T): # Temporary
+#     return np.repeat(np.array([1.856146, 0.931944, 0.808143, 0.8032, 0.804013, 0.751048, 0.664298, 0.668599]) * 1e-2, len(T)).reshape(len(T), -1)
 
-def calculate_Sigma_f(T):
-    T = np.asarray(T)
-    return np.full((len(T), N_G), 0.1*1e2)   # 1/cm
-
-def calculate_Sigma_s0(T):
-    T = np.asarray(T, dtype=float)
-    Sigma_s = np.zeros((len(T), N_G, N_G), dtype=float)
-
-    # Reference temperature scaling for mild temperature dependence
-    T_ref = 800.0
-    temp_factor = np.sqrt(T_ref / T)[:, None, None]
-
-    for g_from in range(N_G):
-        for g_to in range(N_G):
-            if g_to == g_from:
-                # within-group scattering
-                Sigma_s[:, g_from, g_to] = 0.20
-
-            elif g_to > g_from:
-                # downscatter: stronger than upscatter
-                # farther jumps are weaker
-                jump = g_to - g_from
-                Sigma_s[:, g_from, g_to] = 0.08 / jump
-
-            else:
-                # upscatter: weaker, but allowed
-                # farther jumps are much weaker
-                jump = g_from - g_to
-                Sigma_s[:, g_from, g_to] = 0.015 / jump
-
-    # Apply mild temperature dependence
-    Sigma_s *= temp_factor
-    Sigma_s *= 1e2
-
-    return Sigma_s
-
-def calculate_fission_number(T):
-    T = np.asarray(T)
-    return np.full((len(T), N_G), 2.5)   # ν (neutrons per fission)
-
-def calculate_Chi(T):
-    T = np.asarray(T)
-    
-    chi = np.zeros((len(T), N_G))
-    
-    # all neutrons born in fast group (typical 2-group model)
-    chi[:, 0] = 1
-    
-    return chi
-
-def calculate_kappa(T):
-    T = np.asarray(T)
-    
-    # ~200 MeV per fission in Joules
-    kappa_value = 3.2e-11  # J/fission
-    
-    return np.full((len(T), N_G), kappa_value)
-
-# def calculate_parameters(T):
-#     D              = calculate_diffusivity(T)
-#     Sigma_t        = calculate_Sigma_t(T)
-#     Sigma_f        = calculate_Sigma_f(T)
-#     Sigma_s0       = calculate_Sigma_s0(T)
-#     fission_number = calculate_fission_number(T)
-#     Chi            = calculate_Chi(T)
-#     kappa          = calculate_kappa(T)
-
-#     return D, Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa
-
-from utils import interpolator
-intepolator_model = interpolator()
-
-def calculate_parameters():
-    
-
+def calculate_diffusivity(T):  # Temporary
+    D = np.repeat(np.array([1.856146, 0.931944, 0.808143, 0.8032,
+                  0.804013, 0.751048, 0.664298, 0.668599]) * 1e-2, len(T)).reshape(len(T), -1)
+    return D
 
 class NeutronModel:
 
     def __init__(self):
-
         # geometry
         self.N_R = 10
         self.N_Z = 100
@@ -103,9 +31,42 @@ class NeutronModel:
 
         self.l = 1.0
         self.delta_Z = self.l / self.N_Z
+        self.cross_sectional_area = 0.01**2 * np.pi # approximate
 
         # system properties
         self.Power = 1000.0
+        self.T_HP = 800
+        self.T_M = 850
+
+        Sigma_t, Sigma_f, Sigma_s0, nu, chi, _ = self.get_material_data(
+            np.full(self.N_R * self.N_Z, 900.0)
+        )
+
+        n = 0
+        nuSigma_f = nu[n] * Sigma_f[n]
+
+        Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa = self.get_material_data(
+            np.full(self.N_R * self.N_Z, 900.0)
+        )
+
+        n = 0
+
+        Sig_t = Sigma_t[n]                    # (8,)
+        S = Sigma_s0[n]                       # (8, 8)
+        nuSig_f = fission_number[n] * Sigma_f[n]   # (8,)
+        Chi_n = Chi[n]                        # (8,)
+
+        L1 = np.diag(Sig_t) - S
+        L2 = np.diag(Sig_t) - S.T
+        F = np.outer(Chi_n, nuSig_f)
+
+        eig1 = np.linalg.eigvals(np.linalg.inv(L1) @ F)
+        eig2 = np.linalg.eigvals(np.linalg.inv(L2) @ F)
+
+        print("eig using S   =", eig1)
+        print("eig using S.T =", eig2)
+        print("k_like using S   =", np.max(eig1.real))
+        print("k_like using S.T =", np.max(eig2.real))
 
     def idx(self, n, g):
         return n * self.N_G + g
@@ -169,9 +130,23 @@ class NeutronModel:
     def get_material_data(self, T):
         T_center_axial = self.get_axial_temperature(T)
 
-        params = calculate_parameters(T_center_axial)
+        X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_center_axial])
+        params = interpolator_model.predict_dict(X)
 
-        _, Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa = params
+        Sigma_t = np.zeros((len(params), self.N_G))
+        Sigma_f = np.zeros((len(params), self.N_G))
+        Sigma_s0 = np.zeros((len(params), self.N_G, self.N_G))
+        fission_number = np.zeros((len(params), self.N_G))
+        Chi = np.zeros((len(params), self.N_G))
+        kappa = np.zeros((len(params), self.N_G))
+        
+        for i in range(len(params)):
+            Sigma_t[i] = np.array(params[i]["total_xs"]) * 1e2
+            Sigma_f[i] = np.array(params[i]["fission_xs"]) * 1e2
+            Sigma_s0[i] = (np.array(params[i]["scatter_matrix_xs"]) * 1e2)
+            fission_number[i] = np.array(params[i]["nu"])
+            Chi[i] = np.array(params[i]["chi"])
+            kappa[i] = np.array(params[i]["kappa"]) * 1.602176634e-19
 
         return Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa
 
@@ -214,7 +189,7 @@ class NeutronModel:
         _, Sigma_f, _, _, _, kappa = self.get_material_data(T)
 
         power_density = kappa * Sigma_f * phi_n_g
-        total_power = np.sum(power_density) * self.delta_Z
+        total_power = np.sum(power_density * self.cross_sectional_area) * self.delta_Z
 
         if total_power <= 0.0:
             raise RuntimeError("Computed non-positive total power during normalization.")
@@ -230,7 +205,7 @@ class NeutronModel:
 
     def solve(self, max_iters=2000, tol_k=1e-5, tol_phi=1e-5, verbose=True):
 
-        T = np.ones((self.N_R * self.N_Z,), dtype=np.float64) * 800
+        T = np.full((self.N_R * self.N_Z,), 900, dtype=np.float64)
         phi_n_g = np.ones((self.N_Z, self.N_G), dtype=np.float64)
         k_eff = 1.0
 
@@ -305,7 +280,7 @@ if __name__ == "__main__":
     fig = plt.figure(figsize=(16,9))
     ax = fig.add_subplot(111)
 
-    colors = plt.cm.viridis(np.linspace(0, 1, 8))
+    colors = plt.cm.viridis(np.linspace(0, 1, 8))[::-1]
     ax.grid(alpha=0.4)
     for i in range(len(colors)):
         ax.plot(phi[:, i], color=colors[i], label=i)
