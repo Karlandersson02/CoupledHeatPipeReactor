@@ -106,6 +106,98 @@ def plot_fast_flux_xy(sp, mesh_dims):
     plot_flux_xy(flux, mesh_dims,
                  title=r'Fast flux ($E > 0.625\,\mathrm{eV}$)',
                  filename='fast_flux_xy.pdf')
+    
+
+def plot_macro_xs(
+    statepoint_path,
+    mesh_dimension,
+    xs_type="total",
+    group=0,
+    z_index=0,
+    value="mean",
+    eps=1e-30,
+):
+    """
+    Plot a 2D map of a macroscopic cross section from mesh tallies.
+
+    Parameters
+    ----------
+    statepoint_path : str or Path
+        Path to the OpenMC statepoint file.
+    mesh_dimension : tuple[int, int, int]
+        Mesh dimensions returned by create_openmc_model, i.e. (nx, ny, nz).
+    xs_type : str
+        Which macroscopic cross section to plot.
+        Options: "total", "absorption"
+    group : int
+        Energy-group index. For your setup:
+            0 -> thermal  (0 -> E_THERMAL_CUTOFF_eV)
+            1 -> fast     (E_THERMAL_CUTOFF_eV -> 20 MeV)
+    z_index : int
+        z-slice index to plot.
+    value : str
+        "mean" or "std_dev"
+    eps : float
+        Small number to avoid division by zero.
+
+    Returns
+    -------
+    xs_2d : ndarray
+        2D array of the selected macroscopic cross section.
+    fig, ax : matplotlib figure and axes
+    """
+    nx, ny, nz = mesh_dimension
+
+    if xs_type == "total":
+        rr_name = "total_rr"
+        title_label = r"$\Sigma_t$"
+    elif xs_type == "absorption":
+        rr_name = "abs_rr"
+        title_label = r"$\Sigma_a$"
+    else:
+        raise ValueError("xs_type must be 'total' or 'absorption'")
+
+    sp = openmc.StatePoint(statepoint_path)
+
+    flux_tally = sp.get_tally(name="flux")
+    rr_tally = sp.get_tally(name=rr_name)
+
+    if value == "mean":
+        flux = flux_tally.mean
+        rr = rr_tally.mean
+    elif value == "std_dev":
+        flux = flux_tally.std_dev
+        rr = rr_tally.std_dev
+    else:
+        raise ValueError("value must be 'mean' or 'std_dev'")
+
+    # For tallies with [MeshFilter, EnergyFilter] and one score,
+    # the flattened data shape is (nx * ny * nz * ngroups, 1, 1).
+    # Reshape to spatial mesh + energy groups.
+    n_groups = 2
+    flux = flux[:, 0, 0].reshape((nx, ny, nz, n_groups))
+    rr = rr[:, 0, 0].reshape((nx, ny, nz, n_groups))
+
+    xs = rr / np.maximum(flux, eps)
+    xs_2d = xs[:, :, z_index, group]
+
+    fig, ax = plt.subplots()
+    im = ax.imshow(
+        xs_2d.T,
+        origin="lower",
+        interpolation="nearest",
+        aspect="equal",
+    )
+    plt.colorbar(im, ax=ax, label=f"{title_label} [1/cm]")
+
+    ax.set_xlabel("Mesh x index")
+    ax.set_ylabel("Mesh y index")
+    ax.set_title(f"{title_label}, group {group}, z-index {z_index}")
+
+    plt.tight_layout()
+    plt.show()
+
+    return xs_2d, fig, ax
 
 
 # ---------------------------------------------------------------------------
@@ -289,20 +381,30 @@ def create_openmc_model(HP):
     mesh_filter           = openmc.MeshFilter(mesh)
     energy_filter_thermal = openmc.EnergyFilter([0.0,                E_THERMAL_CUTOFF_eV])
     energy_filter_fast    = openmc.EnergyFilter([E_THERMAL_CUTOFF_eV, 20.0e6])
+    energy_filter = openmc.EnergyFilter([0.0, E_THERMAL_CUTOFF_eV, 20.0e6])
 
-    t_total = openmc.Tally(name='flux_total')
-    t_total.filters = [mesh_filter]
-    t_total.scores  = ['flux']
+    t_flux = openmc.Tally(name='flux')
+    t_flux.filters = [mesh_filter, energy_filter]
+    t_flux.scores  = ['flux']
 
-    t_thermal = openmc.Tally(name='flux_thermal')
-    t_thermal.filters = [mesh_filter, energy_filter_thermal]
-    t_thermal.scores  = ['flux']
+    # t_thermal = openmc.Tally(name='flux_thermal')
+    # t_thermal.filters = [mesh_filter, energy_filter_thermal]
+    # t_thermal.scores  = ['flux']
 
-    t_fast = openmc.Tally(name='flux_fast')
-    t_fast.filters = [mesh_filter, energy_filter_fast]
-    t_fast.scores  = ['flux']
+    # t_fast = openmc.Tally(name='flux_fast')
+    # t_fast.filters = [mesh_filter, energy_filter_fast]
+    # t_fast.scores  = ['flux']
 
-    openmc.Tallies([t_total, t_thermal, t_fast]).export_to_xml()
+    t_total = openmc.Tally(name='total_rr')
+    t_total.filters = [mesh_filter, energy_filter]
+    t_total.scores = ['total']
+
+    t_abs = openmc.Tally(name='abs_rr')
+    t_abs.filters = [mesh_filter, energy_filter]
+    t_abs.scores = ['absorption']
+
+    tallies = openmc.Tallies([t_flux, t_total, t_abs])
+    tallies.export_to_xml()
 
     source = openmc.IndependentSource(
         space=openmc.stats.Box(
@@ -318,7 +420,9 @@ def create_openmc_model(HP):
     settings.source    = source
     settings.export_to_xml()
 
-    return mesh.dimension, openmc.model.Model(geometry, materials, settings, tallies=openmc.Tallies([t_total, t_thermal, t_fast]))
+    model = openmc.model.Model(geometry, materials, settings, tallies=tallies)
+
+    return mesh.dimension, model
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +430,7 @@ def create_openmc_model(HP):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.chdir(OUTPUT_DIR)
     os.system('rm -f summary.h5 statepoint.100.h5')
 
@@ -358,10 +463,10 @@ if __name__ == "__main__":
     HP = Heatpipe(data_Guoju_2)
     mesh_dims, mod = create_openmc_model(HP)
 
-    plot_geometry(10.)
-    mod.run()
+    state_point_path = mod.run()
+    plot_macro_xs("/home/karlandersson/MasterThesisProject/outputs/cell_model/statepoint.100.h5", mesh_dims, xs_type="total", group=0)
 
-    with openmc.StatePoint('statepoint.100.h5') as sp:
-        plot_total_flux_xy(sp, mesh_dims)
-        plot_thermal_flux_xy(sp, mesh_dims)
-        plot_fast_flux_xy(sp, mesh_dims)
+    # with openmc.StatePoint("/home/karlandersson/MasterThesisProject/outputs/cell_model/statepoint.100.h5") as sp:
+        # plot_total_flux_xy(sp, mesh_dims)
+        # plot_thermal_flux_xy(sp, mesh_dims)
+        # plot_fast_flux_xy(sp, mesh_dims)

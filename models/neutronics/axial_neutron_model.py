@@ -74,16 +74,23 @@ def calculate_kappa(T):
     
     return np.full((len(T), N_G), kappa_value)
 
-def calculate_parameters(T):
-    D              = calculate_diffusivity(T)
-    Sigma_t        = calculate_Sigma_t(T)
-    Sigma_f        = calculate_Sigma_f(T)
-    Sigma_s0       = calculate_Sigma_s0(T)
-    fission_number = calculate_fission_number(T)
-    Chi            = calculate_Chi(T)
-    kappa          = calculate_kappa(T)
+# def calculate_parameters(T):
+#     D              = calculate_diffusivity(T)
+#     Sigma_t        = calculate_Sigma_t(T)
+#     Sigma_f        = calculate_Sigma_f(T)
+#     Sigma_s0       = calculate_Sigma_s0(T)
+#     fission_number = calculate_fission_number(T)
+#     Chi            = calculate_Chi(T)
+#     kappa          = calculate_kappa(T)
 
-    return D, Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa
+#     return D, Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa
+
+from utils import interpolator
+intepolator_model = interpolator()
+
+def calculate_parameters():
+    
+
 
 class NeutronModel:
 

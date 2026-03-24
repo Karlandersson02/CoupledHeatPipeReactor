@@ -19,7 +19,7 @@ MODEL_FILE = Path("utils/rgi_surrogate.joblib")
 # ---------------------------------------------------------------------
 # User settings
 # ---------------------------------------------------------------------
-QUANTITY = "chi"          # e.g. "total_xs", "absorption_xs", ...
+QUANTITY = "chi"               # e.g. "total_xs", "absorption_xs", ...
 GROUP_INDEX = 0                # zero-based energy group index
 
 VARY_AXIS = "T_hp"             # one of: "T_hp", "T_fp", "T_mod"
