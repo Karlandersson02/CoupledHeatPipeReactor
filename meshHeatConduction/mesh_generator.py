@@ -156,7 +156,7 @@ def create_rectangular_mesh(show_mesh=True):
     height = 10
     length = 50
 
-    l_mesh_size = 0.5
+    l_mesh_size = 0.25
 
     gmsh.initialize()
     gmsh.model.add("rectangular mesh")

@@ -97,21 +97,6 @@ class moderator_discretised_mesh:
 
     def calculate_von_Neumann_boundary_conditions(self):
 
-        def is_edge_on_circumference(edge, centers, radius):
-            p1 = self.mesh.points[edge[0]]
-            p2 = self.mesh.points[edge[1]]
-            epsilon = 1e-2
-
-            for center in centers:
-                if (
-                    abs(np.linalg.norm(p1 - center) - radius) < epsilon
-                    and abs(np.linalg.norm(p2 - center) - radius) < epsilon
-                ):
-                    return True
-                
-            return False
-
-
         total_length_HP = 0
         total_length_fuel_pin = 0
         HP_triangle_indices = []
@@ -122,7 +107,7 @@ class moderator_discretised_mesh:
         for boundary_edge in self.mesh.get_boundary_edges():
             triangle_idx = self.mesh._edge_to_triangles[boundary_edge]
 
-            if is_edge_on_circumference(boundary_edge, self.HP_centers, self.HP_radius):
+            if self.is_edge_on_circumference(boundary_edge, self.HP_centers, self.HP_radius):
                 HP_triangle_indices.append(triangle_idx)
 
                 edge_length = np.linalg.norm(
@@ -133,7 +118,7 @@ class moderator_discretised_mesh:
 
                 total_length_HP += edge_length
             
-            elif is_edge_on_circumference(boundary_edge, self.fuel_pin_centers, self.fuel_pin_radius):
+            elif self.is_edge_on_circumference(boundary_edge, self.fuel_pin_centers, self.fuel_pin_radius):
                 fuel_pin_triangle_indices.append(triangle_idx)
 
                 edge_length = np.linalg.norm(
@@ -242,7 +227,76 @@ class moderator_discretised_mesh:
                 T_surface = (n - e) * surface.length
 
                 self.cross_diffusion_correction[triangle_idx] += k_surface * np.dot(grad_flux_surface, T_surface)
+                
 
+    def calculate_effective_thermal_resistance(self):
+        HP_boundary_temps = []
+        FP_boundary_temps = []
+
+        # Iterating over all the boundary edges to see which are in contact with HP and fuel pins. 
+        
+        for boundary_edge in self.mesh.get_boundary_edges():
+            triangle_idx = self.mesh._edge_to_triangles[boundary_edge]
+
+            if self.is_edge_on_circumference(boundary_edge, self.HP_centers, self.HP_radius):
+                edge_length = np.linalg.norm(
+                    self.mesh.points[boundary_edge[0]] - self.mesh.points[boundary_edge[1]])
+                edge_center = (self.mesh.points[boundary_edge[0]] + self.mesh.points[boundary_edge[1]]) / 2.
+
+                q_surface = self.vN_boundary_conditions[triangle_idx] / edge_length
+
+                T_C = self.cell_T[triangle_idx]
+                k_C = self.cell_k[triangle_idx]
+                
+                # Not multiplying gDiff with S due to q_surface is equal to "S * q_b" 
+                d_Cf = np.linalg.norm(edge_center - self.mesh._centers[triangle_idx])
+
+                T_surface = T_C - q_surface * d_Cf / k_C
+
+                HP_boundary_temps.append(T_surface)
+            
+            elif self.is_edge_on_circumference(boundary_edge, self.fuel_pin_centers, self.fuel_pin_radius):
+                edge_length = np.linalg.norm(
+                    self.mesh.points[boundary_edge[0]] - self.mesh.points[boundary_edge[1]])
+                edge_center = (self.mesh.points[boundary_edge[0]] + self.mesh.points[boundary_edge[1]]) / 2.
+
+                q_surface = self.vN_boundary_conditions[triangle_idx] / edge_length
+
+                T_C = self.cell_T[triangle_idx]
+                k_C = self.cell_k[triangle_idx]
+                
+                # Not multiplying gDiff with S due to q_surface is equal to "S * q_b" 
+                d_Cf = np.linalg.norm(edge_center - self.mesh._centers[triangle_idx])
+
+                T_surface = T_C - q_surface * d_Cf / k_C
+
+                FP_boundary_temps.append(T_surface)
+                
+        mean_HP_temp = np.mean(np.array(HP_boundary_temps))
+        mean_FP_temp = np.mean(np.array(FP_boundary_temps))
+
+        r_eff = (mean_FP_temp - mean_HP_temp) / self.Q_in
+
+        return r_eff  
+
+
+    def is_edge_on_circumference(self, edge, centers, radius):
+        p1 = self.mesh.points[edge[0]]
+        p2 = self.mesh.points[edge[1]]
+        epsilon = 1e-2
+
+        for center in centers:
+            if (
+                abs(np.linalg.norm(p1 - center) - radius) < epsilon
+                and abs(np.linalg.norm(p2 - center) - radius) < epsilon
+            ):
+                return True
+            
+        return False
+    
+
+# -------------------- Rectangular test of the thermal mesh conduction code --------------------
+ 
 
 class rectangular_test_discretised_mesh:
     def __init__(self, data, mesh):
@@ -541,8 +595,8 @@ def plot_rectangular_test(mod_mesh, cell_T, Q_in, k, height, lenght):
     # Legend tweaks
     plt.legend(frameon=True)
 
-    plt.xlim(45., 50.)
-    plt.ylim(0., 15.)
+    plt.xlim(30., 50.)
+    plt.ylim(0., 100.)
 
     # Tight layout for nicer spacing
     plt.tight_layout()
@@ -555,39 +609,148 @@ def plot_rectangular_test(mod_mesh, cell_T, Q_in, k, height, lenght):
     return residual
 
 
-if __name__ == "__main__":
-    mesh = meshio.read("meshHeatConduction/hex_mesh.msh")
+def plot_temperature_profiles(R_eff, mesh, r_i=1.0, r_o=2.0, n_points=500):
+    """
+    Plot cylindrical and linear temperature profiles in the same figure,
+    including horizontal lines showing their average temperatures.
 
-    points = mesh.points[:, :2]                
-    triangles = mesh.cells_dict["triangle"]     
-    mesh = UnstructuredMesh(points, triangles)
+    Parameters
+    ----------
+    R_eff : float
+        Effective thermal resistance [K/W]
+    Q_in : float
+        Heat input [W]
+    r_i : float
+        Inner radius / first surface location
+    r_o : float
+        Outer radius / second surface location
+    n_points : int
+        Number of points used for plotting
+    """
 
-    print(f"Number of elements: {triangles.shape}, Number of points: {points.shape}")
+    circumference_HP = mesh.HP_radius * 7./12.
+    circumference_FP = mesh.fuel_pin_radius * 2.
+    r_i = circumference_HP / 2.
+    r_o = circumference_FP / 2.
 
-    cell_k = np.ones(triangles.shape[0])
-    cell_T = np.ones(triangles.shape[0])
-    l_pitch = 10.
-    r_HP = 3.
-    r_f = 1.5
-    theta_hex = (np.pi / 6)
-    lc = 0.5
+    Q_in = mesh.Q_in
+    cell_T = mesh.cell_T - np.min(mesh.cell_T)
 
-    data = {
-        "cell_k": 20 * np.ones(triangles.shape[0]),
-        "cell_T": np.ones(triangles.shape[0]),
+    if R_eff <= 0:
+        raise ValueError("R_eff must be positive.")
+    if Q_in < 0:
+        raise ValueError("Q_in must be non-negative.")
+    if r_i <= 0 or r_o <= 0:
+        raise ValueError("r_i and r_o must be positive.")
+    if r_o <= r_i:
+        raise ValueError("r_o must be greater than r_i.")
 
-        "Q_in": 17000 * 7 / 12,
+    # Total temperature difference
+    delta_T = Q_in * R_eff
 
-        "HP_centers":       [[0., 0.], [np.tan(theta_hex) * 2. * l_pitch, 2. * l_pitch]],
-        "fuel_pin_centers": [[0, l_pitch * 3./2.], [0, l_pitch * 5./2.], [np.tan(theta_hex) * 2 * l_pitch, l_pitch * 7./2.]],
-        "HP_radius": r_HP,
-        "fuel_pin_radius": r_f
-    }
+    # Coordinate
+    r = np.linspace(r_i, r_o, n_points)
 
-    mod_mesh = moderator_discretised_mesh(mesh=mesh, data=data)
-    T = np.array(mod_mesh.solve(iterations=4))
-    T = T - np.min(T)
+    # Temperature profiles
+    T_cyl = delta_T * np.log(r / r_i) / np.log(r_o / r_i)
+    T_lin = delta_T * (r - r_i) / (r_o - r_i)
 
+    # Volumetric averages over the interval
+    # Cylindrical (weighted by r)
+    numerator_cyl = np.trapezoid(T_cyl * r, r)
+    denominator_cyl = np.trapezoid(r, r)
+    T_cyl_avg = numerator_cyl / denominator_cyl
+
+    # Linear (uniform volume weighting)
+    T_lin_avg = np.trapezoid(T_lin, r) / (r_o - r_i)
+
+    # Mesh volumetric average (area-weighted)
+    areas = np.array([
+        mesh.mesh.triangle_area(i)
+        for i in range(len(cell_T))
+    ])
+
+    if len(areas) != len(cell_T):
+        raise ValueError("T_cells must match number of mesh triangles.")
+
+    T_mesh_avg = np.sum(cell_T * areas) / np.sum(areas)
+
+    # --- Style ---
+    sns.set_theme(style="whitegrid", context="talk")
+
+    # --- Plot ---
+    plt.figure(figsize=(9, 5.5))
+    palette = sns.color_palette("deep")
+
+    # Curves
+    sns.lineplot(
+        x=r,
+        y=T_cyl,
+        linewidth=2.8,
+        color=palette[0],
+        label="Cylindrical profile"
+    )
+
+    sns.lineplot(
+        x=r,
+        y=T_lin,
+        linewidth=2.8,
+        linestyle="--",
+        color=palette[1],
+        label="Linear profile"
+    )
+
+    # Average lines
+    plt.axhline(
+        T_cyl_avg,
+        color=palette[0],
+        linestyle=":",
+        linewidth=2.2,
+        label=f"Cylindrical average = {T_cyl_avg:.2f} K"
+    )
+
+    plt.axhline(
+        T_lin_avg,
+        color=palette[1],
+        linestyle=":",
+        linewidth=2.2,
+        label=f"Linear average = {T_lin_avg:.2f} K"
+    )
+
+    plt.axhline(
+        T_mesh_avg,
+        color="black",
+        linestyle="-.",
+        linewidth=2.5,
+        label=f"Mesh vol avg = {T_mesh_avg:.2f} K"
+    )
+
+    # Surface markers
+    plt.scatter(
+        [r_i, r_o],
+        [0.0, delta_T],
+        s=60,
+        color="black",
+        zorder=5,
+        label="Boundary temperatures"
+    )
+
+    # Labels and title
+    plt.xlabel("Radial position / coordinate", fontsize=13)
+    plt.ylabel("Temperature [K]", fontsize=13)
+    plt.title(
+        f"Temperature profiles from effective thermal resistance\n"
+        f"$R_{{eff}}$ = {R_eff:.3g} K/W, $Q_{{in}}$ = {Q_in:.3g} W, "
+        f"$\\Delta T$ = {delta_T:.3g} K",
+        fontsize=15
+    )
+
+    plt.legend(frameon=True, fontsize=11)
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_mesh_with_temp_profile(points, triangles, T):
     # Convert to 3D
     points_3d = np.column_stack([points, np.zeros(len(points))])
 
@@ -607,5 +770,44 @@ if __name__ == "__main__":
         show_edges=True,
         cmap="viridis"
     )
+
+
+if __name__ == "__main__":
+    mesh = meshio.read("meshHeatConduction/hex_mesh.msh")
+
+    points = mesh.points[:, :2]                
+    triangles = mesh.cells_dict["triangle"]     
+    mesh = UnstructuredMesh(points, triangles)
+
+    print(f"Number of elements: {triangles.shape}, Number of points: {points.shape}")
+
+    cell_k = np.ones(triangles.shape[0])
+    cell_T = np.ones(triangles.shape[0])
+    l_pitch = 10.
+    r_HP = 3.
+    r_f = 1.5
+    theta_hex = (np.pi / 6)
+
+    data = {
+        "cell_k": 20 * np.ones(triangles.shape[0]),
+        "cell_T": np.ones(triangles.shape[0]),
+
+        "Q_in": 1000,
+
+        "HP_centers":       [[0., 0.], [np.tan(theta_hex) * 2. * l_pitch, 2. * l_pitch]],
+        "fuel_pin_centers": [[0, l_pitch * 3./2.], [0, l_pitch * 5./2.], [np.tan(theta_hex) * 2 * l_pitch, l_pitch * 7./2.]],
+        "HP_radius": r_HP,
+        "fuel_pin_radius": r_f
+    }
+
+    mod_mesh = moderator_discretised_mesh(mesh=mesh, data=data)
+    rect_mesh = rectangular_test_discretised_mesh(mesh=mesh, data=data)
+    T = np.array(mod_mesh.solve(iterations=1))
+    T = T - np.min(T)
+
+    R_eff = mod_mesh.calculate_effective_thermal_resistance()
+
+    plot_mesh_with_temp_profile(mod_mesh.mesh.points, mod_mesh.mesh.triangles, T)
+    plot_temperature_profiles(R_eff, mod_mesh)
 
     #plot_rectangular_test(mod_mesh, T, data["Q_in"], data["cell_k"][0], 10., 50.)
