@@ -6,20 +6,59 @@ from scipy.optimize import fsolve
 from scipy.sparse import lil_matrix, csr_matrix
 from scipy.sparse.linalg import spsolve
 
-N_G = 8  # adjust as needed
-
 MODEL_PATH = r"./utils/rgi_surrogate.joblib"
 from utils.interpolator import OpenMCTallyGridSurrogate
 interpolator_model = OpenMCTallyGridSurrogate()
 interpolator_model = interpolator_model.load(MODEL_PATH)
 
-# def calculate_diffusivity(T): # Temporary
-#     return np.repeat(np.array([1.856146, 0.931944, 0.808143, 0.8032, 0.804013, 0.751048, 0.664298, 0.668599]) * 1e-2, len(T)).reshape(len(T), -1)
+N_G = 8
 
-def calculate_diffusivity(T):  # Temporary
-    D = np.repeat(np.array([1.856146, 0.931944, 0.808143, 0.8032,
-                  0.804013, 0.751048, 0.664298, 0.668599]) * 1e-2, len(T)).reshape(len(T), -1)
-    return D
+def calculate_diffusivity(T):
+    D = [1.856146, 0.931944, 0.808143, 0.8032, 0.804013, 0.751048, 0.664298, 0.668599]
+    return np.repeat(np.array(D) * 1e-2, len(T)).reshape(len(T), -1)
+
+def calculate_Sigma_t(T):
+    Sigma_t = [0.215433, 0.390558, 0.437022, 0.438771, 0.437527, 0.452985, 0.462072, 0.491347]
+    return np.repeat(np.array(Sigma_t) * 1e2, len(T)).reshape(len(T), -1)
+
+def calculate_Sigma_s0(T):
+    Sigma_s0 = [
+        [1.532002e-01, 2.560313e-02, 8.430881e-06, 2.465170e-08, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+        [0.000000e+00, 3.415866e-01, 1.578866e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+        [0.000000e+00, 0.000000e+00, 3.946257e-01, 1.686322e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+        [0.000000e+00, 0.000000e+00, 0.000000e+00, 3.961719e-01, 1.590331e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+        [0.000000e+00, 0.000000e+00, 0.000000e+00, 1.485168e-05, 3.886724e-01, 2.267349e-02, 6.326949e-07, 0.000000e+00],
+        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 8.702828e-03, 4.265023e-01, 9.153768e-04, 3.121413e-06],
+        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 3.510087e-05, 1.015273e-01, 3.854386e-01, 2.730068e-05],
+        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 4.610164e-01, 4.610164e-03, 7.207613e-03],
+    ]
+    return np.repeat(np.array(Sigma_s0) * 1e2, len(T)).reshape(len(T), N_G, N_G)
+
+def calculate_Sigma_f(T):
+    Sigma_f = [5.863028e-04, 8.501323e-05, 2.374428e-04, 9.599783e-04, 1.514871e-03, 5.528794e-03, 9.530878e-03, 1.017026e-02]
+    return np.repeat(np.array(Sigma_f) * 1e2, len(T)).reshape(len(T), -1)
+
+def calculate_nu(T):
+    nu = [0.00161, 0.000208, 0.000578, 0.002338, 0.003691, 0.013472, 0.023224, 0.024782]
+    return np.repeat(np.array(nu), len(T)).reshape(len(T), -1)
+
+def calculate_chi(T):
+    chi = [8.453690e-01, 1.536567e-01, 9.669716e-04, 7.354006e-06, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]
+    return np.repeat(np.array(chi), len(T)).reshape(len(T), -1)
+
+def calculate_kappa(T):
+    kappa = [115436.26602, 16442.542718, 45923.945443, 185665.005564, 292984.211558, 1069298.638026, 1843323.28099, 1966982.995635]
+    return np.repeat(np.array(kappa), len(T)).reshape(len(T), -1)
+
+def calculate_parameters(T):              # SI
+    D = calculate_diffusivity(T)
+    Sigma_t = calculate_Sigma_t(T)
+    Sigma_s0 = calculate_Sigma_s0(T)
+    Sigma_f = calculate_Sigma_f(T)
+    nu = calculate_nu(T)
+    chi = calculate_chi(T)
+    kappa = calculate_kappa(T)
+    return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
 
 class NeutronModel:
 
@@ -34,39 +73,9 @@ class NeutronModel:
         self.cross_sectional_area = 0.01**2 * np.pi # approximate
 
         # system properties
-        self.Power = 1000.0
-        self.T_HP = 800
-        self.T_M = 850
-
-        Sigma_t, Sigma_f, Sigma_s0, nu, chi, _ = self.get_material_data(
-            np.full(self.N_R * self.N_Z, 900.0)
-        )
-
-        n = 0
-        nuSigma_f = nu[n] * Sigma_f[n]
-
-        Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa = self.get_material_data(
-            np.full(self.N_R * self.N_Z, 900.0)
-        )
-
-        n = 0
-
-        Sig_t = Sigma_t[n]                    # (8,)
-        S = Sigma_s0[n]                       # (8, 8)
-        nuSig_f = fission_number[n] * Sigma_f[n]   # (8,)
-        Chi_n = Chi[n]                        # (8,)
-
-        L1 = np.diag(Sig_t) - S
-        L2 = np.diag(Sig_t) - S.T
-        F = np.outer(Chi_n, nuSig_f)
-
-        eig1 = np.linalg.eigvals(np.linalg.inv(L1) @ F)
-        eig2 = np.linalg.eigvals(np.linalg.inv(L2) @ F)
-
-        print("eig using S   =", eig1)
-        print("eig using S.T =", eig2)
-        print("k_like using S   =", np.max(eig1.real))
-        print("k_like using S.T =", np.max(eig2.real))
+        self.Power = 1000
+        self.T_HP = 900
+        self.T_M = 900
 
     def idx(self, n, g):
         return n * self.N_G + g
@@ -76,10 +85,8 @@ class NeutronModel:
         phi_ng = X[self.N_R * self.N_Z:]
         return T_n, phi_ng
 
-    def calculate_abc(self, X):
-        T_center_axial = X[0:self.N_R * self.N_Z:self.N_R]
-
-        D_n_g = calculate_diffusivity(T_center_axial)
+    def calculate_abc(self, T):
+        D_n_g, _, _, _, _, _, _, = self.get_material_data(T)
 
         D_nm1_g = np.zeros_like(D_n_g)
         D_np1_g = np.zeros_like(D_n_g)
@@ -127,33 +134,38 @@ class NeutronModel:
     def get_axial_temperature(self, T):
         return T[::self.N_R]
 
+    # def get_material_data(self, T):
+    #     T_center_axial = self.get_axial_temperature(T)
+
+    #     X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_center_axial])
+    #     params = interpolator_model.predict_dict(X)
+
+    #     Sigma_t = np.zeros((len(params), self.N_G))
+    #     Sigma_f = np.zeros((len(params), self.N_G))
+    #     Sigma_s0 = np.zeros((len(params), self.N_G, self.N_G))
+    #     fission_number = np.zeros((len(params), self.N_G))
+    #     Chi = np.zeros((len(params), self.N_G))
+    #     kappa = np.zeros((len(params), self.N_G))
+        
+    #     for i in range(len(params)):
+    #         Sigma_t[i] = np.array(params[i]["total_xs"]) * 1e2
+    #         Sigma_f[i] = np.array(params[i]["fission_xs"]) * 1e2
+    #         Sigma_s0[i] = (np.array(params[i]["scatter_matrix_xs"]) * 1e2)
+    #         fission_number[i] = np.array(params[i]["nu"])
+    #         Chi[i] = np.array(params[i]["chi"])
+    #         kappa[i] = np.array(params[i]["kappa"]) * 1.602176634e-19
+
+    #     return Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa
+
     def get_material_data(self, T):
         T_center_axial = self.get_axial_temperature(T)
 
-        X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_center_axial])
-        params = interpolator_model.predict_dict(X)
-
-        Sigma_t = np.zeros((len(params), self.N_G))
-        Sigma_f = np.zeros((len(params), self.N_G))
-        Sigma_s0 = np.zeros((len(params), self.N_G, self.N_G))
-        fission_number = np.zeros((len(params), self.N_G))
-        Chi = np.zeros((len(params), self.N_G))
-        kappa = np.zeros((len(params), self.N_G))
-        
-        for i in range(len(params)):
-            Sigma_t[i] = np.array(params[i]["total_xs"]) * 1e2
-            Sigma_f[i] = np.array(params[i]["fission_xs"]) * 1e2
-            Sigma_s0[i] = (np.array(params[i]["scatter_matrix_xs"]) * 1e2)
-            fission_number[i] = np.array(params[i]["nu"])
-            Chi[i] = np.array(params[i]["chi"])
-            kappa[i] = np.array(params[i]["kappa"]) * 1.602176634e-19
-
-        return Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa
+        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T_center_axial)
+        return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
 
     def build_loss_matrix(self, T):
-        X_dummy = np.concatenate([T, np.zeros(self.N_Z * self.N_G)])
-        a_n_g, b_n_g, c_n_g = self.calculate_abc(X_dummy)
-        Sigma_t, _, Sigma_s0, _, _, _ = self.get_material_data(T)
+        a_n_g, b_n_g, c_n_g = self.calculate_abc(T)
+        _, Sigma_t, Sigma_s0, _, _, _, _ = self.get_material_data(T)
 
         N = self.N_Z * self.N_G
         A = lil_matrix((N, N), dtype=np.float64)
@@ -177,7 +189,7 @@ class NeutronModel:
         return A.tocsr()
 
     def build_fission_source(self, phi_n_g, T):
-        _, Sigma_f, _, fission_number, Chi, _ = self.get_material_data(T)
+        _, _, _, Sigma_f, fission_number, Chi, _ = self.get_material_data(T)
 
         nuSigma_f = fission_number * Sigma_f                     # shape (N_Z, N_G)
         production = np.sum(nuSigma_f * phi_n_g, axis=1)         # shape (N_Z,)
@@ -186,7 +198,7 @@ class NeutronModel:
         return source
 
     def normalize_flux_to_power(self, phi_n_g, T):
-        _, Sigma_f, _, _, _, kappa = self.get_material_data(T)
+        _, _, _, Sigma_f, _, _, kappa = self.get_material_data(T)
 
         power_density = kappa * Sigma_f * phi_n_g
         total_power = np.sum(power_density * self.cross_sectional_area) * self.delta_Z
