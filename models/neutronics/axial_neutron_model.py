@@ -3,8 +3,6 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 from scipy.optimize import fsolve
-from scipy.sparse import lil_matrix, csr_matrix
-from scipy.sparse.linalg import spsolve
 
 MODEL_PATH = r"./utils/rgi_surrogate.joblib"
 from utils.interpolator import OpenMCTallyGridSurrogate
@@ -39,7 +37,7 @@ def calculate_Sigma_f(T):
     return np.repeat(np.array(Sigma_f) * 1e2, len(T)).reshape(len(T), -1)
 
 def calculate_nu(T):
-    nu = [0.00161, 0.000208, 0.000578, 0.002338, 0.003691, 0.013472, 0.023224, 0.024782]
+    nu = [2.746486, 2.448851, 2.433717, 2.435004, 2.436693, 2.4367, 2.4367, 2.4367]
     return np.repeat(np.array(nu), len(T)).reshape(len(T), -1)
 
 def calculate_chi(T):
@@ -47,8 +45,8 @@ def calculate_chi(T):
     return np.repeat(np.array(chi), len(T)).reshape(len(T), -1)
 
 def calculate_kappa(T):
-    kappa = [115436.26602, 16442.542718, 45923.945443, 185665.005564, 292984.211558, 1069298.638026, 1843323.28099, 1966982.995635]
-    return np.repeat(np.array(kappa), len(T)).reshape(len(T), -1)
+    kappa = [1.968885e+08, 1.934116e+08, 1.934106e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08]
+    return np.repeat(np.array(kappa) * (1.602e-19), len(T)).reshape(len(T), -1)
 
 def calculate_parameters(T):              # SI
     D = calculate_diffusivity(T)
@@ -73,20 +71,17 @@ class NeutronModel:
         self.cross_sectional_area = 0.01**2 * np.pi # approximate
 
         # system properties
-        self.Power = 1000
+        self.power = 1000
         self.T_HP = 900
         self.T_M = 900
 
-    def idx(self, n, g):
-        return n * self.N_G + g
-
     def unpack_variables(self, X):
         T_n = X[:self.N_R * self.N_Z]
-        phi_ng = X[self.N_R * self.N_Z:]
-        return T_n, phi_ng
+        phi_ng = X[self.N_R * self.N_Z:-1]
+        k = X[-1]
+        return T_n, phi_ng, k
 
-    def calculate_abc(self, T):
-        D_n_g, _, _, _, _, _, _, = self.get_material_data(T)
+    def calculate_abc(self, D_n_g):
 
         D_nm1_g = np.zeros_like(D_n_g)
         D_np1_g = np.zeros_like(D_n_g)
@@ -130,10 +125,64 @@ class NeutronModel:
         c_n_g[-1] = -alpha_n_g[-1]
 
         return a_n_g, b_n_g, c_n_g
+    
+    def calculate_residuals(self, X):
+        T, phi_ng, k = self.unpack_variables(X)
+        phi_n_g = np.reshape(phi_ng, (self.N_Z, self.N_G))
+        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = self.get_material_data(T)
+        a_n_g, b_n_g, c_n_g = self.calculate_abc(D)
+
+        phi_np1_g = np.vstack([phi_n_g[1:], np.zeros((1, self.N_G))])
+        phi_nm1_g = np.vstack([np.zeros((1, self.N_G)), phi_n_g[:-1]])
+
+        res_transport = (
+            a_n_g * phi_n_g + b_n_g * phi_np1_g + c_n_g * phi_nm1_g + Sigma_t * phi_n_g
+            - (np.sum(Sigma_s0 * phi_n_g[:, None, :], axis=2) + (chi / k) * (np.sum(nu * Sigma_f * phi_n_g, axis=1))[:, None])
+        )
+        res_transport = np.ravel(res_transport)
+
+        power_density = np.sum(kappa * Sigma_f * phi_n_g, axis=1)
+        power = np.sum(power_density) * self.cross_sectional_area * self.delta_Z
+
+        res_power = np.array([(self.power - power)])
+
+        return np.r_[res_transport, res_power]
 
     def get_axial_temperature(self, T):
         return T[::self.N_R]
 
+    def get_material_data(self, T):
+        T_center_axial = self.get_axial_temperature(T)
+
+        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T_center_axial)
+        return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
+    
+    def solve(self):
+        T_initial = np.full((self.N_Z*self.N_R), 900)
+        phi_ng_initial = np.full((self.N_Z*self.N_G), 1e12)
+        k_initial = np.array([1])
+        X_initial = np.concatenate([phi_ng_initial, k_initial]) # ignore T for now
+
+        def residuals_wrapper(X):
+            return self.calculate_residuals(np.r_[T_initial, X])
+
+        res, info, ier, msg = fsolve(
+            residuals_wrapper,
+            X_initial,
+            full_output=True
+        )
+
+        print("ier =", ier)
+        print("msg =", msg)
+        print("||res|| =", np.linalg.norm(info["fvec"]))
+
+        if ier != 1:
+            raise RuntimeError(f"fsolve did not converge: {msg}")
+
+        self.phi_n_g = np.reshape(res[:-1], (self.N_Z, self.N_G))
+        self.k = res[-1]
+    
+    
     # def get_material_data(self, T):
     #     T_center_axial = self.get_axial_temperature(T)
 
@@ -157,133 +206,35 @@ class NeutronModel:
 
     #     return Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa
 
-    def get_material_data(self, T):
-        T_center_axial = self.get_axial_temperature(T)
-
-        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T_center_axial)
-        return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
-
-    def build_loss_matrix(self, T):
-        a_n_g, b_n_g, c_n_g = self.calculate_abc(T)
-        _, Sigma_t, Sigma_s0, _, _, _, _ = self.get_material_data(T)
-
-        N = self.N_Z * self.N_G
-        A = lil_matrix((N, N), dtype=np.float64)
-
-        for n in range(self.N_Z):
-            for g in range(self.N_G):
-                i = self.idx(n, g)
-
-                # diagonal leakage + total term
-                A[i, i] += a_n_g[n, g] + Sigma_t[n, g]
-
-                # axial couplings, same energy group
-                if n < self.N_Z - 1:
-                    A[i, self.idx(n + 1, g)] += b_n_g[n, g]
-                if n > 0:
-                    A[i, self.idx(n - 1, g)] += c_n_g[n, g]
-
-                for gp in range(self.N_G):
-                    A[i, self.idx(n, gp)] -= Sigma_s0[n, gp, g]
-
-        return A.tocsr()
-
-    def build_fission_source(self, phi_n_g, T):
-        _, _, _, Sigma_f, fission_number, Chi, _ = self.get_material_data(T)
-
-        nuSigma_f = fission_number * Sigma_f                     # shape (N_Z, N_G)
-        production = np.sum(nuSigma_f * phi_n_g, axis=1)         # shape (N_Z,)
-        source = Chi * production[:, None]                       # shape (N_Z, N_G)
-
-        return source
-
-    def normalize_flux_to_power(self, phi_n_g, T):
-        _, _, _, Sigma_f, _, _, kappa = self.get_material_data(T)
-
-        power_density = kappa * Sigma_f * phi_n_g
-        total_power = np.sum(power_density * self.cross_sectional_area) * self.delta_Z
-
-        if total_power <= 0.0:
-            raise RuntimeError("Computed non-positive total power during normalization.")
-
-        scale = self.Power / total_power
-        return phi_n_g * scale
-
-    def compute_eigen_residual(self, phi_n_g, k_eff, T):
-        A = self.build_loss_matrix(T)
-        rhs = (1.0 / k_eff) * self.build_fission_source(phi_n_g, T).ravel()
-        lhs = A @ phi_n_g.ravel()
-        return lhs - rhs
-
-    def solve(self, max_iters=2000, tol_k=1e-5, tol_phi=1e-5, verbose=True):
-
-        T = np.full((self.N_R * self.N_Z,), 900, dtype=np.float64)
-        phi_n_g = np.ones((self.N_Z, self.N_G), dtype=np.float64)
-        k_eff = 1.0
-
-        phi_n_g = self.normalize_flux_to_power(phi_n_g, T)
-        A = self.build_loss_matrix(T)
-
-        for it in range(max_iters):
-            phi_old = phi_n_g.copy()
-            k_old = k_eff
-
-            q_old = self.build_fission_source(phi_old, T)
-            q_old_sum = np.sum(q_old)
-
-            if q_old_sum <= 0.0:
-                raise RuntimeError("Non-positive fission source encountered in power iteration.")
-
-            rhs = (1.0 / k_old) * q_old.ravel()
-            phi_new = spsolve(A, rhs).reshape(self.N_Z, self.N_G)
-
-            phi_new[phi_new < 0.0] = 0.0
-
-            q_new = self.build_fission_source(phi_new, T)
-            q_new_sum = np.sum(q_new)
-
-            if q_new_sum <= 0.0:
-                raise RuntimeError("Non-positive updated fission source encountered in power iteration.")
-
-            k_eff = k_old * (q_new_sum / q_old_sum)
-
-            phi_n_g = self.normalize_flux_to_power(phi_new, T)
-
-            # convergence metrics
-            dk_rel = abs(k_eff - k_old) / max(abs(k_eff), 1e-16)
-            dphi_rel = np.linalg.norm(phi_n_g - phi_old, np.inf) / max(np.linalg.norm(phi_n_g, np.inf), 1e-16)
-
-            residual = self.compute_eigen_residual(phi_n_g, k_eff, T)
-            res_inf = np.linalg.norm(residual, np.inf)
-
-            if verbose:
-                print(
-                    f"it = {it:4d} | "
-                    f"k_eff = {k_eff:.10f} | "
-                    f"dk_rel = {dk_rel:.3e} | "
-                    f"dphi_rel = {dphi_rel:.3e} | "
-                    f"|R|_inf = {res_inf:.3e}"
-                )
-
-            if dk_rel < tol_k and dphi_rel < tol_phi:
-                break
-        else:
-            raise RuntimeError("Power iteration did not converge within max_iters.")
-
-        self.T = T
-        self.phi = phi_n_g
-        self.k_eff = k_eff
-    
-
-
-
 
 if __name__ == "__main__":
 
     neutron_model = NeutronModel()
     neutron_model.solve()
-    phi = neutron_model.phi
-    k_eff = neutron_model.k_eff
+    phi = neutron_model.phi_n_g
+    k_eff = neutron_model.k
+
+    def test_kinf():
+        T = np.full(100, 900.0)
+        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T[:1])
+
+        Sig_t = Sigma_t[0]
+        Sig_s = Sigma_s0[0]
+        nusigf = nu[0] * Sigma_f[0]
+        Chi = chi[0]
+
+        F = np.outer(Chi, nusigf)
+
+        A_in_out = np.diag(Sig_t) - Sig_s
+        A_out_in = np.diag(Sig_t) - Sig_s.T
+
+        k_in_out = max(np.linalg.eigvals(np.linalg.inv(A_in_out) @ F).real)
+        k_out_in = max(np.linalg.eigvals(np.linalg.inv(A_out_in) @ F).real)
+
+        print("k_inf (in->out):", k_in_out)
+        print("k_inf (out->in):", k_out_in)
+
+    test_kinf()
 
     mpl.rcParams["text.usetex"] = True
     mpl.rcParams["font.family"] = "Computer modern"
