@@ -233,8 +233,8 @@ def create_openmc_model(
         boundary_type='vacuum',
         orientation='x'
     )
-    top    = openmc.ZPlane( 100., boundary_type='reflective')
-    bottom = openmc.ZPlane(-100., boundary_type='reflective')
+    top    = openmc.ZPlane( 100., boundary_type='vacuum')
+    bottom = openmc.ZPlane(-100., boundary_type='vacuum')
 
     # This is the spatial domain over which we homogenize
     main_cell = openmc.Cell(

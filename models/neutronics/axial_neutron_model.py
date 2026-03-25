@@ -12,15 +12,17 @@ interpolator_model = interpolator_model.load(MODEL_PATH)
 N_G = 8
 
 def calculate_diffusivity(T):
-    D = [1.856146, 0.931944, 0.808143, 0.8032, 0.804013, 0.751048, 0.664298, 0.668599]
-    return np.repeat(np.array(D) * 1e-2, len(T)).reshape(len(T), -1)
+    D = np.array([1.856146, 0.931944, 0.808143, 0.8032, 0.804013, 0.751048, 0.664298, 0.668599])
+    return np.repeat(D[None] * 1e-2, len(T), axis=0)
+
 
 def calculate_Sigma_t(T):
-    Sigma_t = [0.215433, 0.390558, 0.437022, 0.438771, 0.437527, 0.452985, 0.462072, 0.491347]
-    return np.repeat(np.array(Sigma_t) * 1e2, len(T)).reshape(len(T), -1)
+    Sigma_t = np.array([0.215433, 0.390558, 0.437022, 0.438771, 0.437527, 0.452985, 0.462072, 0.491347])
+    return np.repeat(Sigma_t[None] * 1e2, len(T), axis=0)
+
 
 def calculate_Sigma_s0(T):
-    Sigma_s0 = [
+    Sigma_s0 = np.array([
         [1.532002e-01, 2.560313e-02, 8.430881e-06, 2.465170e-08, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
         [0.000000e+00, 3.415866e-01, 1.578866e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
         [0.000000e+00, 0.000000e+00, 3.946257e-01, 1.686322e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
@@ -29,24 +31,28 @@ def calculate_Sigma_s0(T):
         [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 8.702828e-03, 4.265023e-01, 9.153768e-04, 3.121413e-06],
         [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 3.510087e-05, 1.015273e-01, 3.854386e-01, 2.730068e-05],
         [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 4.610164e-01, 4.610164e-03, 7.207613e-03],
-    ]
-    return np.repeat(np.array(Sigma_s0) * 1e2, len(T)).reshape(len(T), N_G, N_G)
+    ])
+    return np.repeat(Sigma_s0[None] * 1e2, len(T), axis=0)
+
 
 def calculate_Sigma_f(T):
-    Sigma_f = [5.863028e-04, 8.501323e-05, 2.374428e-04, 9.599783e-04, 1.514871e-03, 5.528794e-03, 9.530878e-03, 1.017026e-02]
-    return np.repeat(np.array(Sigma_f) * 1e2, len(T)).reshape(len(T), -1)
+    Sigma_f = np.array([5.863028e-04, 8.501323e-05, 2.374428e-04, 9.599783e-04, 1.514871e-03, 5.528794e-03, 9.530878e-03, 1.017026e-02])
+    return np.repeat(Sigma_f[None] * 1e2, len(T), axis=0)
+
 
 def calculate_nu(T):
-    nu = [2.746486, 2.448851, 2.433717, 2.435004, 2.436693, 2.4367, 2.4367, 2.4367]
-    return np.repeat(np.array(nu), len(T)).reshape(len(T), -1)
+    nu = np.array([2.746486, 2.448851, 2.433717, 2.435004, 2.436693, 2.4367, 2.4367, 2.4367])
+    return np.repeat(nu[None], len(T), axis=0)
+
 
 def calculate_chi(T):
-    chi = [8.453690e-01, 1.536567e-01, 9.669716e-04, 7.354006e-06, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00]
-    return np.repeat(np.array(chi), len(T)).reshape(len(T), -1)
+    chi = np.array([8.453690e-01, 1.536567e-01, 9.669716e-04, 7.354006e-06, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00])
+    return np.repeat(chi[None], len(T), axis=0)
+
 
 def calculate_kappa(T):
-    kappa = [1.968885e+08, 1.934116e+08, 1.934106e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08]
-    return np.repeat(np.array(kappa) * (1.602e-19), len(T)).reshape(len(T), -1)
+    kappa = np.array([1.968885e+08, 1.934116e+08, 1.934106e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08])
+    return np.repeat(kappa[None] * 1.602e-19, len(T), axis=0)
 
 def calculate_parameters(T):              # SI
     D = calculate_diffusivity(T)
@@ -213,28 +219,6 @@ if __name__ == "__main__":
     neutron_model.solve()
     phi = neutron_model.phi_n_g
     k_eff = neutron_model.k
-
-    def test_kinf():
-        T = np.full(100, 900.0)
-        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T[:1])
-
-        Sig_t = Sigma_t[0]
-        Sig_s = Sigma_s0[0]
-        nusigf = nu[0] * Sigma_f[0]
-        Chi = chi[0]
-
-        F = np.outer(Chi, nusigf)
-
-        A_in_out = np.diag(Sig_t) - Sig_s
-        A_out_in = np.diag(Sig_t) - Sig_s.T
-
-        k_in_out = max(np.linalg.eigvals(np.linalg.inv(A_in_out) @ F).real)
-        k_out_in = max(np.linalg.eigvals(np.linalg.inv(A_out_in) @ F).real)
-
-        print("k_inf (in->out):", k_in_out)
-        print("k_inf (out->in):", k_out_in)
-
-    test_kinf()
 
     mpl.rcParams["text.usetex"] = True
     mpl.rcParams["font.family"] = "Computer modern"
