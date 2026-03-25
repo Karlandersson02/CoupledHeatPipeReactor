@@ -16,10 +16,53 @@ interpolator_model = interpolator_model.load(MODEL_PATH)
 # def calculate_diffusivity(T): # Temporary
 #     return np.repeat(np.array([1.856146, 0.931944, 0.808143, 0.8032, 0.804013, 0.751048, 0.664298, 0.668599]) * 1e-2, len(T)).reshape(len(T), -1)
 
-def calculate_diffusivity(T):  # Temporary
-    D = np.repeat(np.array([1.856146, 0.931944, 0.808143, 0.8032,
-                  0.804013, 0.751048, 0.664298, 0.668599]) * 1e-2, len(T)).reshape(len(T), -1)
-    return D
+# def calculate_diffusivity(T):  # Temporary
+#     D = np.repeat(np.array([1.856146, 0.931944, 0.808143, 0.8032,
+#                   0.804013, 0.751048, 0.664298, 0.668599]) * 1e-2, len(T)).reshape(len(T), -1)
+#     return D
+
+def calculate_diffusivity(T):
+    D = np.array([1.856146, 0.931944, 0.808143, 0.8032, 0.804013, 0.751048, 0.664298, 0.668599])
+    return np.repeat(D[None] * 1e-2, len(T), axis=0)
+
+
+def calculate_Sigma_t(T):
+    Sigma_t = np.array([0.215433, 0.390558, 0.437022, 0.438771, 0.437527, 0.452985, 0.462072, 0.491347])
+    return np.repeat(Sigma_t[None] * 1e2, len(T), axis=0)
+
+
+def calculate_Sigma_s0(T):
+    Sigma_s0 = np.array([
+        [1.532002e-01, 2.560313e-02, 8.430881e-06, 2.465170e-08, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+        [0.000000e+00, 3.415866e-01, 1.578866e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+        [0.000000e+00, 0.000000e+00, 3.946257e-01, 1.686322e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+        [0.000000e+00, 0.000000e+00, 0.000000e+00, 3.961719e-01, 1.590331e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+        [0.000000e+00, 0.000000e+00, 0.000000e+00, 1.485168e-05, 3.886724e-01, 2.267349e-02, 6.326949e-07, 0.000000e+00],
+        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 8.702828e-03, 4.265023e-01, 9.153768e-04, 3.121413e-06],
+        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 3.510087e-05, 1.015273e-01, 3.854386e-01, 2.730068e-05],
+        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 4.610164e-01, 4.610164e-03, 7.207613e-03],
+    ])
+    return np.repeat(Sigma_s0[None] * 1e2, len(T), axis=0)
+
+
+def calculate_Sigma_f(T):
+    Sigma_f = np.array([5.863028e-04, 8.501323e-05, 2.374428e-04, 9.599783e-04, 1.514871e-03, 5.528794e-03, 9.530878e-03, 1.017026e-02])
+    return np.repeat(Sigma_f[None] * 1e2, len(T), axis=0)
+
+
+def calculate_nu(T):
+    nu = np.array([2.746486, 2.448851, 2.433717, 2.435004, 2.436693, 2.4367, 2.4367, 2.4367])
+    return np.repeat(nu[None], len(T), axis=0)
+
+
+def calculate_chi(T):
+    chi = np.array([8.453690e-01, 1.536567e-01, 9.669716e-04, 7.354006e-06, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00])
+    return np.repeat(chi[None], len(T), axis=0)
+
+
+def calculate_kappa(T):
+    kappa = np.array([1.968885e+08, 1.934116e+08, 1.934106e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08])
+    return np.repeat(kappa[None] * 1.602e-19, len(T), axis=0)
 
 class NeutronModel:
 
@@ -127,7 +170,7 @@ class NeutronModel:
     def get_axial_temperature(self, T):
         return T[::self.N_R]
 
-    def get_material_data(self, T):
+    def get_material_data3(self, T):
         T_center_axial = self.get_axial_temperature(T)
 
         X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_center_axial])
@@ -149,6 +192,25 @@ class NeutronModel:
             kappa[i] = np.array(params[i]["kappa"]) * 1.602176634e-19
 
         return Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa
+    
+    def get_material_data(self, T):
+        Sigma_t2, Sigma_f2, Sigma_s02, fission_number2, Chi2, kappa2 = self.get_material_data2(T)
+        Sigma_t3, Sigma_f3, Sigma_s03, fission_number3, Chi3, kappa3 = self.get_material_data3(T)
+
+        Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa = Sigma_t2, Sigma_f2, Sigma_s02, fission_number2, Chi2, kappa2
+
+        return Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa
+
+    def get_material_data2(self, T):
+        T_axial = self.get_axial_temperature(T)
+        # D = calculate_diffusivity(T_axial)
+        Sigma_t = calculate_Sigma_t(T_axial)
+        Sigma_s0 = calculate_Sigma_s0(T_axial)
+        Sigma_f = calculate_Sigma_f(T_axial)
+        nu = calculate_nu(T_axial)
+        chi = calculate_chi(T_axial)
+        kappa = calculate_kappa(T_axial)
+        return Sigma_t, Sigma_f, Sigma_s0, nu, chi, kappa
 
     def build_loss_matrix(self, T):
         X_dummy = np.concatenate([T, np.zeros(self.N_Z * self.N_G)])
