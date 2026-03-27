@@ -6,13 +6,4 @@ archive/
 .venv
 NuclearData/
 walkthrough_gmsh_tutorials
-<<<<<<< HEAD
-openMC/fuelAssembly/*
-!openMC/fuelAssembly/fuel_assembly_openmc.py
 openMC/test
-meshHeatConduction/__pycache__
-meshHeatConduction/hex_mesh.msh
-meshHeatConduction/rect_mesh.msh
-=======
-openMC/test
->>>>>>> organising
