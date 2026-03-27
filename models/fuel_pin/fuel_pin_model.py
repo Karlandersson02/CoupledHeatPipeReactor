@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from scipy.optimize import fsolve
 
-class fuelPin:
+class FuelPin:
     def __init__(self, data):
 
         # Geometry
@@ -73,6 +73,8 @@ class fuelPin:
 
         qr = self.phi_g * self.Sigma_f * self.kappa * self.Delta_V
         res_norm_denom = (np.sum(qr) * self.Delta_Z / self.l) / (np.pi * self.r **2)
+
+        print(np.linalg.norm(res / res_norm_denom))
 
         return res / res_norm_denom
 
@@ -318,8 +320,8 @@ class fuelPin:
         return M, C
 
 if __name__ == "__main__":
-    N_Z = 2
-    N_R = 100
+    N_Z = 30
+    N_R = 20
     data = {
         # ---------------------------
         # Geometry / mesh
@@ -371,10 +373,10 @@ if __name__ == "__main__":
         "T_moderator": np.ones(N_Z) * 1000.0       # [K]
     }
 
-    fuelPin_conduction = fuelPin(data)
+    fuelPin_conduction = FuelPin(data)
     fuelPin_conduction.solve()
 
-    sol, info, ier, mesg = fsolve(fuelPin_conduction.get_residuals, np.ones(N_R * N_Z), full_output=True)
+    sol, info, ier, mesg = fsolve(fuelPin_conduction.get_residuals, fuelPin_conduction.T, full_output=True)
 
     plt.plot(300. * sol.reshape(N_Z, N_R)[0], label="non-linear")
     plt.plot(fuelPin_conduction.T.reshape(N_Z, N_R)[0], ls="--", label="linear")

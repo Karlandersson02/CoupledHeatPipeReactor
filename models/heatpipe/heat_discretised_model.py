@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+from scipy.optimize import fsolve
+
 class heatpipe_discretised:
     def __init__(self, data):
 
@@ -40,6 +42,7 @@ class heatpipe_discretised:
             Qnew[(self.N_evap + self.N_adiabatic):] = Qout
             self.Q = Qnew
 
+
     def solve(self):
         
         R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
@@ -61,6 +64,31 @@ class heatpipe_discretised:
             T = np.concatenate([T, np.array([self.T_op])])
 
         self.T = T
+
+    
+    def get_residuals(self, T_hat):
+        T = T_hat * self.T_cond
+
+        R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
+
+        surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm, delta_Z)
+
+        k_matrix = self.generate_k_matrix()
+        h_matrix = self.generate_h_matrix()
+
+        alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k_matrix)
+        
+        if self.Temperature_BC:
+            M, C = self.generate_matrix_form_temperature_bc(alpha, k_matrix, h_matrix)
+        else:
+            M, C = self.generate_matrix_form_heat_bc(alpha, k_matrix, h_matrix)
+    
+        res = M @ T - C 
+
+        res_norm_denom = (np.dot(self.Q, delta_Z[:self.N_evap]) / self.l_tot) / (np.pi * self.r_outer **2)
+
+        print(np.linalg.norm(res) / res_norm_denom)
+        return res / res_norm_denom
 
 
     def initialize_discretization(self):     
@@ -509,3 +537,49 @@ class heatpipe_discretised:
     
     def get_temperature_profile(self):
         return self.T
+    
+
+if __name__ == "__main__":
+    N_Z = 80
+    N_R = 40
+
+    data = {
+        "r_outer": .007 + 0.001 + 0.0005,
+        "delta_wick": 0.0005,
+        "delta_wall": 0.001,
+        "l_evap": 0.3,
+        "l_adiabatic": 0.15,
+        "l_cond": 0.60,
+
+        "N_wick": 20,
+        "N_wall": 20,
+        "N_evap": 20,
+        "N_adiabatic": 10,
+        "N_cond": 50,
+
+        "adiabatic_radial_flux": False,
+        "Temperature_BC": True,
+        "h_vap": 1e6,
+        "h_cond": 62.6,
+        "T_cond": 300,
+        "T_op": 850,
+
+        "k_wick": 66.2,
+        "k_wall": 19.0,
+
+        "P_C": 2476,
+        "T_C": 856,
+        
+        "Q": np.ones(20) * 500. / 30,
+    }
+
+    fuelPin_conduction = heatpipe_discretised(data)
+    fuelPin_conduction.solve()
+
+    sol, info, ier, mesg = fsolve(fuelPin_conduction.get_residuals, fuelPin_conduction.T / 300., full_output=True)
+
+    plt.plot(300. * sol[:-1].reshape(N_Z, N_R)[0], label="non-linear")
+    plt.plot(fuelPin_conduction.T[:-1].reshape(N_Z, N_R)[0], ls="--", label="linear")
+    
+    plt.legend()
+    plt.show()
