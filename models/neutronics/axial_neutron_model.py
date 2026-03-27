@@ -4,54 +4,56 @@ import matplotlib as mpl
 
 from scipy.optimize import fsolve
 
-MODEL_PATH = r"./utils/rgi_surrogate.joblib"
-from utils.interpolator import OpenMCTallyGridSurrogate
-interpolator_model = OpenMCTallyGridSurrogate()
-interpolator_model = interpolator_model.load(MODEL_PATH)
+# MODEL_PATH = r"./utils/rgi_surrogate.joblib"
+# from utils.interpolator import OpenMCTallyGridSurrogate
+# interpolator_model = OpenMCTallyGridSurrogate()
+# interpolator_model = interpolator_model.load(MODEL_PATH)
 
 N_G = 8
 
 def calculate_diffusivity(T):
-    D = np.array([1.856146, 0.931944, 0.808143, 0.8032, 0.804013, 0.751048, 0.664298, 0.668599])
+    D = np.array([1.822733189502, 0.909539957965, 0.789695519368, 0.782178297954, 0.778223331717, 0.720306709623, 0.645906634649, 0.716544176406])
     return np.repeat(D[None] * 1e-2, len(T), axis=0)
 
 
 def calculate_Sigma_t(T):
-    Sigma_t = np.array([0.215433, 0.390558, 0.437022, 0.438771, 0.437527, 0.452985, 0.462072, 0.491347])
+    Sigma_t = np.array([0.218755248796, 0.399931318974, 0.448117958797, 0.451600144497, 0.452600375002, 0.472615208883, 0.477890785379, 0.465947127704])
     return np.repeat(Sigma_t[None] * 1e2, len(T), axis=0)
 
 
 def calculate_Sigma_s0(T):
-    Sigma_s0 = np.array([
-        [1.532002e-01, 2.560313e-02, 8.430881e-06, 2.465170e-08, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-        [0.000000e+00, 3.415866e-01, 1.578866e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-        [0.000000e+00, 0.000000e+00, 3.946257e-01, 1.686322e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-        [0.000000e+00, 0.000000e+00, 0.000000e+00, 3.961719e-01, 1.590331e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-        [0.000000e+00, 0.000000e+00, 0.000000e+00, 1.485168e-05, 3.886724e-01, 2.267349e-02, 6.326949e-07, 0.000000e+00],
-        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 8.702828e-03, 4.265023e-01, 9.153768e-04, 3.121413e-06],
-        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 3.510087e-05, 1.015273e-01, 3.854386e-01, 2.730068e-05],
-        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 4.610164e-01, 4.610164e-03, 7.207613e-03],
-    ])
+    Sigma_s0 = np.array(
+        [
+            [1.915640419307e-01, 2.649476899088e-02, 7.612501864966e-06, 2.175000532847e-07, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00],
+            [0.000000000000e+00, 3.821866087803e-01, 1.748239884516e-02, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00],
+            [0.000000000000e+00, 0.000000000000e+00, 4.283323644297e-01, 1.897047538109e-02, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00],
+            [0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 4.309142395936e-01, 1.830836691992e-02, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00],
+            [0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 1.108383435515e-05, 4.177546754032e-01, 3.235312912299e-02, 2.333438811611e-06, 0.000000000000e+00],
+            [0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 7.035668782444e-03, 4.591850559024e-01, 1.059903520475e-03, 4.165210863191e-06],
+            [0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 6.809375303709e-05, 1.054400814073e-01, 3.630263684643e-01, 3.095170592595e-05],
+            [0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 4.201128786015e-01, 1.750470327506e-02, 0.000000000000e+00]
+        ]
+   )
     return np.repeat(Sigma_s0[None] * 1e2, len(T), axis=0)
 
 
 def calculate_Sigma_f(T):
-    Sigma_f = np.array([5.863028e-04, 8.501323e-05, 2.374428e-04, 9.599783e-04, 1.514871e-03, 5.528794e-03, 9.530878e-03, 1.017026e-02])
+    Sigma_f = np.array([5.195495025547e-04, 7.380079372461e-05, 1.986932777248e-04, 7.749988914091e-04, 1.227451921783e-03, 3.861481365247e-03, 6.068707316140e-03, 1.401789774873e-02])
     return np.repeat(Sigma_f[None] * 1e2, len(T), axis=0)
 
 
 def calculate_nu(T):
-    nu = np.array([2.746486, 2.448851, 2.433717, 2.435004, 2.436693, 2.4367, 2.4367, 2.4367])
+    nu = np.array([2.747958695492, 2.448142676021, 2.433723274757, 2.435037061696, 2.436694668567, 2.436700028023, 2.436700023982, 2.436700023356])
     return np.repeat(nu[None], len(T), axis=0)
 
 
 def calculate_chi(T):
-    chi = np.array([8.453690e-01, 1.536567e-01, 9.669716e-04, 7.354006e-06, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00])
+    chi = np.array([8.456362989955e-01, 1.535990124090e-01, 7.580153564470e-04, 6.673239061383e-06, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00])
     return np.repeat(chi[None], len(T), axis=0)
 
 
 def calculate_kappa(T):
-    kappa = np.array([1.968885e+08, 1.934116e+08, 1.934106e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08])
+    kappa = np.array([1.968860125802e+08, 1.934114201002e+08, 1.934102493864e+08, 1.934054129759e+08, 1.934054046411e+08, 1.934054022163e+08, 1.934054018967e+08, 1.934054018472e+08])
     return np.repeat(kappa[None] * 1.602e-19, len(T), axis=0)
 
 def calculate_parameters(T):              # SI
@@ -69,10 +71,10 @@ class NeutronModel:
     def __init__(self):
         # geometry
         self.N_R = 10
-        self.N_Z = 100
+        self.N_Z = 200
         self.N_G = 8
 
-        self.l = 1.0
+        self.l = 2
         self.delta_Z = self.l / self.N_Z
         self.cross_sectional_area = 0.01**2 * np.pi # approximate
 
@@ -143,16 +145,18 @@ class NeutronModel:
 
         res_transport = (
             a_n_g * phi_n_g + b_n_g * phi_np1_g + c_n_g * phi_nm1_g + Sigma_t * phi_n_g
-            - (np.sum(Sigma_s0 * phi_n_g[:, None, :], axis=2) + (chi / k) * (np.sum(nu * Sigma_f * phi_n_g, axis=1))[:, None])
+            - (np.sum(Sigma_s0 * phi_n_g[:, :, None], axis=1) + (chi / k) * (np.sum(nu * Sigma_f * phi_n_g, axis=1))[:, None])
         )
         res_transport = np.ravel(res_transport)
 
-        power_density = np.sum(kappa * Sigma_f * phi_n_g, axis=1)
-        power = np.sum(power_density) * self.cross_sectional_area * self.delta_Z
+        # power_density = np.sum(kappa * Sigma_f * phi_n_g, axis=1)
+        # power = np.sum(power_density) * self.cross_sectional_area * self.delta_Z
 
-        res_power = np.array([(self.power - power)])
+        # res_power = np.array([(self.power - power)])
 
-        return np.r_[res_transport, res_power]
+        res_normal = self.N_G * self.N_Z - np.dot(phi_ng, phi_ng)
+
+        return np.r_[res_transport, res_normal]
 
     def get_axial_temperature(self, T):
         return T[::self.N_R]
@@ -165,13 +169,20 @@ class NeutronModel:
     
     def solve(self):
         T_initial = np.full((self.N_Z*self.N_R), 900)
-        phi_ng_initial = np.full((self.N_Z*self.N_G), 1e12)
+        phi_ng_initial = np.full((self.N_Z*self.N_G), 1)
         k_initial = np.array([1])
         X_initial = np.concatenate([phi_ng_initial, k_initial]) # ignore T for now
 
+        counter = {"it": 0}
         def residuals_wrapper(X):
-            return self.calculate_residuals(np.r_[T_initial, X])
-
+            counter["it"] += 1
+            
+            r = self.calculate_residuals(np.r_[T_initial, X])
+            
+            print(f"Iteration {counter['it']}: ||r|| = {np.linalg.norm(r):.3e}")
+            
+            return r
+        
         res, info, ier, msg = fsolve(
             residuals_wrapper,
             X_initial,
@@ -184,9 +195,20 @@ class NeutronModel:
 
         if ier != 1:
             raise RuntimeError(f"fsolve did not converge: {msg}")
+        
+        _, _, _, Sigma_f, _, _, kappa = self.get_material_data(T_initial)
+        phi_n_g = np.reshape(res[:-1], (self.N_Z, self.N_G))
 
-        self.phi_n_g = np.reshape(res[:-1], (self.N_Z, self.N_G))
-        self.k = res[-1]
+        power_density = np.sum(kappa * Sigma_f * phi_n_g, axis=1)
+        power = np.sum(power_density) * self.cross_sectional_area * self.delta_Z
+        phi_n_g *= self.power / power
+        
+        k = res[-1]
+
+        self.phi = phi_n_g
+        self.k = k
+
+
     
     
     # def get_material_data(self, T):
@@ -217,7 +239,7 @@ if __name__ == "__main__":
 
     neutron_model = NeutronModel()
     neutron_model.solve()
-    phi = neutron_model.phi_n_g
+    phi = neutron_model.phi
     k_eff = neutron_model.k
 
     mpl.rcParams["text.usetex"] = True
@@ -232,7 +254,6 @@ if __name__ == "__main__":
     for i in range(len(colors)):
         ax.plot(phi[:, i], color=colors[i], label=i)
     ax.legend()
-    # ax.plot(phi[:, 1], color="blue")
     ax.set_yscale("log")
     ax.set_title(r"$k_{eff} = $" + f"{k_eff:.2f}")
 

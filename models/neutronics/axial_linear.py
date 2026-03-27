@@ -2,51 +2,51 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-
 N_G = 8
 
-
 def calculate_diffusivity(T):
-    D = np.array([1.856146, 0.931944, 0.808143, 0.8032, 0.804013, 0.751048, 0.664298, 0.668599])
+    D = np.array([1.822733189502, 0.909539957965, 0.789695519368, 0.782178297954, 0.778223331717, 0.720306709623, 0.645906634649, 0.716544176406])
     return np.repeat(D[None] * 1e-2, len(T), axis=0)
 
 
 def calculate_Sigma_t(T):
-    Sigma_t = np.array([0.215433, 0.390558, 0.437022, 0.438771, 0.437527, 0.452985, 0.462072, 0.491347])
+    Sigma_t = np.array([0.218755248796, 0.399931318974, 0.448117958797, 0.451600144497, 0.452600375002, 0.472615208883, 0.477890785379, 0.465947127704])
     return np.repeat(Sigma_t[None] * 1e2, len(T), axis=0)
 
 
 def calculate_Sigma_s0(T):
-    Sigma_s0 = np.array([
-        [1.532002e-01, 2.560313e-02, 8.430881e-06, 2.465170e-08, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-        [0.000000e+00, 3.415866e-01, 1.578866e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-        [0.000000e+00, 0.000000e+00, 3.946257e-01, 1.686322e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-        [0.000000e+00, 0.000000e+00, 0.000000e+00, 3.961719e-01, 1.590331e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-        [0.000000e+00, 0.000000e+00, 0.000000e+00, 1.485168e-05, 3.886724e-01, 2.267349e-02, 6.326949e-07, 0.000000e+00],
-        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 8.702828e-03, 4.265023e-01, 9.153768e-04, 3.121413e-06],
-        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 3.510087e-05, 1.015273e-01, 3.854386e-01, 2.730068e-05],
-        [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 4.610164e-01, 4.610164e-03, 7.207613e-03],
-    ])
+    Sigma_s0 = np.array(
+        [
+            [1.915640419307e-01, 2.649476899088e-02, 7.612501864966e-06, 2.175000532847e-07, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00],
+            [0.000000000000e+00, 3.821866087803e-01, 1.748239884516e-02, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00],
+            [0.000000000000e+00, 0.000000000000e+00, 4.283323644297e-01, 1.897047538109e-02, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00],
+            [0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 4.309142395936e-01, 1.830836691992e-02, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00],
+            [0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 1.108383435515e-05, 4.177546754032e-01, 3.235312912299e-02, 2.333438811611e-06, 0.000000000000e+00],
+            [0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 7.035668782444e-03, 4.591850559024e-01, 1.059903520475e-03, 4.165210863191e-06],
+            [0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 6.809375303709e-05, 1.054400814073e-01, 3.630263684643e-01, 3.095170592595e-05],
+            [0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 4.201128786015e-01, 1.750470327506e-02, 0.000000000000e+00]
+        ]
+   )
     return np.repeat(Sigma_s0[None] * 1e2, len(T), axis=0)
 
 
 def calculate_Sigma_f(T):
-    Sigma_f = np.array([5.863028e-04, 8.501323e-05, 2.374428e-04, 9.599783e-04, 1.514871e-03, 5.528794e-03, 9.530878e-03, 1.017026e-02])
+    Sigma_f = np.array([5.195495025547e-04, 7.380079372461e-05, 1.986932777248e-04, 7.749988914091e-04, 1.227451921783e-03, 3.861481365247e-03, 6.068707316140e-03, 1.401789774873e-02])
     return np.repeat(Sigma_f[None] * 1e2, len(T), axis=0)
 
 
 def calculate_nu(T):
-    nu = np.array([2.746486, 2.448851, 2.433717, 2.435004, 2.436693, 2.4367, 2.4367, 2.4367])
+    nu = np.array([2.747958695492, 2.448142676021, 2.433723274757, 2.435037061696, 2.436694668567, 2.436700028023, 2.436700023982, 2.436700023356])
     return np.repeat(nu[None], len(T), axis=0)
 
 
 def calculate_chi(T):
-    chi = np.array([8.453690e-01, 1.536567e-01, 9.669716e-04, 7.354006e-06, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00])
+    chi = np.array([8.456362989955e-01, 1.535990124090e-01, 7.580153564470e-04, 6.673239061383e-06, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00, 0.000000000000e+00])
     return np.repeat(chi[None], len(T), axis=0)
 
 
 def calculate_kappa(T):
-    kappa = np.array([1.968885e+08, 1.934116e+08, 1.934106e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08, 1.934054e+08])
+    kappa = np.array([1.968860125802e+08, 1.934114201002e+08, 1.934102493864e+08, 1.934054129759e+08, 1.934054046411e+08, 1.934054022163e+08, 1.934054018967e+08, 1.934054018472e+08])
     return np.repeat(kappa[None] * 1.602e-19, len(T), axis=0)
 
 
@@ -67,7 +67,7 @@ class LinearNeutronModel:
         self.N_Z = 100
         self.N_G = 8
 
-        self.l = 1
+        self.l = 2
         self.delta_Z = self.l / self.N_Z
         self.cross_sectional_area = np.pi * 0.01**2
 
@@ -243,11 +243,49 @@ class LinearNeutronModel:
         return np.linalg.norm(r), np.linalg.norm(r, ord=np.inf)
     
 
+def compute_kinf(T):
+    """
+    Compute infinite-medium multiplication factor k_inf
+    from homogenized multigroup cross sections.
+    """
+
+    # Get data (take first row since homogeneous in space)
+    Sigma_t = calculate_Sigma_t(T)[0]          # (G,)
+    Sigma_s = calculate_Sigma_s0(T)[0]         # (G, G)
+    Sigma_f = calculate_Sigma_f(T)[0]          # (G,)
+    nu      = calculate_nu(T)[0]               # (G,)
+    chi     = calculate_chi(T)[0]              # (G,)
+
+    # --- Build operators ---
+
+    # Loss operator A = Σ_t - Σ_s (using in→out convention)
+    # For diffusion form: A_g = Σ_t,g - sum_{g'} Σ_s(g -> g')
+    # But matrix form must subtract full scattering matrix
+    A = np.diag(Sigma_t) - Sigma_s
+
+    # Fission operator F = χ ⊗ (νΣ_f)
+    nuSigma_f = nu * Sigma_f
+    F = np.outer(chi, nuSigma_f)
+
+    # --- Solve eigenvalue problem ---
+    # k_inf = dominant eigenvalue of A^{-1} F
+    M = np.linalg.solve(A, F)
+    eigs = np.linalg.eigvals(M)
+
+    # Take largest real eigenvalue
+    k_inf = np.max(np.real(eigs))
+
+    return k_inf
+
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
 
 if __name__ == "__main__":
+    T = np.array([900.0])  # dummy input
+    k_inf = compute_kinf(T)
+    print("k_inf =", k_inf)
+
     model = LinearNeutronModel()
 
     T = np.full(model.N_R * model.N_Z, 900.0)
@@ -255,12 +293,6 @@ if __name__ == "__main__":
     # Try both if you are unsure about scattering orientation
     phi, k_eff = model.solve_eigenproblem(T, scattering_mode="in_out")
     l2, linf = model.check_residual(scattering_mode="in_out")
-
-    print("k_eff =", k_eff)
-    print("Residual L2   =", l2)
-    print("Residual Linf =", linf)
-    print("phi min =", phi.min())
-    print("phi max =", phi.max())
 
     mpl.rcParams["text.usetex"] = True
     mpl.rcParams["font.family"] = "Computer modern"

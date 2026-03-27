@@ -155,6 +155,14 @@ def build_mgxs_objects(domain, energy_group_edges):
             domain=domain, domain_type='cell',
             energy_groups=energy_groups, by_nuclide=False
         ),
+        "absorption": openmc.mgxs.AbsorptionXS(
+            domain=domain, domain_type='cell',
+            energy_groups=energy_groups, by_nuclide=False
+        ),
+        "scattering": openmc.mgxs.ScatterXS(
+            domain=domain, domain_type='cell',
+            energy_groups=energy_groups, by_nuclide=False
+        ), 
         "scatter_matrix": openmc.mgxs.ScatterMatrixXS(
             domain=domain, domain_type='cell',
             energy_groups=energy_groups, by_nuclide=False
@@ -182,14 +190,14 @@ def build_mgxs_objects(domain, energy_group_edges):
     }
 
     mgxs_objects["scatter_matrix"].formulation = "consistent"
+    mgxs_objects["scatter_matrix"].correction = None
     return mgxs_objects
 
 
 def collect_tallies_from_mgxs(mgxs_objects):
     tallies = openmc.Tallies()
     for mgxs in mgxs_objects.values():
-        for tally in mgxs.tallies.values():
-            tallies.append(tally, merge=True)
+        tallies += mgxs.tallies.values()
     return tallies
 
 
@@ -230,7 +238,7 @@ def create_openmc_model(
 
     outer_surface = openmc.model.HexagonalPrism(
         edge_length=4.0 * lattice.pitch[0],
-        boundary_type='vacuum',
+        boundary_type='reflective',
         orientation='x'
     )
     top    = openmc.ZPlane( 100., boundary_type='vacuum')
@@ -266,9 +274,9 @@ def create_openmc_model(
     settings = openmc.Settings()
     settings.batches = 150
     settings.inactive = 75
-    settings.particles = 20000
+    settings.particles = 2000
     settings.source = source
-    settings.verbosity = 1
+    settings.verbosity = 4
 
     settings.temperature = {
         # 'default': 850.0,              # fallback temperature [K]
@@ -308,6 +316,8 @@ def load_homogenized_xs_from_statepoint(sp_filename, mgxs_objects):
         # OpenMC typically returns groups in its MGXS ordering.
         # We flatten to simple numpy arrays here.
         total_xs = np.squeeze(mgxs_objects["total"].get_xs())
+        absorption_xs = np.squeeze(mgxs_objects["absorption"].get_xs())
+        scattering_xs = np.squeeze(mgxs_objects["scattering"].get_xs())
         scatter_matrix = np.squeeze(mgxs_objects["scatter_matrix"].get_xs(row_column="inout"))
         fission_xs = np.squeeze(mgxs_objects["fission"].get_xs())
         nu_fission_xs = np.squeeze(mgxs_objects["nu_fission"].get_xs())
@@ -321,6 +331,8 @@ def load_homogenized_xs_from_statepoint(sp_filename, mgxs_objects):
 
         return {
             "total_xs": total_xs,                      
+            "absorption_xs": absorption_xs,                      
+            "scattering_xs": scattering_xs,                      
             "scatter_matrix_xs": scatter_matrix,
             "fission_xs": fission_xs,                  
             "nu": nu,                                  
@@ -328,44 +340,38 @@ def load_homogenized_xs_from_statepoint(sp_filename, mgxs_objects):
             "kappa_fission_xs": kappa_fission_xs,      
             "kappa": kappa,                            
             "nu_fission_xs": nu_fission_xs,
-            "diffusion_coefficient": diffusion_coefficient
+            "diffusion_coefficient": diffusion_coefficient,
+            "difference": total_xs - absorption_xs - scattering_xs,
         }
 
+def print_array_literal(name, arr):
+    print(f"\n{name} =")
+    print(
+        np.array2string(
+            np.asarray(arr),
+            separator=", ",
+            precision=12,
+            suppress_small=False,
+            max_line_width=10_000
+        )
+    )
 
 def print_homogenized_xs(results, energy_group_edges):
-    np.set_printoptions(precision=6, suppress=False)
+    print_array_literal("energy_group_edges", energy_group_edges)
+    print_array_literal("total_xs", results["total_xs"])
+    print_array_literal("scattering_xs", results["scattering_xs"])
+    print_array_literal("absorption_xs", results["absorption_xs"])
+    print_array_literal("difference", results["difference"])
+    print_array_literal("scatter_matrix_xs", results["scatter_matrix_xs"])
+    print_array_literal("fission_xs", results["fission_xs"])
+    print_array_literal("nu_fission_xs", results["nu_fission_xs"])
+    print_array_literal("nu", results["nu"])
+    print_array_literal("chi", results["chi"])
+    print_array_literal("kappa_fission_xs", results["kappa_fission_xs"])
+    print_array_literal("kappa", results["kappa"])
+    print_array_literal("diffusion_coefficient", results["diffusion_coefficient"])
 
-    print("\nEnergy group edges (ascending):")
-    print(energy_group_edges)
-
-    print("\nHomogenized multigroup total macroscopic XS:")
-    print(results["total_xs"])
-
-    print("\nHomogenized multigroup scattering matrix XS:")
-    print(results["scatter_matrix_xs"])
-
-    print("\nHomogenized multigroup fission macroscopic XS:")
-    print(results["fission_xs"])
-
-    print("\nHomogenized multigroup nu-fission macroscopic XS:")
-    print(results["nu_fission_xs"])
-
-    print("\nDerived multigroup fission number nu:")
-    print(results["nu"])
-
-    print("\nHomogenized multigroup fission spectrum chi:")
-    print(results["chi"])
-
-    print("\nHomogenized multigroup kappa-fission XS:")
-    print(results["kappa_fission_xs"])
-
-    print("\nDerived multigroup kappa:")
-    print(results["kappa"])
-
-    print("\nDerived multigroup diffusion:")
-    print(results["diffusion_coefficient"])
-
-
+    print("\n----------------------------")
 # =============================================================================
 # Entry point
 # =============================================================================
@@ -417,4 +423,4 @@ if __name__ == "__main__":
     print_homogenized_xs(results, energy_group_edges)
 
     statepoint = openmc.StatePoint("/home/karlandersson/MasterThesisProject/outputs/homogenised_cell_model/statepoint.150.h5")
-    print(statepoint.keff)
+    print("k_eff: ", statepoint.keff)
