@@ -233,8 +233,8 @@ def create_openmc_model(
         boundary_type='vacuum',
         orientation='x'
     )
-    top    = openmc.ZPlane( 100., boundary_type='reflective')
-    bottom = openmc.ZPlane(-100., boundary_type='reflective')
+    top    = openmc.ZPlane( 100., boundary_type='vacuum')
+    bottom = openmc.ZPlane(-100., boundary_type='vacuum')
 
     # This is the spatial domain over which we homogenize
     main_cell = openmc.Cell(
@@ -415,3 +415,6 @@ if __name__ == "__main__":
 
     results = load_homogenized_xs_from_statepoint(statepoint_path, mgxs_objects)
     print_homogenized_xs(results, energy_group_edges)
+
+    statepoint = openmc.StatePoint("/home/karlandersson/MasterThesisProject/outputs/homogenised_cell_model/statepoint.150.h5")
+    print(statepoint.keff)
