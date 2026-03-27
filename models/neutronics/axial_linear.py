@@ -269,7 +269,7 @@ if __name__ == "__main__":
     fig = plt.figure(figsize=(16, 9))
     ax = fig.add_subplot(111)
 
-    colors = plt.cm.viridis(np.linspace(0, 1, model.N_G))[::-1]
+    colors = plt.cm.viridis(np.linspace(0, 1, model.N_G))[::-1] # type: ignore
     ax.grid(alpha=0.4)
 
     for g in range(model.N_G):

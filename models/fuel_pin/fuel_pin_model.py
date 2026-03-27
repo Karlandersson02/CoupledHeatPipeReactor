@@ -48,30 +48,28 @@ class FuelPin:
         self.generate_h_matrix()
 
         alpha = self.calculate_alpha(surface_tensor)
-        
-        M, C = self.generate_matrix_form(alpha)
+
+        qr = np.sum(self.phi_g * self.Sigma_f * self.kappa * np.pi * self.Delta_V)
+        M, C = self.generate_matrix_form(alpha, qr, self.T_moderator)
     
         T = np.linalg.solve(M, C)
 
         self.T = T
 
-    def get_residuals(self, T_hat):
-        T = T_hat * self.T_HP_c
-
+    def get_residuals(self, T_FP, qr, T_mod):
         self.initialize_discretization()
 
         surface_tensor = self.calculate_surfaces()
 
-        self.generate_k_matrix(T)
-        self.generate_h_matrix(T)
+        self.generate_k_matrix(T_FP)
+        self.generate_h_matrix(T_FP)
 
         alpha = self.calculate_alpha(surface_tensor)
         
-        M, C = self.generate_matrix_form(alpha)
+        M, C = self.generate_matrix_form(alpha, qr, T_mod)
     
-        res = M @ T - C 
+        res = M @ T_FP - C 
 
-        qr = self.phi_g * self.Sigma_f * self.kappa * self.Delta_V
         res_norm_denom = (np.sum(qr) * self.Delta_Z / self.l) / (np.pi * self.r **2)
 
         return res / res_norm_denom
@@ -160,7 +158,7 @@ class FuelPin:
         return alpha_tensor
     
     
-    def generate_matrix_form(self, alpha):
+    def generate_matrix_form(self, alpha, qr, T_mod):
         N = self.N_R * self.N_Z
         stride = self.N_R 
 
@@ -237,7 +235,7 @@ class FuelPin:
             M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
             M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
 
-            C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_moderator[z]
+            C[T_idx] = -h[z][r] * alpha[z][r][0] * T_mod[z]
 
         # -----------------------
         # Fuel inner BC elements, no corners.
@@ -267,7 +265,7 @@ class FuelPin:
         M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
         M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
 
-        C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_moderator[z]
+        C[T_idx] = -h[z][r] * alpha[z][r][0] * T_mod[z]
 
         # -----------------------
         # Uppermost cladding outer corner (z = N_Z - 1, r = N_R - 1).
@@ -281,7 +279,7 @@ class FuelPin:
         M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
         M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3]  
 
-        C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_moderator[z]
+        C[T_idx] = -h[z][r] * alpha[z][r][0] * T_mod[z]
 
         # -----------------------
         # Lowermost fuel inner corner (z = 0, r = 0).
@@ -311,9 +309,7 @@ class FuelPin:
             for r in range(0, self.N_fuel):
                 T_idx = (stride * z) + r
                 
-                for g in range(self.N_G):
-
-                    C[T_idx] += -self.phi_g[z][g] * self.Sigma_f[g] * self.kappa * self.Delta_V
+                C[T_idx] += -qr[z]
         
         return M, C
 

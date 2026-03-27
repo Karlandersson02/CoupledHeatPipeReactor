@@ -5,9 +5,9 @@ import matplotlib as mpl
 from scipy.optimize import fsolve
 
 MODEL_PATH = r"./utils/rgi_surrogate.joblib"
-from utils.interpolator import OpenMCTallyGridSurrogate
-interpolator_model = OpenMCTallyGridSurrogate()
-interpolator_model = interpolator_model.load(MODEL_PATH)
+# from utils.interpolator import OpenMCTallyGridSurrogate
+# interpolator_model = OpenMCTallyGridSurrogate()
+# interpolator_model = interpolator_model.load(MODEL_PATH)
 
 N_G = 8
 
@@ -64,9 +64,9 @@ def calculate_parameters(T):              # SI
     kappa = calculate_kappa(T)
     return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
 
-class NeutronModel:
 
-    def __init__(self):
+class NeutronModel:
+    def __init__(self, data):
         # geometry
         self.N_R = 10
         self.N_Z = 100
@@ -81,11 +81,55 @@ class NeutronModel:
         self.T_HP = 900
         self.T_M = 900
 
-    def unpack_variables(self, X):
-        T_n = X[:self.N_R * self.N_Z]
-        phi_ng = X[self.N_R * self.N_Z:-1]
-        k = X[-1]
-        return T_n, phi_ng, k
+    
+    def solve(self):
+        T_initial = np.full((self.N_Z*self.N_R), 900)
+        phi_ng_initial = np.full((self.N_Z*self.N_G), 1e12)
+        k_initial = np.array([1])
+        X_initial = np.concatenate([phi_ng_initial, k_initial]) # ignore T for now
+
+        def residuals_wrapper(X):
+            return self.get_residuals(X, T_initial)
+
+        res, info, ier, msg = fsolve(
+            residuals_wrapper,
+            X_initial,
+            full_output=True
+        )
+
+        print("ier =", ier)
+        print("msg =", msg)
+        # print("||res|| =", np.linalg.norm(info["fvec"]))
+
+        if ier != 1:
+            raise RuntimeError(f"fsolve did not converge: {msg}")
+
+        self.phi_n_g = np.reshape(res[:-1], (self.N_Z, self.N_G))
+        self.k = res[-1]
+
+    
+    def get_residuals(self, phi_ng_hat, T_FP_ave):
+        phi_ng = phi_ng_hat[:-1]
+        k = phi_ng_hat[-1]
+
+        phi_n_g = np.reshape(phi_ng, (self.N_Z, self.N_G))
+
+        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = self.get_material_data(T_FP_ave)
+        a_n_g, b_n_g, c_n_g = self.calculate_abc(D)
+
+        phi_np1_g = np.vstack([phi_n_g[1:], np.zeros((1, self.N_G))])
+        phi_nm1_g = np.vstack([np.zeros((1, self.N_G)), phi_n_g[:-1]])
+
+        res_transport = (
+            a_n_g * phi_n_g + b_n_g * phi_np1_g + c_n_g * phi_nm1_g + Sigma_t * phi_n_g
+            - (np.sum(Sigma_s0 * phi_n_g[:, None, :], axis=2) + (chi / k) * (np.sum(nu * Sigma_f * phi_n_g, axis=1))[:, None])
+        )
+        res_transport = np.ravel(res_transport)
+
+        res_norm = self.N_G * self.N_Z - np.dot(phi_ng, phi_ng)
+
+        return np.r_[res_transport, res_norm]
+        
 
     def calculate_abc(self, D_n_g):
 
@@ -131,62 +175,11 @@ class NeutronModel:
         c_n_g[-1] = -alpha_n_g[-1]
 
         return a_n_g, b_n_g, c_n_g
-    
-    def calculate_residuals(self, X):
-        T, phi_ng, k = self.unpack_variables(X)
-        phi_n_g = np.reshape(phi_ng, (self.N_Z, self.N_G))
-        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = self.get_material_data(T)
-        a_n_g, b_n_g, c_n_g = self.calculate_abc(D)
 
-        phi_np1_g = np.vstack([phi_n_g[1:], np.zeros((1, self.N_G))])
-        phi_nm1_g = np.vstack([np.zeros((1, self.N_G)), phi_n_g[:-1]])
 
-        res_transport = (
-            a_n_g * phi_n_g + b_n_g * phi_np1_g + c_n_g * phi_nm1_g + Sigma_t * phi_n_g
-            - (np.sum(Sigma_s0 * phi_n_g[:, None, :], axis=2) + (chi / k) * (np.sum(nu * Sigma_f * phi_n_g, axis=1))[:, None])
-        )
-        res_transport = np.ravel(res_transport)
-
-        power_density = np.sum(kappa * Sigma_f * phi_n_g, axis=1)
-        power = np.sum(power_density) * self.cross_sectional_area * self.delta_Z
-
-        res_power = np.array([(self.power - power)])
-
-        return np.r_[res_transport, res_power]
-
-    def get_axial_temperature(self, T):
-        return T[::self.N_R]
-
-    def get_material_data(self, T):
-        T_center_axial = self.get_axial_temperature(T)
-
-        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T_center_axial)
+    def get_material_data(self, T_ave):
+        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T_ave)
         return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
-    
-    def solve(self):
-        T_initial = np.full((self.N_Z*self.N_R), 900)
-        phi_ng_initial = np.full((self.N_Z*self.N_G), 1e12)
-        k_initial = np.array([1])
-        X_initial = np.concatenate([phi_ng_initial, k_initial]) # ignore T for now
-
-        def residuals_wrapper(X):
-            return self.calculate_residuals(np.r_[T_initial, X])
-
-        res, info, ier, msg = fsolve(
-            residuals_wrapper,
-            X_initial,
-            full_output=True
-        )
-
-        print("ier =", ier)
-        print("msg =", msg)
-        print("||res|| =", np.linalg.norm(info["fvec"]))
-
-        if ier != 1:
-            raise RuntimeError(f"fsolve did not converge: {msg}")
-
-        self.phi_n_g = np.reshape(res[:-1], (self.N_Z, self.N_G))
-        self.k = res[-1]
     
     
     # def get_material_data(self, T):
@@ -214,8 +207,9 @@ class NeutronModel:
 
 
 if __name__ == "__main__":
+    data = {}
 
-    neutron_model = NeutronModel()
+    neutron_model = NeutronModel(data)
     neutron_model.solve()
     phi = neutron_model.phi_n_g
     k_eff = neutron_model.k
@@ -227,7 +221,7 @@ if __name__ == "__main__":
     fig = plt.figure(figsize=(16,9))
     ax = fig.add_subplot(111)
 
-    colors = plt.cm.viridis(np.linspace(0, 1, 8))[::-1]
+    colors = plt.cm.viridis(np.linspace(0, 1, 8))[::-1] # type: ignore
     ax.grid(alpha=0.4)
     for i in range(len(colors)):
         ax.plot(phi[:, i], color=colors[i], label=i)

@@ -42,6 +42,9 @@ class heatpipe_discretised:
             Qnew[(self.N_evap + self.N_adiabatic):] = Qout
             self.Q = Qnew
 
+        self.res_norm_denom = 1.
+        # self.res_norm_denom = np.linalg.norm(self.get_residuals(np.ones(self.N_R * self.N_Z + 1)))
+
 
     def solve(self):
         
@@ -66,8 +69,8 @@ class heatpipe_discretised:
         self.T = T
 
     
-    def get_residuals(self, T_hat):
-        T = T_hat * self.T_cond
+    def get_residuals(self, T_HP, Q_HP):
+        self.Q = Q_HP
 
         R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
 
@@ -83,12 +86,9 @@ class heatpipe_discretised:
         else:
             M, C = self.generate_matrix_form_heat_bc(alpha, k_matrix, h_matrix)
     
-        res = M @ T - C 
+        res = M @ T_HP - C 
 
-        res_norm_denom = (np.dot(self.Q, delta_Z[:self.N_evap]) / self.l_tot) / (np.pi * self.r_outer **2)
-
-        print(np.linalg.norm(res) / res_norm_denom)
-        return res / res_norm_denom
+        return res / self.res_norm_denom
 
 
     def initialize_discretization(self):     
