@@ -1,7 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from scipy.optimize import fsolve
+from scipy.optimize import fsolve, root
+from scipy.optimize import newton_krylov
+
+from scipy.sparse import lil_matrix
+from scipy.sparse.linalg import spsolve
+
+
 
 class heatpipe_discretised:
     def __init__(self, data):
@@ -35,12 +41,28 @@ class heatpipe_discretised:
         self.k_wall = data.get("k_wall")
         self.k_wick = data.get("k_wick")
         self.Q = data.get("Q")
+        
         if not self.Temperature_BC:
             Qnew = np.zeros(self.N_Z)
             Qnew[:self.N_evap] = self.Q
             Qout = -np.ones(self.N_cond) * np.sum(self.Q) / self.N_cond
             Qnew[(self.N_evap + self.N_adiabatic):] = Qout
             self.Q = Qnew
+
+        # Fixed discretisation
+        R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
+
+        surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm, delta_Z)
+
+        k_matrix = self.generate_k_matrix()
+        h_matrix = self.generate_h_matrix()
+
+        alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k_matrix)        
+        
+        if self.Temperature_BC:
+            self.M, self.C = self.generate_matrix_form_temperature_bc(alpha, k_matrix, h_matrix)
+        else:
+            self.M, self.C = self.generate_matrix_form_heat_bc(alpha, k_matrix, h_matrix)
 
 
     def solve(self):
@@ -53,42 +75,29 @@ class heatpipe_discretised:
         h_matrix = self.generate_h_matrix()
 
         alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k_matrix)
-        
+
         if self.Temperature_BC:
             M, C = self.generate_matrix_form_temperature_bc(alpha, k_matrix, h_matrix)
         else:
             M, C = self.generate_matrix_form_heat_bc(alpha, k_matrix, h_matrix)
 
-        T = np.linalg.solve(M, C)
+        T = spsolve(M, C)
         if not self.Temperature_BC:
             T = np.concatenate([T, np.array([self.T_op])])
 
         self.T = T
 
     
-    def get_residuals(self, T_hat):
-        T = T_hat * self.T_cond
+    def get_residuals(self, T):
+        # T = T_hat * self.T_cond
 
-        R, delta_Rp, delta_Rm, Z, delta_Z = self.initialize_discretization()
+        res = self.M @ T - self.C 
 
-        surface_areas = self.calculate_surfaces(delta_Rp, delta_Rm, delta_Z)
+        # res_norm_denom = (np.dot(self.Q, delta_Z[:self.N_evap]) / self.l_tot) / (np.pi * self.r_outer **2)
 
-        k_matrix = self.generate_k_matrix()
-        h_matrix = self.generate_h_matrix()
-
-        alpha = self.calculate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k_matrix)
-        
-        if self.Temperature_BC:
-            M, C = self.generate_matrix_form_temperature_bc(alpha, k_matrix, h_matrix)
-        else:
-            M, C = self.generate_matrix_form_heat_bc(alpha, k_matrix, h_matrix)
-    
-        res = M @ T - C 
-
-        res_norm_denom = (np.dot(self.Q, delta_Z[:self.N_evap]) / self.l_tot) / (np.pi * self.r_outer **2)
-
-        print(np.linalg.norm(res) / res_norm_denom)
-        return res / res_norm_denom
+        # print(np.linalg.norm(res) / res_norm_denom)
+        # print(np.linalg.norm(res))
+        return res
 
 
     def initialize_discretization(self):     
@@ -188,18 +197,40 @@ class heatpipe_discretised:
         :return: shape (N_z, N_r, 4)
         :rtype: ndarray[Any, Any]
         """
+        # alpha_tensor = np.zeros_like(surface_tensor)
+
+        # for i in range(alpha_tensor.shape[0]):
+        #     for j in range(alpha_tensor.shape[1]):
+        #         if not (j == alpha_tensor.shape[1] - 1):
+        #             alpha_tensor[i, j, 0] = (surface_tensor[i, j, 0] * k_matrix[i, j+1]) / (k_matrix[i, j]*delta_Rm[j+1] + k_matrix[i, j+1]*delta_Rp[j])
+        #         if not (j == 0):
+        #             alpha_tensor[i, j, 1] = (surface_tensor[i, j, 1] * k_matrix[i, j-1]) / (k_matrix[i, j]*delta_Rp[j-1] + k_matrix[i, j-1]*delta_Rm[j])
+        #         if not (i == alpha_tensor.shape[0] - 1):
+        #             alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i+1, j]) / (k_matrix[i, j]*delta_Z[i+1] + k_matrix[i+1, j]*delta_Z[i])
+        #         if not (i == 0):
+        #             alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*delta_Z[i-1] + k_matrix[i-1, j]*delta_Z[i])
+
         alpha_tensor = np.zeros_like(surface_tensor)
 
-        for i in range(alpha_tensor.shape[0]):
-            for j in range(alpha_tensor.shape[1]):
-                if not (j == alpha_tensor.shape[1] - 1):
-                    alpha_tensor[i, j, 0] = (surface_tensor[i, j, 0] * k_matrix[i, j+1]) / (k_matrix[i, j]*delta_Rm[j+1] + k_matrix[i, j+1]*delta_Rp[j])
-                if not (j == 0):
-                    alpha_tensor[i, j, 1] = (surface_tensor[i, j, 1] * k_matrix[i, j-1]) / (k_matrix[i, j]*delta_Rp[j-1] + k_matrix[i, j-1]*delta_Rm[j])
-                if not (i == alpha_tensor.shape[0] - 1):
-                    alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * k_matrix[i+1, j]) / (k_matrix[i, j]*delta_Z[i+1] + k_matrix[i+1, j]*delta_Z[i])
-                if not (i == 0):
-                    alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * k_matrix[i-1, j]) / (k_matrix[i, j]*delta_Z[i-1] + k_matrix[i-1, j]*delta_Z[i])
+        alpha_tensor[:, :-1, 0] = (
+            surface_tensor[:, :-1, 0] * k_matrix[:, 1:]
+            / (k_matrix[:, :-1] * delta_Rm[1:] + k_matrix[:, 1:] * delta_Rp[:-1])
+        )
+
+        alpha_tensor[:, 1:, 1] = (
+            surface_tensor[:, 1:, 1] * k_matrix[:, :-1]
+            / (k_matrix[:, 1:] * delta_Rp[:-1] + k_matrix[:, :-1] * delta_Rm[1:])
+        )
+
+        alpha_tensor[:-1, :, 2] = (
+            surface_tensor[:-1, :, 2] * k_matrix[1:, :]
+            / (k_matrix[:-1, :] * delta_Z[1:, None] + k_matrix[1:, :] * delta_Z[:-1, None])
+        )
+
+        alpha_tensor[1:, :, 3] = (
+            surface_tensor[1:, :, 3] * k_matrix[:-1, :]
+            / (k_matrix[1:, :] * delta_Z[:-1, None] + k_matrix[:-1, :] * delta_Z[1:, None])
+        )
 
         # Init masks
         vapour_mask = np.zeros_like(alpha_tensor, dtype=bool)
@@ -221,13 +252,13 @@ class heatpipe_discretised:
             alpha_tensor[adiabatic_mask] = 0
         return alpha_tensor
 
-    def generate_matrix_form_temperature_bc(self, alpha: np.ndarray, k: np.ndarray, h: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def generate_matrix_form_temperature_bc(self, alpha, k, h):
         # Number of physical grid nodes + extra vapor node (stored at index -1).
         N_phys = self.N_R * self.N_Z
         N = N_phys + 1
         stride = self.N_R 
 
-        M = np.zeros((N, N), dtype=float)
+        M = lil_matrix((N, N), dtype=float)
         C = np.zeros(N, dtype=float)
 
         # -----------------------
@@ -236,17 +267,17 @@ class heatpipe_discretised:
             for r in range(1, self.N_R - 1):
                 T_idx = (stride * z) + r
 
-                M[T_idx][T_idx] = -k[z][r] * (
-                    alpha[z][r][0] +
-                    alpha[z][r][1] +
-                    alpha[z][r][2] +
-                    alpha[z][r][3]
+                M[T_idx, T_idx] = -k[z, r] * (
+                    alpha[z, r, 0] +
+                    alpha[z, r, 1] +
+                    alpha[z, r, 2] +
+                    alpha[z, r, 3]
                 )
 
-                M[T_idx][T_idx + 1]       = k[z][r] * alpha[z][r][0]
-                M[T_idx][T_idx - 1]       = k[z][r] * alpha[z][r][1]
-                M[T_idx][T_idx + stride]  = k[z][r] * alpha[z][r][2]  
-                M[T_idx][T_idx - stride]  = k[z][r] * alpha[z][r][3] 
+                M[T_idx, T_idx + 1]       = k[z, r] * alpha[z, r, 0]
+                M[T_idx, T_idx - 1]       = k[z, r] * alpha[z, r, 1]
+                M[T_idx, T_idx + stride]  = k[z, r] * alpha[z, r, 2]  
+                M[T_idx, T_idx - stride]  = k[z, r] * alpha[z, r, 3] 
 
         # -----------------------
         # Insulated wall at z = 0
@@ -254,15 +285,15 @@ class heatpipe_discretised:
         for r in range(1, self.N_R - 1):
             T_idx = (stride * z) + r
 
-            M[T_idx][T_idx] = -k[z][r] * (
+            M[T_idx, T_idx] = -k[z, r] * (
                 alpha[z][r][0] +
                 alpha[z][r][1] +
                 alpha[z][r][2]
             )
 
-            M[T_idx][T_idx + 1]       = k[z][r] * alpha[z][r][0]
-            M[T_idx][T_idx - 1]       = k[z][r] * alpha[z][r][1]
-            M[T_idx][T_idx + stride]  = k[z][r] * alpha[z][r][2]  
+            M[T_idx, T_idx + 1]       = k[z, r] * alpha[z, r, 0]
+            M[T_idx, T_idx - 1]       = k[z, r] * alpha[z, r, 1]
+            M[T_idx, T_idx + stride]  = k[z, r] * alpha[z, r, 2]  
 
         # -----------------------
         # Insulated wall at z = N_Z - 1
@@ -270,15 +301,15 @@ class heatpipe_discretised:
         for r in range(1, self.N_R - 1):
             T_idx = (stride * z) + r
 
-            M[T_idx][T_idx] = -k[z][r] * (
-                alpha[z][r][0] +
-                alpha[z][r][1] +
-                alpha[z][r][3]
+            M[T_idx, T_idx] = -k[z, r] * (
+                alpha[z, r, 0] +
+                alpha[z, r, 1] +
+                alpha[z, r, 3]
             )
 
-            M[T_idx][T_idx + 1]       = k[z][r] * alpha[z][r][0]
-            M[T_idx][T_idx - 1]       = k[z][r] * alpha[z][r][1]
-            M[T_idx][T_idx - stride]  = k[z][r] * alpha[z][r][3]  
+            M[T_idx, T_idx + 1]       = k[z, r] * alpha[z, r, 0]
+            M[T_idx, T_idx - 1]       = k[z, r] * alpha[z, r, 1]
+            M[T_idx, T_idx - stride]  = k[z, r] * alpha[z, r, 3]  
 
 
         # -----------------------
@@ -287,17 +318,17 @@ class heatpipe_discretised:
         for z in range(1, self.N_Z-1): #
             T_idx = z * stride + r 
 
-            M[T_idx][T_idx] = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2] + alpha[z][r][3])
-            M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][0]
+            M[T_idx, T_idx] = -k[z, r] * (alpha[z, r, 1] + alpha[z, r, 2] + alpha[z, r, 3])
+            M[T_idx, T_idx] -=  h[z, r] * alpha[z, r, 0]
 
-            M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
-            M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
-            M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
+            M[T_idx, T_idx - 1]      = k[z, r] * alpha[z, r, 1]
+            M[T_idx, T_idx + stride] = k[z, r] * alpha[z, r, 2] 
+            M[T_idx, T_idx - stride] = k[z, r] * alpha[z, r, 3] 
 
             if z < self.N_evap:
                 C[T_idx] = -self.Q[z]
             else:
-                C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_cond
+                C[T_idx] = -h[z, r] * alpha[z, r, 0] * self.T_cond
 
         # -----------------------
         # Wick BC elements against vapor, no corners.
@@ -305,13 +336,13 @@ class heatpipe_discretised:
         for z in range(0, self.N_Z-1):
             T_idx = z * stride + r 
 
-            M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2] + alpha[z][r][3])
-            M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1]
+            M[T_idx, T_idx]  = -k[z, r] * (alpha[z, r, 0] + alpha[z, r, 2] + alpha[z, r, 3])
+            M[T_idx, T_idx] -=  h[z, r] * alpha[z, r, 1]
 
-            M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
-            M[T_idx][-1]             = h[z][r] * alpha[z][r][1]
-            M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
-            M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
+            M[T_idx, T_idx + 1]      = k[z, r] * alpha[z, r, 0]
+            M[T_idx, -1]             = h[z, r] * alpha[z, r, 1]
+            M[T_idx, T_idx + stride] = k[z, r] * alpha[z, r, 2] 
+            M[T_idx, T_idx - stride] = k[z, r] * alpha[z, r, 3] 
 
         # -----------------------
         # Corner next to evaporator entrance (z = 0, r = N_R-1).
@@ -319,10 +350,10 @@ class heatpipe_discretised:
         r = self.N_R - 1
         T_idx = z * stride + r 
 
-        M[T_idx][T_idx] = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2])
+        M[T_idx, T_idx] = -k[z, r] * (alpha[z, r, 1] + alpha[z, r, 2])
 
-        M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
-        M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2] 
+        M[T_idx, T_idx - 1]      = k[z, r] * alpha[z, r, 1]
+        M[T_idx, T_idx + stride] = k[z, r] * alpha[z, r, 2] 
 
         C[T_idx] = -self.Q[z]
 
@@ -332,11 +363,11 @@ class heatpipe_discretised:
         r = self.N_R - 1
         T_idx = z * stride + r 
 
-        M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][3])
-        M[T_idx][T_idx] += -h[z][r] * alpha[z][r][0] 
+        M[T_idx, T_idx]  = -k[z, r] * (alpha[z, r, 1] + alpha[z, r, 3])
+        M[T_idx, T_idx] += -h[z, r] * alpha[z, r, 0] 
 
-        M[T_idx][T_idx - 1]      = k[z][r] * alpha[z][r][1]
-        M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3]  
+        M[T_idx, T_idx - 1]      = k[z, r] * alpha[z, r, 1]
+        M[T_idx, T_idx - stride] = k[z, r] * alpha[z, r, 3]  
 
         C[T_idx] = -h[z][r] * alpha[z][r][0] * self.T_cond 
 
@@ -346,12 +377,12 @@ class heatpipe_discretised:
         r = 0
         T_idx = z * stride + r
 
-        M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][2])
-        M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1] 
+        M[T_idx, T_idx]  = -k[z, r] * (alpha[z, r, 0] + alpha[z, r, 2])
+        M[T_idx, T_idx] -=  h[z, r] * alpha[z, r, 1] 
 
-        M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
-        M[T_idx][-1]             = h[z][r] * alpha[z][r][1]
-        M[T_idx][T_idx + stride] = k[z][r] * alpha[z][r][2]
+        M[T_idx, T_idx + 1]      = k[z, r] * alpha[z, r, 0]
+        M[T_idx, -1]             = h[z][r] * alpha[z, r, 1]
+        M[T_idx, T_idx + stride] = k[z, r] * alpha[z, r, 2]
 
         # -----------------------
         # Corner next to condenser vapor outlet/inlet (z = N_Z - 1, r = 0).
@@ -359,12 +390,12 @@ class heatpipe_discretised:
         r = 0
         T_idx = z * stride + r
 
-        M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][0] + alpha[z][r][3])
-        M[T_idx][T_idx] -=  h[z][r] * alpha[z][r][1]
+        M[T_idx, T_idx]  = -k[z, r] * (alpha[z, r, 0] + alpha[z, r, 3])
+        M[T_idx, T_idx] -=  h[z, r] * alpha[z, r, 1]
 
-        M[T_idx][T_idx + 1]      = k[z][r] * alpha[z][r][0]
-        M[T_idx][-1]             = h[z][r] * alpha[z][r][1]
-        M[T_idx][T_idx - stride] = k[z][r] * alpha[z][r][3] 
+        M[T_idx, T_idx + 1]      = k[z, r] * alpha[z, r, 0]
+        M[T_idx, -1]             = h[z, r] * alpha[z, r, 1]
+        M[T_idx, T_idx - stride] = k[z, r] * alpha[z, r, 3] 
 
         # -----------------------
         # Vapor elements. 
@@ -373,18 +404,20 @@ class heatpipe_discretised:
             r = 0
             T_idx = z * stride + r 
 
-            M[-1][-1   ] -= h[z][r] * alpha[z][r][1]
-            M[-1][T_idx] += h[z][r] * alpha[z][r][1]
+            M[-1, -1   ] -= h[z][r] * alpha[z, r, 1]
+            M[-1, T_idx] += h[z][r] * alpha[z, r, 1]
 
         for z in range(self.N_Z - self.N_cond, self.N_Z):
             r = 0
             T_idx = z * stride + r 
 
-            M[-1][-1   ] -= h[z][r] * alpha[z][r][1]
-            M[-1][T_idx] += h[z][r] * alpha[z][r][1]
+            M[-1, -1   ] -= h[z, r] * alpha[z, r, 1]
+            M[-1, T_idx] += h[z, r] * alpha[z, r, 1]
 
         # -----------------------
         # Return matrix and vector
+
+        M = M.tocsr()
 
         return M, C
 
@@ -576,9 +609,18 @@ if __name__ == "__main__":
     fuelPin_conduction = heatpipe_discretised(data)
     fuelPin_conduction.solve()
 
-    sol, info, ier, mesg = fsolve(fuelPin_conduction.get_residuals, fuelPin_conduction.T / 300., full_output=True)
+    T_initial = np.full((fuelPin_conduction.N_Z * fuelPin_conduction.N_R + 1, ), 1)
 
-    plt.plot(300. * sol[:-1].reshape(N_Z, N_R)[0], label="non-linear")
+    # sol, info, ier, mesg = root(fuelPin_conduction.get_residuals, fuelPin_conduction.T + 10, method="krylov")
+    sol = newton_krylov(
+        fuelPin_conduction.get_residuals, 
+        T_initial,
+        verbose=True,
+        line_search='armijo',
+        rdiff=1e-6
+    )
+
+    plt.plot(sol[:-1].reshape(N_Z, N_R)[0], label="non-linear")
     plt.plot(fuelPin_conduction.T[:-1].reshape(N_Z, N_R)[0], ls="--", label="linear")
     
     plt.legend()

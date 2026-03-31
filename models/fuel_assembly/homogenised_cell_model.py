@@ -6,6 +6,8 @@ import os
 from utils.sodium_properties import calculate_Na_rho_l
 from coupled_systems.Heatpipe import Heatpipe
 
+import warnings
+warnings.filterwarnings("ignore", category=openmc.IDWarning)
 
 # =============================================================================
 # User parameters
@@ -266,7 +268,7 @@ def create_openmc_model(
     settings = openmc.Settings()
     settings.batches = 150
     settings.inactive = 75
-    settings.particles = 20000
+    settings.particles = 2000
     settings.source = source
     settings.verbosity = 1
 

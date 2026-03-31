@@ -22,9 +22,9 @@ T_MAX = 1200.0
 
 # Number of grid points per dimension.
 # Total OpenMC runs = N_T_HEAT_PIPE * N_T_FUEL_PIN * N_T_MODERATOR
-N_T_HEAT_PIPE = 4
-N_T_FUEL_PIN = 4
-N_T_MODERATOR = 4
+N_T_HEAT_PIPE = 5
+N_T_FUEL_PIN = 5
+N_T_MODERATOR = 5
 
 # -------------------------------------------------------------------------
 # Output / storage
@@ -254,7 +254,7 @@ def run_openmc_case(
             T_fuel_pin=T_fuel_pin,
         )
 
-        statepoint_path = model.run()
+        statepoint_path = model.run(output=False)
         result_dict = load_homogenized_xs_from_statepoint(statepoint_path, mgxs_objects)
 
         result_dict = {k: np.asarray(result_dict[k], dtype=float) for k in TARGET_KEYS}
@@ -599,7 +599,7 @@ if __name__ == "__main__":
     ensure_dir(TRAINING_DATA_DIR)
     ensure_dir(MODEL_DIR)
 
-    FORCE_RECOMPUTE_DATA = False
+    FORCE_RECOMPUTE_DATA = True
 
     X, Y, specs, metadata = build_or_load_training_data(force_recompute=FORCE_RECOMPUTE_DATA)
     surrogate = train_and_save_model(X, Y, specs, metadata)
