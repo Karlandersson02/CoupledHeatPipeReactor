@@ -1,6 +1,6 @@
 import numpy as np
 
-from models.heatpipe.heat_discretised_model import heatpipe_discretised
+from models.heatpipe.heat_discretised_model import HeatpipeDiscretised
 from models.heatpipe.vapor_discretised_model import vapour_discretised
 from models.heatpipe.liquid_discretised_model import liquid_discretised
 
@@ -9,7 +9,7 @@ class Heatpipe:
     def __init__(self, data):
         self.data = data
 
-        self.heatpipe_discretised = heatpipe_discretised(data)
+        self.heatpipe_discretised = HeatpipeDiscretised(data)
 
         self.calculated_quantities = dict()
 
@@ -22,8 +22,7 @@ class Heatpipe:
     def get_heatpipe_temperature(self):
         T = self.calculated_quantities.get("heatpipe_T")
         if T is None:
-            self.heatpipe_discretised.solve()
-            T = self.heatpipe_discretised.get_temperature_profile()
+            T = self.heatpipe_discretised.linear_solve()
 
             self.calculated_quantities["heatpipe_T"] = T
 

@@ -51,6 +51,14 @@ class HeatpipeDiscretised(Component):
 
         return T
 
+    def post_process(self, X):
+        T_HP = X[:-1].reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
+        return T_HP, X[-1]
+    
+    def pack(self, X_tuple):
+        X = np.r_[X_tuple[0].reshape(self.cfg.mesh.N_Z * self.cfg.mesh.N_R), X_tuple[1]]
+        return X
+
     def _initialize_discretization(self):     
         R         = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)
         delta_R   = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)
@@ -495,10 +503,9 @@ if __name__ == "__main__":
     heatpipe = HeatpipeDiscretised(cfg)
 
     T_initial = np.full((cfg.mesh.N_Z * cfg.mesh.N_R + 1, ), 1)
-    M, C = heatpipe.assemble()
 
     sol = newton_krylov(
-        lambda T: heatpipe.get_residuals(T, M, C), 
+        heatpipe.get_residuals,
         T_initial,
         verbose=True,
         line_search='armijo',

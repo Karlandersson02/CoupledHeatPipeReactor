@@ -15,3 +15,11 @@ class Component(ABC):
     @abstractmethod
     def get_residuals(self, X: np.ndarray) -> np.ndarray:
         ...
+
+    @abstractmethod
+    def post_process(self, X: np.ndarray) -> tuple:
+        ...
+
+    @abstractmethod
+    def pack(self, X_tuple: tuple) -> np.ndarray:
+        ...
