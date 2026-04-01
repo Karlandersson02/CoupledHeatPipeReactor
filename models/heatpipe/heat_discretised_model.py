@@ -8,11 +8,19 @@ from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import spsolve
 
 from project_data.heatpipe_dataclasses import *
+from models.component import Component
 
-class HeatpipeDiscretised:
+class HeatpipeDiscretised(Component):
     def __init__(self, config: HeatpipeConfigResolved):
 
         self.cfg = config
+
+    def initial_guess(self):
+        X_initial = np.full(self.cfg.mesh.N_Z * self.cfg.mesh.N_R + 1, 800)
+        if not self.cfg.bc.Temperature_BC:
+            X_initial = X_initial[:-1]
+
+        return X_initial
 
     def assemble(self):
         delta_Rp, delta_Rm, delta_Z = self._initialize_discretization()
@@ -25,28 +33,23 @@ class HeatpipeDiscretised:
         alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k_matrix)        
         
         if self.cfg.bc.Temperature_BC:
-            M, C = self._generate_matrix_form_temperature_bc(alpha, k_matrix, h_matrix)
+            self.M, self.C = self._generate_matrix_form_temperature_bc(alpha, k_matrix, h_matrix)
         else:
-            M, C = self._generate_matrix_form_heat_bc(alpha, k_matrix, h_matrix)
+            self.M, self.C = self._generate_matrix_form_heat_bc(alpha, k_matrix, h_matrix)
 
-        return M, C
+    def get_residuals(self, X):
+        res = self.M @ X - self.C
+        return res
 
     def linear_solve(self):
-        M, C = self.assemble()
+        self.assemble()
 
-        T = np.array(spsolve(M, C))
+        T = np.array(spsolve(self.M, self.C))
 
         if not self.cfg.bc.Temperature_BC:
             T = np.concatenate([T, np.array([self.cfg.bc.T_op])])
 
         return T
-
-    def get_residuals(self, T, M = None, C = None):
-        if M is None or C is None:
-            M, C = self.assemble()
-
-        res = M @ T - C
-        return res
 
     def _initialize_discretization(self):     
         R         = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)

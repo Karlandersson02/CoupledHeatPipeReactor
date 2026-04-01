@@ -184,6 +184,7 @@ def build_mgxs_objects(domain, energy_group_edges):
     }
 
     mgxs_objects["scatter_matrix"].formulation = "consistent"
+    mgxs_objects["scatter_matrix"].correction = True
     return mgxs_objects
 
 

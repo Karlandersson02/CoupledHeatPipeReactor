@@ -2,9 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
-from scipy.optimize import fsolve
+from scipy.optimize import fsolve, newton_krylov
 
-MODEL_PATH = r"./utils/rgi_surrogate.joblib"
+from project_data.neutronics_dataclasses import *
+from models.component import Component
+
+MODEL_PATH = "./utils/rgi_surrogate.joblib"
 from utils.interpolator import OpenMCTallyGridSurrogate
 interpolator_model = OpenMCTallyGridSurrogate()
 interpolator_model = interpolator_model.load(MODEL_PATH)
@@ -64,30 +67,46 @@ def calculate_parameters(T):              # SI
     kappa = calculate_kappa(T)
     return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
 
-class NeutronModel:
+class NeutronicsModel(Component):
 
-    def __init__(self):
-        # geometry
-        self.N_R = 10
-        self.N_Z = 100
-        self.N_G = 8
+    def __init__(self, config):
+        self.cfg = config
 
-        self.l = 1.0
-        self.delta_Z = self.l / self.N_Z
-        self.cross_sectional_area = 0.01**2 * np.pi # approximate
-
-        # system properties
-        self.power = 1000
+        # temporary
         self.T_HP = 900
         self.T_M = 900
 
-    def unpack_variables(self, X):
-        T_n = X[:self.N_R * self.N_Z]
-        phi_ng = X[self.N_R * self.N_Z:-1]
-        k = X[-1]
-        return T_n, phi_ng, k
+    def initial_guess(self):
+        phi_ng_initial = np.full((self.cfg.mesh.N_Z*self.cfg.energy.N_G), 1e12)
+        k_initial = np.array([1])
+        X_initial = np.concatenate([phi_ng_initial, k_initial])
+        return X_initial
+    
+    def assemble(self):
+        return
+    
+    def get_residuals(self, X):
+        T = np.full((self.cfg.mesh.N_Z*self.cfg.mesh.N_R), 900)
+        phi_ng, k = X[:-1], X[-1]
 
-    def calculate_abc(self, D_n_g):
+        phi_n_g = np.reshape(phi_ng, (self.cfg.mesh.N_Z, self.cfg.energy.N_G))
+        phi_np1_g = np.vstack([phi_n_g[1:], np.zeros((1, self.cfg.energy.N_G))])
+        phi_nm1_g = np.vstack([np.zeros((1, self.cfg.energy.N_G)), phi_n_g[:-1]])
+
+        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = self.get_material_data(T)
+        a_n_g, b_n_g, c_n_g = self._generate_abc(D)
+
+        res_transport = (
+            a_n_g * phi_n_g + b_n_g * phi_np1_g + c_n_g * phi_nm1_g + Sigma_t * phi_n_g
+            - (np.sum(Sigma_s0 * phi_n_g[:, :, None], axis=1) + (chi / k) * (np.sum(nu * Sigma_f * phi_n_g, axis=1))[:, None])
+        )
+        res_transport = np.ravel(res_transport)
+
+        res_anchor = self.cfg.mesh.N_Z * self.cfg.mesh.N_R - np.dot(phi_ng, phi_ng)
+
+        return np.r_[res_transport, res_anchor]
+
+    def _generate_abc(self, D_n_g):
 
         D_nm1_g = np.zeros_like(D_n_g)
         D_np1_g = np.zeros_like(D_n_g)
@@ -102,19 +121,19 @@ class NeutronModel:
         mask_np1 = (D_n_g + D_np1_g) > 0.0
 
         alpha_n_g[mask_nm1] = (
-            (2.0 / self.delta_Z**2) *
+            (2.0 / self.cfg.mesh.delta_Z**2) *
             (D_n_g[mask_nm1] * D_nm1_g[mask_nm1]) /
             (D_n_g[mask_nm1] + D_nm1_g[mask_nm1])
         )
 
         alpha_np1_g[mask_np1] = (
-            (2.0 / self.delta_Z**2) *
+            (2.0 / self.cfg.mesh.delta_Z**2) *
             (D_n_g[mask_np1] * D_np1_g[mask_np1]) /
             (D_n_g[mask_np1] + D_np1_g[mask_np1])
         )
 
-        beta_NZ_g = (2.0 * D_n_g[-1] / self.delta_Z) / (self.delta_Z + 4.0 * D_n_g[-1])
-        beta_1_g = (2.0 * D_n_g[0] / self.delta_Z) / (self.delta_Z + 4.0 * D_n_g[0])
+        beta_NZ_g = (2.0 * D_n_g[-1] / self.cfg.mesh.delta_Z) / (self.cfg.mesh.delta_Z + 4.0 * D_n_g[-1])
+        beta_1_g = (2.0 * D_n_g[0] / self.cfg.mesh.delta_Z) / (self.cfg.mesh.delta_Z + 4.0 * D_n_g[0])
 
         a_n_g = alpha_np1_g + alpha_n_g
         b_n_g = -alpha_np1_g
@@ -125,37 +144,15 @@ class NeutronModel:
         a_n_g[-1] = beta_NZ_g + alpha_n_g[-1]
 
         b_n_g[0] = -alpha_np1_g[0]
-        b_n_g[-1] = np.zeros(self.N_G)
+        b_n_g[-1] = np.zeros(self.cfg.energy.N_G)
 
-        c_n_g[0] = np.zeros(self.N_G)
+        c_n_g[0] = np.zeros(self.cfg.energy.N_G)
         c_n_g[-1] = -alpha_n_g[-1]
 
         return a_n_g, b_n_g, c_n_g
     
-    def calculate_residuals(self, X):
-        T, phi_ng, k = self.unpack_variables(X)
-        phi_n_g = np.reshape(phi_ng, (self.N_Z, self.N_G))
-        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = self.get_material_data(T)
-        a_n_g, b_n_g, c_n_g = self.calculate_abc(D)
-
-        phi_np1_g = np.vstack([phi_n_g[1:], np.zeros((1, self.N_G))])
-        phi_nm1_g = np.vstack([np.zeros((1, self.N_G)), phi_n_g[:-1]])
-
-        res_transport = (
-            a_n_g * phi_n_g + b_n_g * phi_np1_g + c_n_g * phi_nm1_g + Sigma_t * phi_n_g
-            - (np.sum(Sigma_s0 * phi_n_g[:, None, :], axis=2) + (chi / k) * (np.sum(nu * Sigma_f * phi_n_g, axis=1))[:, None])
-        )
-        res_transport = np.ravel(res_transport)
-
-        power_density = np.sum(kappa * Sigma_f * phi_n_g, axis=1)
-        power = np.sum(power_density) * self.cross_sectional_area * self.delta_Z
-
-        res_power = np.array([(self.power - power)])
-
-        return np.r_[res_transport, res_power]
-
     def get_axial_temperature(self, T):
-        return T[::self.N_R]
+        return T[::self.cfg.mesh.N_R]
 
     def get_material_data(self, T):
         T_center_axial = self.get_axial_temperature(T)
@@ -163,17 +160,14 @@ class NeutronModel:
         D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T_center_axial)
         return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
     
-    def solve(self):
-        T_initial = np.full((self.N_Z*self.N_R), 900)
-        phi_ng_initial = np.full((self.N_Z*self.N_G), 1e12)
+    def solve(self): # remove
+        T_initial = np.full((self.cfg.mesh.N_Z*self.cfg.mesh.N_R), 900)
+        phi_ng_initial = np.full((self.cfg.mesh.N_Z*self.cfg.energy.N_G), 1e12)
         k_initial = np.array([1])
         X_initial = np.concatenate([phi_ng_initial, k_initial]) # ignore T for now
 
-        def residuals_wrapper(X):
-            return self.calculate_residuals(np.r_[T_initial, X])
-
         res, info, ier, msg = fsolve(
-            residuals_wrapper,
+            self.get_residuals,
             X_initial,
             full_output=True
         )
@@ -185,7 +179,7 @@ class NeutronModel:
         if ier != 1:
             raise RuntimeError(f"fsolve did not converge: {msg}")
 
-        self.phi_n_g = np.reshape(res[:-1], (self.N_Z, self.N_G))
+        self.phi_n_g = np.reshape(res[:-1], (self.cfg.mesh.N_Z, self.cfg.energy.N_G))
         self.k = res[-1]
     
     
@@ -212,13 +206,58 @@ class NeutronModel:
 
     #     return Sigma_t, Sigma_f, Sigma_s0, fission_number, Chi, kappa
 
+class Solver:
+
+    def __init__(self, component: Component):
+        self.component = component
+
+    def newton_krylov(self, maxiter=1000, verbose=True, **kwargs):
+        self.component.assemble()
+        X_initial = self.component.initial_guess()
+        X_sol = newton_krylov(
+            self.component.get_residuals,
+            X_initial,
+            maxiter = 1000,
+            verbose = True,
+            **kwargs
+        )
+
+        self.solution = X_sol
+    
+    def fsolve(self, **kwargs):
+        self.component.assemble()
+        X_initial = self.component.initial_guess()
+        X_sol = fsolve(
+            self.component.get_residuals,
+            X_initial,
+            **kwargs
+        )
+
+        self.solution = X_sol
 
 if __name__ == "__main__":
 
-    neutron_model = NeutronModel()
-    neutron_model.solve()
-    phi = neutron_model.phi_n_g
-    k_eff = neutron_model.k
+    mesh = NeutronicsMesh(
+        N_R = 10,
+        N_Z = 40,
+        l = 1
+    )
+    energy = NeutronicsEnergy(
+        N_G = 8,
+        power = 1000
+    )
+    cfg = NeutronicsConfig(mesh, energy)
+
+    neutronics_model = NeutronicsModel(cfg)
+
+    solver = Solver(neutronics_model)
+    solver.fsolve()
+
+    # phi, k_eff = np.reshape(solver.solution[:-1], (neutronics_model.cfg.mesh.N_Z, -1)), solver.solution[-1]
+
+    neutronics_model.solve()
+    phi = neutronics_model.phi_n_g
+    k_eff = neutronics_model.k
 
     mpl.rcParams["text.usetex"] = True
     mpl.rcParams["font.family"] = "Computer modern"
