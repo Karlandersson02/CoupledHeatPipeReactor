@@ -34,9 +34,15 @@ with open("./project_data/vapour_data.json", "r") as f:
 
 
 
+geom0 = HeatpipeGeometry(**data["geometry"])
+mesh0 = HeatpipeMesh(N_R=25, N_Z=75)
+mat0 = HeatpipeMaterial(**data["material"])
+bc0 = HeatpipeBC(**data["bc"])
+cfg0 = HeatpipeConfig(geom0, mesh0, mat0, bc0)
+cfg0 = cfg0.resolve()
 
 geom1 = HeatpipeGeometry(**data["geometry"])
-mesh1 = HeatpipeMesh(N_R=25, N_Z=75)
+mesh1 = HeatpipeMesh(N_R=50, N_Z=150)
 mat1 = HeatpipeMaterial(**data["material"])
 bc1 = HeatpipeBC(**data["bc"])
 cfg1 = HeatpipeConfig(geom1, mesh1, mat1, bc1)
@@ -50,10 +56,11 @@ cfg2 = HeatpipeConfig(geom2, mesh2, mat2, bc2)
 cfg2 = cfg2.resolve()
 
 
+heatpipe0 = HeatpipeDiscretised(cfg0)
 heatpipe1 = HeatpipeDiscretised(cfg1)
 heatpipe2 = HeatpipeDiscretised(cfg2)
 
-solver = Solver([heatpipe1, heatpipe2])
+solver = Solver([heatpipe0, heatpipe1, heatpipe2])
 solver.newton_krylov()
 
 T_solid, T_vapour = solver.solution
