@@ -713,3 +713,55 @@ class vapour_discretised:
 
     def get_velocity(self):
         return self.u
+
+
+if __name__ == "__main__":
+
+    from models.heatpipe.heat_discretised_model import heatpipe_discretised
+
+    def build_flat_profile(Qtot, N):
+        Q = np.repeat(np.array([Qtot / N], dtype=float), N)
+        return Q
+
+    data_Guoju_1 = {
+        "r_outer": .007 + 0.001 + 0.0005,
+        "delta_wick": 0.0005,
+        "delta_wall": 0.001,
+        "l_evap": 0.1,
+        "l_adiabatic": 0.05,
+        "l_cond": 0.35,
+
+        "N_wick": 15,
+        "N_wall": 15,
+        "N_evap": 30,
+        "N_adiabatic": 15,
+        "N_cond": 105,
+
+        "adiabatic_radial_flux": False,
+        "Temperature_BC": True,
+        "h_vap": 1e6,
+        "h_cond": 59.6,
+        "T_cond": 300,
+        "T_op": 850,
+
+        "k_wick": 66.2,
+        "k_wall": 19.0,
+
+        "P_C": 1300,
+        "T_C": 818
+    }
+
+    Q = build_flat_profile(560, data_Guoju_1["N_evap"])
+    data_Guoju_1["Q"] = Q
+
+    heatpipe = heatpipe_discretised(data_Guoju_1)
+    heatpipe.solve()
+
+    T_HP = heatpipe.T
+    data_Guoju_1["T_HP"] = T_HP
+
+    vapour = vapour_discretised(data_Guoju_1)
+    vapour.solve_numeric()
+
+    plt.plot(vapour.T)
+    plt.show()
