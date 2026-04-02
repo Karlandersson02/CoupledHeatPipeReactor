@@ -4,59 +4,32 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 from utils.sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_l, calculate_Na_h_fg
+from project_data.heatpipe_dataclasses import *
 
 class liquid_discretised:
-    def __init__(self, data):
-        self.r_outer  = data.get("r_outer")
-        self.delta_wick  = data.get("delta_wick")
-        self.delta_gap   = data.get("delta_gap")
-        self.delta_wall  = data.get("delta_wall")
-        self.r_gap    = self.r_outer - self.delta_wall
-        self.r_wick   = self.r_gap   - self.delta_gap
-        self.r_vapour = self.r_wick  - self.delta_wick
-
-        self.l_evap  = data.get("l_evap")
-        self.l_adia  = data.get("l_adiabatic")
-        self.l_cond  = data.get("l_cond")
-        self.l_tot = self.l_evap + self.l_adia + self.l_cond
-
-        self.N_wick = data.get("N_wick")
-        self.N_wall = data.get("N_wall")
-        self.N_R = self.N_wick + self.N_wall
-
-        self.N_evap = data.get("N_evap")
-        self.N_adia = data.get("N_adiabatic")
-        self.N_cond = data.get("N_cond")
-        self.N_Z = self.N_evap + self.N_adia + self.N_cond
-
-        self.T_HP = data.get("T_HP")
-        self.h_vap = data.get("h_vap")
-        self.h_fg = calculate_Na_h_fg(self.T_HP[-1])
-
-        self.Annular = data.get("Is_annular")
-        self.K = data.get("K")
-
+    def __init__(self, config):
+        self.cfg = config
 
     def get_mdot(self):
-        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.N_R]
-        T_v = self.T_HP[-1]
+        T_wick_lv_interface = np.array(self.cfg.vapour_bc.T_HP)[:-1:self.cfg.mesh.N_R]
+        T_v = self.cfg.vapour_bc.T_HP[-1]
 
-        A_int = 2 * np.pi * self.r_vapour * self.l_evap / self.N_evap
-        Qevap = np.sum(self.h_vap * (T_wick_lv_interface[:self.N_evap] - T_v)) * A_int
-        mdot = Qevap / self.h_fg
+        A_int = 2 * np.pi * self.cfg.geometry.r_vapour * self.cfg.geometry.l_evap / self.cfg.mesh.N_evap
+        Qevap = np.sum(self.cfg.material.h_vap * (T_wick_lv_interface[:self.cfg.mesh.N_evap] - T_v)) * A_int
+        mdot = Qevap / calculate_Na_h_fg(self.cfg.vapour_bc.T_HP[-1])
 
         mdot = np.concatenate([
-            np.repeat(np.array([mdot/self.N_evap]), self.N_evap) * np.arange(self.N_evap),
-            np.repeat(np.array([mdot]), self.N_adia),
-            np.repeat(np.array([mdot/self.N_cond]), self.N_cond) * np.arange(self.N_cond)[::-1]
+            np.repeat(np.array([mdot/self.cfg.mesh.N_evap]), self.cfg.mesh.N_evap) * np.arange(self.cfg.mesh.N_evap),
+            np.repeat(np.array([mdot]), self.cfg.mesh.N_adia),
+            np.repeat(np.array([mdot/self.cfg.mesh.N_cond]), self.cfg.mesh.N_cond) * np.arange(self.cfg.mesh.N_cond)[::-1]
         ])
         
         return mdot
 
 
     def calculate_K_annular_wick(self):
-        self.r_2 = self.r_wick
-        self.r_1 = self.r_gap
+        self.r_2 = self.cfg.geometry.r_wick
+        self.r_1 = self.cfg.geometry.r_gap
 
         R_star = self.r_2 / self.r_1
 
@@ -69,25 +42,25 @@ class liquid_discretised:
         return K
 
     def get_pressure_drop_profile(self):
-        if self.Annular == True:
-            A_wick = np.pi * (self.r_gap**2 - self.r_wick**2) 
+        if self.cfg.wick.Is_annular == True:
+            A_wick = np.pi * (self.cfg.geometry.r_gap**2 - self.cfg.geometry.r_wick**2) 
         else:
-            A_wick = np.pi * (self.r_wick**2 - self.r_vapour**2)
+            A_wick = np.pi * (self.cfg.geometry.r_wick**2 - self.cfg.geometry.r_vapour**2)
         
-        T_wick = np.mean(np.array(self.T_HP)[:-1].reshape(self.N_Z, self.N_R)[:, :self.N_wick], axis=1) 
+        T_wick = np.mean(np.array(self.cfg.vapour_bc.T_HP)[:-1].reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)[:, :self.cfg.mesh.N_wick], axis=1) 
 
         mu_l = calculate_Na_viscosity_l(T_wick)  
         rho_l = calculate_Na_rho_l(T_wick)
 
-        if self.Annular == True:
+        if self.cfg.wick.Is_annular == True:
             K = self.calculate_K_annular_wick()
         else:
-            K = self.K
+            K = self.cfg.wick.K
 
         delta_z = np.concatenate(
-            [np.ones(self.N_evap) * self.l_evap / self.N_evap,
-            np.ones(self.N_adia) * self.l_adia / self.N_adia,
-            np.ones(self.N_cond) * self.l_cond / self.N_cond]
+            [np.ones(self.cfg.mesh.N_evap) * self.cfg.geometry.l_evap / self.cfg.mesh.N_evap,
+            np.ones(self.cfg.mesh.N_adia) * self.cfg.geometry.l_adia / self.cfg.mesh.N_adia,
+            np.ones(self.cfg.mesh.N_cond) * self.cfg.geometry.l_cond / self.cfg.mesh.N_cond]
             )
         
         mdot = self.get_mdot()
@@ -99,31 +72,24 @@ class liquid_discretised:
 
 
 if __name__ == "__main__":
-    data = {
-        "r_outer": .007 + 0.001 + 0.0005,
-        "delta_wall": 0.001,
-        "delta_gap": 0.005,
-        "delta_wick": 0.0005,
-        "l_evap": 0.1,
-        "l_adiabatic": 0.05,
-        "l_cond": 0.55,
-        "N_wick": 15,
-        "N_wall": 15,
-        "N_evap": 20,
-        "N_adiabatic": 10,
-        "N_cond": 110,
-        "h_vap": 1e6,
-        "h_cond": 62.6,
-        "T_cond": 300,
-        "k_wick": 45.0,
-        "k_wall": 21.7,
-        "P_C": 2476,
-        "T_C": 856,
-        "T_HP":[0],
-        "Is_annular": True,
-        "K":1e-10,
-    }   
+    # "T_HP":[0],
+    # "Is_annular": True,
+    # "K":1e-10,
+    import json
+    with open("./project_data/vapour_data.json", "r") as f:
+        data_guoju = json.load(f)
+        data = data_guoju["data_guoju_560"]
 
-    lpd = liquid_discretised(data)
+    geom = HeatpipeGeometry(**data["geometry"])
+    mesh = HeatpipeMesh(**data["mesh"])
+    mat = HeatpipeMaterial(**data["material"])
+    vap_bc = VapourBC(T_HP=np.array([0]))
+    data["wick"]["K"] = 1e-10
+    data["wick"]["Is_annular"] = True
+    wick = HeatpipeWick(**data["wick"])
+    cfg = LiquidConfig(geom, mesh, mat, wick, vap_bc)
+    cfg = cfg.resolve()
+
+    lpd = liquid_discretised(cfg)
 
     P = lpd.get_pressure_drop_profile()

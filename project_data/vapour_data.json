@@ -11,7 +11,8 @@
     },
     "mesh": {
       "N_wick": 15,
-      "N_wall": 15,
+      "N_gap": 15,
+      "N_wall": 30,
       "N_evap": 30,
       "N_adiabatic": 15,
       "N_cond": 105
@@ -52,7 +53,8 @@
     },
     "mesh": {
       "N_wick": 15,
-      "N_wall": 15,
+      "N_gap": 15,
+      "N_wall": 30,
       "N_evap": 30,
       "N_adiabatic": 15,
       "N_cond": 165

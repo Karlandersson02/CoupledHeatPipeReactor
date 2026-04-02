@@ -303,6 +303,29 @@ class VapourConfig:
             vapour_bc = vapour_bc,
         )
 
+@dataclass(slots=True)
+class LiquidConfig:
+    geometry: HeatpipeGeometry
+    mesh: HeatpipeMesh
+    material: HeatpipeMaterial
+    wick: HeatpipeWick
+    vapour_bc: VapourBC
+
+    def resolve(self):
+        geometry = self.geometry.resolve()
+        mesh = self.mesh.resolve()
+        material = self.material.resolve()
+        wick = self.wick.resolve()
+        vapour_bc = self.vapour_bc.resolve()
+
+        return LiquidConfigResolved(
+            geometry = geometry,
+            mesh = mesh,
+            material = material,
+            wick = wick,
+            vapour_bc = vapour_bc,
+        )
+
 # ---------------------------------------------
 # Resolved data classes
 # ---------------------------------------------
@@ -391,4 +414,12 @@ class VapourConfigResolved:
     geometry: HeatpipeGeometryResolved
     mesh: HeatpipeMeshResolved
     material: HeatpipeMaterialResolved
+    vapour_bc: VapourBCResolved
+
+@dataclass(slots=True)
+class LiquidConfigResolved:
+    geometry: HeatpipeGeometryResolved
+    mesh: HeatpipeMeshResolved
+    material: HeatpipeMaterialResolved
+    wick: HeatpipeWickResolved
     vapour_bc: VapourBCResolved
