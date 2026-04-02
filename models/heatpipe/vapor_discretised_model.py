@@ -343,30 +343,20 @@ from project_data.heatpipe_dataclasses import *
 
 from models.component import Component
 
-class vapour_discretised(Component):
+class VapourDiscretised(Component):
     def __init__(self, config: VapourConfigResolved):
 
         self.cfg = config
-        self.r2r1 = 50
-
-        # temporary
-
-        mdot_flux0 = self._get_mdot()[self.cfg.mesh.N_evap] / (self.cfg.geometry.r_vapour**2 * np.pi)
-        self.L0 = self.cfg.geometry.l_tot
-        self.T0 = self.cfg.vapour_bc.T_HP[-1]
-        self.P0 = calculate_Na_pressure_v(self.cfg.vapour_bc.T_HP[-1])
-        self.rho0 = calculate_Na_rho_v(self.T0)
-        self.U0 = mdot_flux0 / self.rho0
-        self.Gamma0 = self.rho0 * self.U0 / self.L0
+        self.r2r1 = 5e3
 
     def assemble(self):
-        Gamma_hat = self._calculate_Gamma() / self.Gamma0
-        self.Gamma_hat = Gamma_hat
+        Gamma = self._calculate_Gamma()
+        self.Gamma = Gamma
 
     def initial_guess(self):
         X_initial = np.ones(self.cfg.mesh.N_Z - 1 + self.cfg.mesh.N_Z)
-        X_initial[:self.cfg.mesh.N_Z-1] = self._build_initial_velocity() / self.U0
-        X_initial[self.cfg.mesh.N_Z-1:] = self._build_initial_temperature() / self.T0
+        X_initial[:self.cfg.mesh.N_Z-1] = self._build_initial_velocity()
+        X_initial[self.cfg.mesh.N_Z-1:] = self._build_initial_temperature()
         return X_initial
     
     def post_process(self, X):
@@ -378,83 +368,62 @@ class vapour_discretised(Component):
         return np.r_[*X_tuple]
 
     def get_residuals(self, X):
-        u_hat, T_hat = X[:self.cfg.mesh.N_Z-1], X[self.cfg.mesh.N_Z-1:]
+        u, T = X[:self.cfg.mesh.N_Z-1], X[self.cfg.mesh.N_Z-1:]
 
-        T_full_hat = T_hat
-        T_full = self.T0 * T_full_hat
+        T_full = T
 
-        u_full_hat = np.zeros(len(u_hat) + 2)
-        u_full_hat[1:-1] = u_hat
-        u_full = self.U0 * u_full_hat
+        u_full = np.zeros(len(u) + 2)
+        u_full[1:-1] = u
 
-        ui_hat = u_hat
-        ui = self.U0 * ui_hat
+        ui = u
+        uim1 = u_full[:-2]
+        uip1 = u_full[2:]
 
-        uim1_hat = u_full_hat[:-2]
-        uip1_hat = u_full_hat[2:]
-        uim1 = self.U0 * uim1_hat
-        uip1 = self.U0 * uip1_hat
+        Ti = T_full[1:]
+        Tim1 = T_full[:-1]
+        Tbar = 0.5 * (Ti + Tim1)
 
-        Ti_hat = T_full_hat[1:]
-        Tim1_hat = T_full_hat[:-1]
-        Tbar_hat = 0.5 * (Ti_hat + Tim1_hat)
-
-        Ti = self.T0 * Ti_hat
-        Tim1 = self.T0 * Tim1_hat
-        Tbar = self.T0 * Tbar_hat
-
-        Pi_hat = calculate_Na_pressure_v(Ti) / self.P0
-        Pim1_hat = calculate_Na_pressure_v(Tim1) / self.P0
+        Pi = calculate_Na_pressure_v(Ti)
+        Pim1 = calculate_Na_pressure_v(Tim1)
 
         rho_full = calculate_Na_rho_v(T_full)
         rhoi = rho_full[1:]
         rhoim1 = rho_full[:-1]
         rhobar = calculate_Na_rho_v(Tbar)
 
-        rho_full_hat = rho_full / self.rho0
-        rhoi_hat = rhoi / self.rho0
-        rhoim1_hat = rhoim1 / self.rho0
-        rhobar_hat = rhobar / self.rho0
-
         dxi = np.zeros_like(T_full)
         dxi[:self.cfg.mesh.N_evap] = self.cfg.geometry.l_evap / self.cfg.mesh.N_evap
         dxi[self.cfg.mesh.N_evap:(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic)] = self.cfg.geometry.l_adiabatic / self.cfg.mesh.N_adiabatic
         dxi[(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic):] = self.cfg.geometry.l_cond / self.cfg.mesh.N_cond
 
-        dxi_hat = dxi / self.L0
+        lami = self._calculate_friction_factor(T_full, u)
 
-        lami = self._calculate_friction_factor(T_full_hat, u_hat)
+        r1 = np.zeros_like(T_full)
 
-        r1_hat = np.zeros_like(T_full_hat)
-
-        r1_hat[1:-1] = (
-            (uip1_hat[:-1] * rhoi_hat[:-1] - ui_hat[:-1] * rhoim1_hat[:-1])
-            - dxi_hat[1:-1] * (self.Gamma_hat[1:-1] * (self.Gamma0 * self.L0 / (self.rho0 * self.U0)))
+        r1[1:-1] = (
+            (uip1[:-1] * rhoi[:-1] - ui[:-1] * rhoim1[:-1])
+            - dxi[1:-1] * self.Gamma[1:-1]
         )
 
-        r1_hat[0] = (
-            (u_full_hat[1] * rho_full_hat[0])
-            - dxi_hat[0] * (self.Gamma_hat[0] * (self.Gamma0 * self.L0 / (self.rho0 * self.U0)))
+        r1[0] = (
+            (u_full[1] * rho_full[0])
+            - dxi[0] * self.Gamma[0]
         )
 
-        r1_hat[-1] = (
-            (-u_full_hat[-2] * rho_full_hat[-2])
-            - dxi_hat[-1] * (self.Gamma_hat[-1] * (self.Gamma0 * self.L0 / (self.rho0 * self.U0)))
+        r1[-1] = (
+            (-u_full[-2] * rho_full[-2])
+            - dxi[-1] * self.Gamma[-1]
         )
 
-        hfg_over_U2 = calculate_Na_h_fg(self.cfg.vapour_bc.T_HP[-1]) / (self.U0**2)
-        geom = self.L0 / (4.0 * self.cfg.geometry.r_vapour)
-
-
-        r2_hat = (
-            (rhoi_hat * ui_hat**2 - rhoim1_hat * uim1_hat**2)
-            # (rhoi_hat * (ui_hat + uip1_hat) / 2 * ui_hat - rhoim1_hat * (ui_hat + uim1_hat) / 2 * uim1_hat)
-            + hfg_over_U2 * rhobar_hat * ((Ti_hat - Tim1_hat) / Tbar_hat)
-            # + (self.P0 / (self.rho0 * self.U0**2)) * (Pi_hat - Pim1_hat)
-            + dxi_hat[1:] * lami * geom * rhobar_hat * ui_hat * np.abs(ui_hat)
+        r2 = (
+            (rhoi * ui**2 - rhoim1 * uim1**2)
+            # (rhoi * (ui + uip1) / 2 * ui - rhoim1 * (ui + uim1) / 2 * uim1)
+            + calculate_Na_h_fg(self.cfg.vapour_bc.T_HP[-1]) * rhobar * ((Ti - Tim1) / Tbar)
+            # + (Pi - Pim1)
+            + dxi[1:] * lami * (1.0 / (4.0 * self.cfg.geometry.r_vapour)) * rhobar * ui * np.abs(ui)
         )
 
-        return np.r_[self.r2r1 * r1_hat, r2_hat]
+        return np.r_[self.r2r1 * r1, r2]
 
     def _calculate_Gamma(self):
         T_wick_lv_interface = np.array(self.cfg.vapour_bc.T_HP)[:-1:self.cfg.mesh.N_R]
@@ -462,11 +431,13 @@ class vapour_discretised(Component):
         T_v = self.cfg.vapour_bc.T_HP[-1]
 
         q_bis_surface = np.zeros(self.cfg.mesh.N_Z)
-        q_bis_surface[0: self.cfg.mesh.N_evap]          =  self.cfg.material.h_vap * (T_wick_lv_interface[0: self.cfg.mesh.N_evap]          - T_v)
-        q_bis_surface[self.cfg.mesh.N_Z - self.cfg.mesh.N_cond:] =  self.cfg.material.h_vap * (T_wick_lv_interface[self.cfg.mesh.N_Z - self.cfg.mesh.N_cond:] - T_v)
+        q_bis_surface[0: self.cfg.mesh.N_evap] = self.cfg.material.h_vap * (
+            T_wick_lv_interface[0: self.cfg.mesh.N_evap] - T_v
+        )
+        q_bis_surface[self.cfg.mesh.N_Z - self.cfg.mesh.N_cond:] = self.cfg.material.h_vap * (
+            T_wick_lv_interface[self.cfg.mesh.N_Z - self.cfg.mesh.N_cond:] - T_v
+        )
         
-        # Heat transfer surface area density per unit volume.
-        # a_W = 2 * np.pi * self.r_vapour * delta_Z / np.pi * self.r_vapour**2 * delta_Z
         a_W = 2 / self.cfg.geometry.r_vapour
 
         Gamma = a_W * q_bis_surface / calculate_Na_h_fg(self.cfg.vapour_bc.T_HP[-1])
@@ -484,10 +455,9 @@ class vapour_discretised(Component):
 
         return lami
 
-    def _calculate_reynolds(self, T_hat, u_hat):
-        Tbar = self.T0 * 0.5 * (T_hat[1:] + T_hat[:-1])
+    def _calculate_reynolds(self, T, u):
+        Tbar = 0.5 * (T[1:] + T[:-1])
         rhobar = calculate_Na_rho_v(Tbar)
-        u = self.U0 * u_hat
         Rei = rhobar * np.abs(u) * 2 * self.cfg.geometry.r_vapour / calculate_Na_viscosity_v(Tbar)
         return Rei
     
@@ -502,7 +472,6 @@ class vapour_discretised(Component):
     def _build_initial_temperature(self) -> np.ndarray:
         T_wick_lv_interface = np.array(self.cfg.vapour_bc.T_HP)[:-1:self.cfg.mesh.N_R]
 
-        # A good "cold end" estimate: average wick-LV interface temperature in condenser
         T_cold_wall = float(np.mean(T_wick_lv_interface[-self.cfg.mesh.N_cond:]))
 
         analytical_pressure_drop_q = self._analytical_pressure_drop_Busse()
@@ -542,22 +511,23 @@ class vapour_discretised(Component):
                 )
             return (15.0 / 22.0) * (inner + np.sqrt(disc))**0.5
 
-        # --- Evaporator + adiabatic (combined, Busse 1967) ---
         F = (7.0/9.0 - 1.7 * Re_re / (36 + 10*Re_re) * np.exp(-7.5 * self.cfg.geometry.l_adiabatic / (Re_re * L_e)))
         
         dP_evap = ((-4.0/np.pi) * (mu_v * Q_tot) / (rho_v * Rv**4 * h_fg) * (L_e * (1.0 + Re_re * F)))
         
         dP_adiabatic = -(8.0 * mu_v * Q_tot * self.cfg.geometry.l_adiabatic) / (rho_v * np.pi * Rv**4 * h_fg)
 
-        # --- Condenser pressure recovery (Busse 1967, eq. 11) ---
-        dP_cond = -dP_evap + -dP_adiabatic - (4.0/np.pi) * (mu_v * Q_tot) / (rho_v * Rv**4 * h_fg) * (self.cfg.geometry.l_evap + 2*self.cfg.geometry.l_adiabatic + self.cfg.geometry.l_cond)
+        dP_cond = -dP_evap + -dP_adiabatic - (4.0/np.pi) * (mu_v * Q_tot) / (rho_v * Rv**4 * h_fg) * (
+            self.cfg.geometry.l_evap + 2*self.cfg.geometry.l_adiabatic + self.cfg.geometry.l_cond
+        )
 
-        # --- Distribute onto spatial grid ---
-        dx   = np.zeros(self.cfg.mesh.N_Z, dtype=float)
+        dx = np.zeros(self.cfg.mesh.N_Z, dtype=float)
 
-        dx[:self.cfg.mesh.N_evap] = self.cfg.geometry.l_evap / (self.cfg.mesh.N_evap)
-        dx[self.cfg.mesh.N_evap: self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic] = self.cfg.geometry.l_adiabatic / (self.cfg.mesh.N_adiabatic)
-        dx[self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic:] = self.cfg.geometry.l_cond / (self.cfg.mesh.N_cond)
+        dx[:self.cfg.mesh.N_evap] = self.cfg.geometry.l_evap / self.cfg.mesh.N_evap
+        dx[self.cfg.mesh.N_evap: self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic] = (
+            self.cfg.geometry.l_adiabatic / self.cfg.mesh.N_adiabatic
+        )
+        dx[self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic:] = self.cfg.geometry.l_cond / self.cfg.mesh.N_cond
         
         dpdx = np.zeros(self.cfg.mesh.N_Z, dtype=float)
 
@@ -567,17 +537,18 @@ class vapour_discretised(Component):
         dpdx[:self.cfg.mesh.N_evap] = dP_evap * profile / norm
 
         dpdx[self.cfg.mesh.N_evap:self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic] = (
-            dP_adiabatic / (self.cfg.geometry.l_adiabatic)
+            dP_adiabatic / self.cfg.geometry.l_adiabatic
         )
 
         j0 = self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic
-        x2     = L_e + self.cfg.geometry.l_adiabatic
+        x2 = L_e + self.cfg.geometry.l_adiabatic
         x_cond = np.linspace(x2, x2 + L_C, self.cfg.mesh.N_cond)
-        xi     = 1.0 - (x_cond - x2) / L_C
-        dP_cond_total = dP_cond  # scalar total
-        # distribute as (1 - xi)^2 profile, normalised to integrate to dP_cond_total
-        profile    = (xi)**2
-        dpdx[j0:] = dP_cond_total * profile / (np.sum(profile) * dx[self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic:])
+        xi = 1.0 - (x_cond - x2) / L_C
+        dP_cond_total = dP_cond
+        profile = (xi)**2
+        dpdx[j0:] = dP_cond_total * profile / (
+            np.sum(profile) * dx[self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic:]
+        )
 
         return np.cumsum(dpdx * dx) 
 
@@ -587,7 +558,7 @@ class vapour_discretised(Component):
         rho_v = calculate_Na_rho_v(T_v)
         self.viscosity_Na = calculate_Na_viscosity_v(self.cfg.vapour_bc.T_HP[-1])
 
-        Rv  = self.cfg.geometry.r_vapour          # make sure this is in meters
+        Rv = self.cfg.geometry.r_vapour
         mu_v = self.viscosity_Na
 
         Av = np.pi * Rv**2
@@ -599,21 +570,16 @@ class vapour_discretised(Component):
 
         dpdx = np.zeros_like(mdot, dtype=float)
 
-        # Evaporator: q>0 => s=1, a=0
         dpdx[:self.cfg.mesh.N_evap] = -(1.0) * (mdot[:self.cfg.mesh.N_evap] * dmdx_evap) / (4.0 * rho_v * Rv**4)
 
-        # Adiabatic: q=0 => s=0, a=1
         i0 = self.cfg.mesh.N_evap
         i1 = self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic
         dpdx[i0:i1] = -(8.0 * mu_v * mdot[i0:i1]) / (rho_v * np.pi * Rv**4)
 
-        # Condenser: q<0 => s=4/pi^2, a=0
         j0 = self.cfg.mesh.N_Z - self.cfg.mesh.N_cond
         dpdx[j0:] = -(4.0 / np.pi**2*1.0) * (mdot[j0:] * dmdx_cond) / (4.0 * rho_v * Rv**4)
 
-        # Integrate dp/dx over x
         dx = self.cfg.geometry.l_tot / (self.cfg.mesh.N_Z - 1)
-        # return np.sum(dpdx) * dx
         return np.cumsum(dpdx) * dx
 
     def _get_mdot(self):
@@ -643,7 +609,7 @@ if __name__ == "__main__":
         data = data_guoju["data_guoju_560"]
 
     geom = HeatpipeGeometry(**data["geometry"])
-    mesh = HeatpipeMesh(**data["mesh"])
+    mesh = HeatpipeMesh(N_R = 50, N_Z = 150, N_cond = 80)
     mat = HeatpipeMaterial(**data["material"])
     pipe_bc = HeatpipeBC(**data["bc"])
     cfg = HeatpipeConfig(geom, mesh, mat, pipe_bc)
@@ -656,7 +622,7 @@ if __name__ == "__main__":
     vap_cfg = VapourConfig(geom, mesh, mat, vap_bc)
     vap_cfg = vap_cfg.resolve()
 
-    vapour = vapour_discretised(vap_cfg)
+    vapour = VapourDiscretised(vap_cfg)
     solver = Solver([vapour])
     solver.newton_krylov()
 
