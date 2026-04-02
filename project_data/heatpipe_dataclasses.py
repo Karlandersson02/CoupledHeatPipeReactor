@@ -9,6 +9,7 @@ from dataclasses import dataclass
 class HeatpipeGeometry:
     r_vapour: float | None = None
     delta_wick: float | None = None
+    delta_gap: float | None = None
     delta_wall: float | None = None
     r_outer: float | None = None
 
@@ -18,8 +19,8 @@ class HeatpipeGeometry:
     l_tot: float | None = None
 
     def resolve(self):
-        r_vapour, delta_wick, delta_wall = self._resolve_group(
-            values=(self.r_vapour, self.delta_wick, self.delta_wall),
+        r_vapour, delta_wick, delta_gap, delta_wall = self._resolve_group(
+            values=(self.r_vapour, self.delta_wick, self.delta_gap, self.delta_wall),
             total=self.r_outer,
             names=("r_vapour", "delta_wick", "delta_wall"),
             total_name="r_outer",
@@ -35,6 +36,7 @@ class HeatpipeGeometry:
         return HeatpipeGeometryResolved(
             r_vapour=r_vapour,
             delta_wick=delta_wick,
+            delta_gap=delta_gap,
             delta_wall=delta_wall,
             l_evap=l_evap,
             l_adiabatic=l_adiabatic,
@@ -95,6 +97,7 @@ class HeatpipeGeometry:
 class HeatpipeMesh:
     N_wick: int | None = None
     N_wall: int | None = None
+    N_gap: int | None = None
     N_evap: int | None = None
     N_adiabatic: int | None = None
     N_cond: int | None = None
@@ -102,8 +105,8 @@ class HeatpipeMesh:
     N_Z: int | None = None
 
     def resolve(self):
-        N_wick, N_wall = self._resolve_group(
-            values=(self.N_wick, self.N_wall),
+        N_wick, N_gap, N_wall = self._resolve_group(
+            values=(self.N_wick, self.N_gap, self.N_wall),
             total=self.N_R,
             names=("N_wick", "N_wall"),
             total_name="N_R",
@@ -118,6 +121,7 @@ class HeatpipeMesh:
 
         return HeatpipeMeshResolved(
             N_wick=N_wick,
+            N_gap=N_gap,
             N_wall=N_wall,
             N_evap=N_evap,
             N_adiabatic=N_adiabatic,
@@ -190,6 +194,7 @@ class HeatpipeMesh:
 @dataclass(slots=True, kw_only=True)
 class HeatpipeMaterial:
     k_wall: float
+    k_gap: float
     k_wick: float
     h_vap: float
     h_cond: float
@@ -197,6 +202,7 @@ class HeatpipeMaterial:
     def resolve(self):
         return HeatpipeMaterialResolved(
             k_wick = self.k_wick,
+            k_gap = self.k_gap,
             k_wall = self.k_wall,
             h_vap = self.h_vap,
             h_cond = self.h_cond,
@@ -210,7 +216,23 @@ class HeatpipeBC:
     Q: np.ndarray | float | int
 
     def resolve(self):
-        return 
+        return
+    
+
+@dataclass(slots=True, kw_only=True)
+class HeatpipeWick:
+    r_pore: float
+    porosity: float
+    K: float
+    Is_annular: bool
+
+    def resolve(self):
+        return HeatpipeWickResolved(
+            r_pore = self.r_pore,
+            porosity = self.porosity,
+            K = self.K,
+            Is_annular = self.Is_annular
+        )
     
 @dataclass(slots=True)
 class HeatpipeConfig:
@@ -218,11 +240,13 @@ class HeatpipeConfig:
     mesh: HeatpipeMesh
     material: HeatpipeMaterial
     bc: HeatpipeBC
+    wick: HeatpipeWick
 
     def resolve(self):
         geometry = self.geometry.resolve()
         mesh = self.mesh.resolve()
         material = self.material.resolve()
+        wick = self.wick.resolve()
 
         Q = self.bc.Q
         if type(Q) is float or type(Q) is int:
@@ -249,6 +273,7 @@ class HeatpipeConfig:
             mesh = mesh,
             material = material,
             bc = bc,
+            wick = wick,
         )
     
 @dataclass(slots=True, kw_only=True)
@@ -286,6 +311,7 @@ class VapourConfig:
 class HeatpipeGeometryResolved:
     r_vapour: float
     delta_wick: float
+    delta_gap: float
     delta_wall: float
 
     l_evap: float
@@ -293,8 +319,16 @@ class HeatpipeGeometryResolved:
     l_cond: float
 
     @property
+    def r_wick(self) -> float:
+        return self.r_vapour + self.delta_wick
+    
+    @property
+    def r_gap(self) -> float:
+        return self.r_vapour + self.delta_wick + self.delta_gap
+
+    @property
     def r_outer(self) -> float:
-        return self.r_vapour + self.delta_wick + self.delta_wall
+        return self.r_vapour + self.delta_wick + self.delta_gap + self.delta_wall
 
     @property
     def l_tot(self) -> float:
@@ -303,6 +337,7 @@ class HeatpipeGeometryResolved:
 @dataclass(slots=True)
 class HeatpipeMeshResolved:
     N_wick: int
+    N_gap: int
     N_wall: int
     N_evap: int
     N_adiabatic: int
@@ -310,7 +345,7 @@ class HeatpipeMeshResolved:
 
     @property
     def N_R(self):
-        return self.N_wick + self.N_wall
+        return self.N_wick + self.N_gap + self.N_wall
 
     @property
     def N_Z(self):
@@ -320,6 +355,7 @@ class HeatpipeMeshResolved:
 class HeatpipeMaterialResolved:
     k_wall: float
     k_wick: float
+    k_gap: float
     h_vap: float
     h_cond: float
 
@@ -329,6 +365,14 @@ class HeatpipeBCResolved:
     T_op: float
     T_cond: float
     Q: np.ndarray
+
+
+@dataclass(slots=True, kw_only=True)
+class HeatpipeWickResolved:
+    r_pore: float
+    porosity: float
+    K: float
+    Is_annular: bool
     
 @dataclass(slots=True)
 class HeatpipeConfigResolved:
@@ -336,6 +380,7 @@ class HeatpipeConfigResolved:
     mesh: HeatpipeMeshResolved
     material: HeatpipeMaterialResolved
     bc: HeatpipeBCResolved
+    wick: HeatpipeWickResolved
 
 @dataclass(slots=True, kw_only=True)
 class VapourBCResolved:

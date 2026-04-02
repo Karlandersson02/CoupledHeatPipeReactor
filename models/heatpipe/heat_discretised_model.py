@@ -114,7 +114,8 @@ class HeatpipeDiscretised(Component):
     def _generate_k_matrix(self):
         k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R))
         k_matrix[:, :self.cfg.mesh.N_wick] = self.cfg.material.k_wick
-        k_matrix[:, self.cfg.mesh.N_wick:] = self.cfg.material.k_wall
+        k_matrix[:, self.cfg.mesh.N_wick:(self.cfg.mesh.N_wick + self.cfg.mesh.N_gap)] = self.cfg.material.k_gap
+        k_matrix[:, -self.cfg.mesh.N_wall:] = self.cfg.material.k_wall
 
         return k_matrix
     
@@ -489,12 +490,15 @@ class HeatpipeDiscretised(Component):
         return M, C
 
 if __name__ == "__main__":
+    from utils.solver import Solver
+
     with open("./project_data/vapour_data.json", "r") as f:
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
     
+    N_R, N_Z = 40, 100
     geom = HeatpipeGeometry(**data["geometry"])
-    mesh = HeatpipeMesh(N_R=40, N_Z=100)
+    mesh = HeatpipeMesh(N_R=N_R, N_Z=N_Z, N_wall=N_R//2)
     mat = HeatpipeMaterial(**data["material"])
     bc = HeatpipeBC(**data["bc"])
     cfg = HeatpipeConfig(geom, mesh, mat, bc)
@@ -502,15 +506,10 @@ if __name__ == "__main__":
 
     heatpipe = HeatpipeDiscretised(cfg)
 
-    T_initial = np.full((cfg.mesh.N_Z * cfg.mesh.N_R + 1, ), 1)
+    solver = Solver([heatpipe])
+    solver.newton_krylov()
 
-    sol = newton_krylov(
-        heatpipe.get_residuals,
-        T_initial,
-        verbose=True,
-        line_search='armijo',
-        rdiff=1e-6
-    )
+    T_solid, T_vap = solver.solution
 
     N_Z = cfg.mesh.N_Z
     N_R = cfg.mesh.N_R
@@ -524,7 +523,7 @@ if __name__ == "__main__":
     fig = plt.figure(figsize = (16, 9))
 
     ax = fig.add_subplot(111)
-    ax.plot(sol[:-1].reshape(N_Z, N_R)[0], lw=4, label="non-linear")
+    ax.plot(T_solid[0], lw=4, label="non-linear")
     ax.plot(T_linear[:-1].reshape(N_Z, N_R)[0], ls="--", lw=4, label="linear")
     
     plt.legend()

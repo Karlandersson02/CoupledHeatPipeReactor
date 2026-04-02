@@ -88,7 +88,7 @@ class Solver:
 
                     X_initial = next_component.pack((X_out_interpolated, X_out[-1]))
         
-        self.solution = X_out
+        self.solution = X_out       # Not implemented multiple X_out
     
     def fsolve(self, **kwargs):
         X_initial = self.components[0].initial_guess()
