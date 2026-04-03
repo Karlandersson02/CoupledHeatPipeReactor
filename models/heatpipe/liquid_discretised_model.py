@@ -16,11 +16,11 @@ class liquid_discretised:
 
         A_int = 2 * np.pi * self.cfg.geometry.r_vapour * self.cfg.geometry.l_evap / self.cfg.mesh.N_evap
         Qevap = np.sum(self.cfg.material.h_vap * (T_wick_lv_interface[:self.cfg.mesh.N_evap] - T_v)) * A_int
-        mdot = Qevap / calculate_Na_h_fg(self.cfg.vapour_bc.T_HP[-1])
+        mdot = Qevap / calculate_Na_h_fg(T_v)
 
         mdot = np.concatenate([
             np.repeat(np.array([mdot/self.cfg.mesh.N_evap]), self.cfg.mesh.N_evap) * np.arange(self.cfg.mesh.N_evap),
-            np.repeat(np.array([mdot]), self.cfg.mesh.N_adia),
+            np.repeat(np.array([mdot]), self.cfg.mesh.N_adiabatic),
             np.repeat(np.array([mdot/self.cfg.mesh.N_cond]), self.cfg.mesh.N_cond) * np.arange(self.cfg.mesh.N_cond)[::-1]
         ])
         
@@ -59,7 +59,7 @@ class liquid_discretised:
 
         delta_z = np.concatenate(
             [np.ones(self.cfg.mesh.N_evap) * self.cfg.geometry.l_evap / self.cfg.mesh.N_evap,
-            np.ones(self.cfg.mesh.N_adia) * self.cfg.geometry.l_adia / self.cfg.mesh.N_adia,
+            np.ones(self.cfg.mesh.N_adiabatic) * self.cfg.geometry.l_adiabatic / self.cfg.mesh.N_adiabatic,
             np.ones(self.cfg.mesh.N_cond) * self.cfg.geometry.l_cond / self.cfg.mesh.N_cond]
             )
         
@@ -76,6 +76,8 @@ if __name__ == "__main__":
     # "Is_annular": True,
     # "K":1e-10,
     import json
+    from models.heatpipe.heat_discretised_model import HeatpipeDiscretised
+    from utils.solver import Solver
     with open("./project_data/vapour_data.json", "r") as f:
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
@@ -83,13 +85,40 @@ if __name__ == "__main__":
     geom = HeatpipeGeometry(**data["geometry"])
     mesh = HeatpipeMesh(**data["mesh"])
     mat = HeatpipeMaterial(**data["material"])
-    vap_bc = VapourBC(T_HP=np.array([0]))
+    wick = HeatpipeWick(**data["wick"])
+    bc = HeatpipeBC(**data["bc"])
+    heatpipe_cfg = HeatpipeConfig(geom, mesh, mat, bc, wick)
+    heatpipe_cfg = heatpipe_cfg.resolve()
+
+    heatpipe = HeatpipeDiscretised(heatpipe_cfg)
+    solver = Solver([heatpipe])
+    solver.newton_krylov()
+
+    T_HP = heatpipe.pack(solver.solution)
+
+    vap_bc = VapourBC(T_HP=T_HP)
     data["wick"]["K"] = 1e-10
     data["wick"]["Is_annular"] = True
-    wick = HeatpipeWick(**data["wick"])
     cfg = LiquidConfig(geom, mesh, mat, wick, vap_bc)
     cfg = cfg.resolve()
 
     lpd = liquid_discretised(cfg)
 
     P = lpd.get_pressure_drop_profile()
+
+    plt.rcParams["font.size"] = 22
+    plt.rcParams["font.family"] = "Computer modern"
+    plt.rcParams["text.usetex"] = True
+
+    fig = plt.figure(figsize=(16,9))
+    ax = fig.add_subplot(111)
+
+    x = np.linspace(0, heatpipe.cfg.geometry.l_tot, len(P))
+    ax.grid(alpha=0.4)
+    ax.plot(x, P, color="black")
+    ax.set_xlim([heatpipe.cfg.geometry.l_tot, 0])
+
+    ax.set_xlabel("l")
+    ax.set_ylabel("P")
+
+    plt.show()
