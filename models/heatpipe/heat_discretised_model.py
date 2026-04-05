@@ -52,12 +52,15 @@ class HeatpipeDiscretised(Component):
         return T
 
     def post_process(self, X):
-        T_HP = X[:-1].reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
-        return T_HP, X[-1]
+        return self.unpack(X)
     
     def pack(self, X_tuple):
         X = np.r_[X_tuple[0].reshape(self.cfg.mesh.N_Z * self.cfg.mesh.N_R), X_tuple[1]]
         return X
+    
+    def unpack(self, X):
+        X_tuple = (X[:-1].reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R), X[-1])
+        return X_tuple
 
     def _initialize_discretization(self):     
         R         = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)

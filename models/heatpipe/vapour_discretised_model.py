@@ -344,9 +344,10 @@ from project_data.heatpipe_dataclasses import *
 from models.component import Component
 
 class VapourDiscretised(Component):
-    def __init__(self, config: VapourConfigResolved):
+    def __init__(self, config: VapourConfigResolved, T_HP):
 
         self.cfg = config
+        self.T_HP = T_HP
         self.r2r1 = 5e3
 
     def assemble(self):
@@ -360,13 +361,16 @@ class VapourDiscretised(Component):
         return X_initial
     
     def post_process(self, X):
+        return self.unpack(X)
+    
+    def pack(self, X_tuple):
+        return np.r_[*X_tuple]
+    
+    def unpack(self, X):
         u = X[:self.cfg.mesh.N_Z-1]
         T = X[self.cfg.mesh.N_Z-1:]
         return (u, T)
     
-    def pack(self, X_tuple):
-        return np.r_[*X_tuple]
-
     def get_residuals(self, X):
         u, T = X[:self.cfg.mesh.N_Z-1], X[self.cfg.mesh.N_Z-1:]
 
@@ -418,7 +422,7 @@ class VapourDiscretised(Component):
         r2 = (
             (rhoi * ui**2 - rhoim1 * uim1**2)
             # (rhoi * (ui + uip1) / 2 * ui - rhoim1 * (ui + uim1) / 2 * uim1)
-            + calculate_Na_h_fg(self.cfg.vapour_bc.T_HP[-1]) * rhobar * ((Ti - Tim1) / Tbar)
+            + calculate_Na_h_fg(self.T_HP[-1]) * rhobar * ((Ti - Tim1) / Tbar)
             # + (Pi - Pim1)
             + dxi[1:] * lami * (1.0 / (4.0 * self.cfg.geometry.r_vapour)) * rhobar * ui * np.abs(ui)
         )
@@ -426,9 +430,9 @@ class VapourDiscretised(Component):
         return np.r_[self.r2r1 * r1, r2]
 
     def _calculate_Gamma(self):
-        T_wick_lv_interface = np.array(self.cfg.vapour_bc.T_HP)[:-1:self.cfg.mesh.N_R]
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.cfg.mesh.N_R]
 
-        T_v = self.cfg.vapour_bc.T_HP[-1]
+        T_v = self.T_HP[-1]
 
         q_bis_surface = np.zeros(self.cfg.mesh.N_Z)
         q_bis_surface[0: self.cfg.mesh.N_evap] = self.cfg.material.h_vap * (
@@ -440,7 +444,7 @@ class VapourDiscretised(Component):
         
         a_W = 2 / self.cfg.geometry.r_vapour
 
-        Gamma = a_W * q_bis_surface / calculate_Na_h_fg(self.cfg.vapour_bc.T_HP[-1])
+        Gamma = a_W * q_bis_surface / calculate_Na_h_fg(self.T_HP[-1])
 
         return Gamma
 
@@ -463,14 +467,14 @@ class VapourDiscretised(Component):
     
     def _build_initial_velocity(self):
         mdot = self._get_mdot()
-        rho_v = calculate_Na_rho_v(self.cfg.vapour_bc.T_HP[-1])
+        rho_v = calculate_Na_rho_v(self.T_HP[-1])
         A_v = np.pi * self.cfg.geometry.r_vapour**2
         u_guess = mdot / (rho_v * A_v)
         
         return u_guess[1:]
 
     def _build_initial_temperature(self) -> np.ndarray:
-        T_wick_lv_interface = np.array(self.cfg.vapour_bc.T_HP)[:-1:self.cfg.mesh.N_R]
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.cfg.mesh.N_R]
 
         T_cold_wall = float(np.mean(T_wick_lv_interface[-self.cfg.mesh.N_cond:]))
 
@@ -482,7 +486,7 @@ class VapourDiscretised(Component):
         return T_profile_analytic
     
     def _analytical_pressure_drop_Busse(self):
-        T_v   = self.cfg.vapour_bc.T_HP[-1]
+        T_v   = self.T_HP[-1]
         h_fg  = calculate_Na_h_fg(T_v)
         rho_v = calculate_Na_rho_v(T_v)
         mu_v  = calculate_Na_viscosity_v(T_v)
@@ -553,10 +557,10 @@ class VapourDiscretised(Component):
         return np.cumsum(dpdx * dx) 
 
     def _analytical_pressure_drop_cotter(self):
-        T_v  = self.cfg.vapour_bc.T_HP[-1]
+        T_v  = self.T_HP[-1]
         h_fg = calculate_Na_h_fg(T_v)
         rho_v = calculate_Na_rho_v(T_v)
-        self.viscosity_Na = calculate_Na_viscosity_v(self.cfg.vapour_bc.T_HP[-1])
+        self.viscosity_Na = calculate_Na_viscosity_v(self.T_HP[-1])
 
         Rv = self.cfg.geometry.r_vapour
         mu_v = self.viscosity_Na
@@ -583,12 +587,12 @@ class VapourDiscretised(Component):
         return np.cumsum(dpdx) * dx
 
     def _get_mdot(self):
-        T_wick_lv_interface = np.array(self.cfg.vapour_bc.T_HP)[:-1:self.cfg.mesh.N_R]
-        T_v = self.cfg.vapour_bc.T_HP[-1]
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.cfg.mesh.N_R]
+        T_v = self.T_HP[-1]
 
         A_int = 2 * np.pi * self.cfg.geometry.r_vapour * self.cfg.geometry.l_evap / self.cfg.mesh.N_evap
         Qevap = np.sum(self.cfg.material.h_vap * (T_wick_lv_interface[:self.cfg.mesh.N_evap] - T_v)) * A_int
-        mdot_peak = Qevap / calculate_Na_h_fg(self.cfg.vapour_bc.T_HP[-1])
+        mdot_peak = Qevap / calculate_Na_h_fg(self.T_HP[-1])
 
         mdot = np.concatenate([
             np.repeat(np.array([mdot_peak/self.cfg.mesh.N_evap]), self.cfg.mesh.N_evap) * np.arange(self.cfg.mesh.N_evap),
@@ -611,18 +615,17 @@ if __name__ == "__main__":
     geom = HeatpipeGeometry(**data["geometry"])
     mesh = HeatpipeMesh(N_R = 50, N_Z = 150, N_cond = 80)
     mat = HeatpipeMaterial(**data["material"])
+    wick = HeatpipeWick(**data["wick"])
     pipe_bc = HeatpipeBC(**data["bc"])
-    cfg = HeatpipeConfig(geom, mesh, mat, pipe_bc)
+    cfg = HeatpipeConfig(geom, mesh, mat, wick, pipe_bc)
     cfg = cfg.resolve()
 
     heatpipe = HeatpipeDiscretised(cfg)
     T_HP = heatpipe.linear_solve()
-
-    vap_bc = VapourBC(T_HP=T_HP)
-    vap_cfg = VapourConfig(geom, mesh, mat, vap_bc)
+    vap_cfg = VapourConfig(geom, mesh, mat)
     vap_cfg = vap_cfg.resolve()
 
-    vapour = VapourDiscretised(vap_cfg)
+    vapour = VapourDiscretised(vap_cfg, T_HP)
     solver = Solver([vapour])
     solver.newton_krylov()
 

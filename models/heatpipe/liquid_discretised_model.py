@@ -6,13 +6,14 @@ import matplotlib as mpl
 from utils.sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_l, calculate_Na_h_fg
 from project_data.heatpipe_dataclasses import *
 
-class liquid_discretised:
-    def __init__(self, config):
+class LiquidDiscretised:
+    def __init__(self, config, T_HP):
         self.cfg = config
+        self.T_HP = T_HP
 
     def get_mdot(self):
-        T_wick_lv_interface = np.array(self.cfg.vapour_bc.T_HP)[:-1:self.cfg.mesh.N_R]
-        T_v = self.cfg.vapour_bc.T_HP[-1]
+        T_wick_lv_interface = np.array(self.T_HP)[:-1:self.cfg.mesh.N_R]
+        T_v = self.T_HP[-1]
 
         A_int = 2 * np.pi * self.cfg.geometry.r_vapour * self.cfg.geometry.l_evap / self.cfg.mesh.N_evap
         Qevap = np.sum(self.cfg.material.h_vap * (T_wick_lv_interface[:self.cfg.mesh.N_evap] - T_v)) * A_int
@@ -47,7 +48,7 @@ class liquid_discretised:
         else:
             A_wick = np.pi * (self.cfg.geometry.r_wick**2 - self.cfg.geometry.r_vapour**2)
         
-        T_wick = np.mean(np.array(self.cfg.vapour_bc.T_HP)[:-1].reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)[:, :self.cfg.mesh.N_wick], axis=1) 
+        T_wick = np.mean(np.array(self.T_HP)[:-1].reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)[:, :self.cfg.mesh.N_wick], axis=1) 
 
         mu_l = calculate_Na_viscosity_l(T_wick)  
         rho_l = calculate_Na_rho_l(T_wick)
@@ -96,15 +97,13 @@ if __name__ == "__main__":
 
     T_HP = heatpipe.pack(solver.solution)
 
-    vap_bc = VapourBC(T_HP=T_HP)
     data["wick"]["K"] = 1e-10
     data["wick"]["Is_annular"] = True
-    cfg = LiquidConfig(geom, mesh, mat, wick, vap_bc)
-    cfg = cfg.resolve()
+    liquid_cfg = LiquidConfig(geom, mesh, mat, wick)
+    liquid_cfg = liquid_cfg.resolve()
+    liquid = LiquidDiscretised(liquid_cfg, T_HP)
 
-    lpd = liquid_discretised(cfg)
-
-    P = lpd.get_pressure_drop_profile()
+    P = liquid.get_pressure_drop_profile()
 
     plt.rcParams["font.size"] = 22
     plt.rcParams["font.family"] = "Computer modern"

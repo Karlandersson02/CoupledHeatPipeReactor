@@ -239,8 +239,8 @@ class HeatpipeConfig:
     geometry: HeatpipeGeometry
     mesh: HeatpipeMesh
     material: HeatpipeMaterial
-    bc: HeatpipeBC
     wick: HeatpipeWick
+    bc: HeatpipeBC
 
     def resolve(self):
         geometry = self.geometry.resolve()
@@ -272,35 +272,25 @@ class HeatpipeConfig:
             geometry = geometry,
             mesh = mesh,
             material = material,
-            bc = bc,
             wick = wick,
+            bc = bc,
         )
-    
-@dataclass(slots=True, kw_only=True)
-class VapourBC:
-    T_HP: np.ndarray
-
-    def resolve(self):
-        return VapourBCResolved(T_HP = self.T_HP)
     
 @dataclass(slots=True)
 class VapourConfig:
     geometry: HeatpipeGeometry
     mesh: HeatpipeMesh
     material: HeatpipeMaterial
-    vapour_bc: VapourBC
 
     def resolve(self):
         geometry = self.geometry.resolve()
         mesh = self.mesh.resolve()
         material = self.material.resolve()
-        vapour_bc = self.vapour_bc.resolve()
 
         return VapourConfigResolved(
             geometry = geometry,
             mesh = mesh,
             material = material,
-            vapour_bc = vapour_bc,
         )
 
 @dataclass(slots=True)
@@ -309,21 +299,18 @@ class LiquidConfig:
     mesh: HeatpipeMesh
     material: HeatpipeMaterial
     wick: HeatpipeWick
-    vapour_bc: VapourBC
 
     def resolve(self):
         geometry = self.geometry.resolve()
         mesh = self.mesh.resolve()
         material = self.material.resolve()
         wick = self.wick.resolve()
-        vapour_bc = self.vapour_bc.resolve()
 
         return LiquidConfigResolved(
             geometry = geometry,
             mesh = mesh,
             material = material,
             wick = wick,
-            vapour_bc = vapour_bc,
         )
 
 # ---------------------------------------------
@@ -402,19 +389,14 @@ class HeatpipeConfigResolved:
     geometry: HeatpipeGeometryResolved
     mesh: HeatpipeMeshResolved
     material: HeatpipeMaterialResolved
-    bc: HeatpipeBCResolved
     wick: HeatpipeWickResolved
-
-@dataclass(slots=True, kw_only=True)
-class VapourBCResolved:
-    T_HP: np.ndarray
+    bc: HeatpipeBCResolved
 
 @dataclass(slots=True)
 class VapourConfigResolved:
     geometry: HeatpipeGeometryResolved
     mesh: HeatpipeMeshResolved
     material: HeatpipeMaterialResolved
-    vapour_bc: VapourBCResolved
 
 @dataclass(slots=True)
 class LiquidConfigResolved:
@@ -422,4 +404,3 @@ class LiquidConfigResolved:
     mesh: HeatpipeMeshResolved
     material: HeatpipeMaterialResolved
     wick: HeatpipeWickResolved
-    vapour_bc: VapourBCResolved
