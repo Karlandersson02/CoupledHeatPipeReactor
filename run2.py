@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import json
 
 from models.neutronics.axial_neutron_model import NeutronicsModel
-from models.heatpipe.heat_discretised_model import HeatpipeDiscretised
+from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
 
 from project_data.heatpipe_dataclasses import *
 from project_data.neutronics_dataclasses import *

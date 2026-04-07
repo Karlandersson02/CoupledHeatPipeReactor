@@ -206,7 +206,7 @@ def run_openmc_case(
     """
     Run one OpenMC case and return homogenized MGXS outputs.
     """
-    from coupled_systems.Heatpipe import Heatpipe
+    from coupled_systems.heatpipe import Heatpipe
     from models.fuel_assembly.homogenised_cell_model import (
         create_openmc_model,
         load_homogenized_xs_from_statepoint,

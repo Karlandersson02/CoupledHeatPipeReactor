@@ -172,7 +172,7 @@ def build_discretised_data(cfg: dict[str, Any]) -> dict[str, Any]:
 # -----------------------------
 
 def run_network(cfg: dict[str, Any], out_dir: Path) -> int:
-    from models.heatpipe.heat_network_model import solve_heatpipe_network_model_static
+    from models.heatpipe.heatpipe_network_model import solve_heatpipe_network_model_static
     from visualisation.visualise_network_results import print_heat_pipe_temperatures
 
     k, A, lamb, T_infc, Q_total = compute_network_inputs(cfg)
@@ -187,7 +187,7 @@ def run_network(cfg: dict[str, Any], out_dir: Path) -> int:
 
 
 def run_discretised(cfg: dict[str, Any], out_dir: Path) -> int:
-    from models.heatpipe.heat_discretised_model import heatpipe_discretised
+    from models.heatpipe.solid_discretised_model import heatpipe_discretised
     from visualisation.visualise_discretised_results import display_temperature_distribution, plot_temperature_cross_section
 
     out_settings = get_output_settings(cfg)

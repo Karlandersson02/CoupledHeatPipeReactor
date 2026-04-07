@@ -5,7 +5,7 @@ import openmc.mgxs
 import os
 
 from utils.sodium_properties import calculate_Na_rho_l
-from coupled_systems.Heatpipe import Heatpipe
+from coupled_systems.heatpipe import Heatpipe
 
 
 # =============================================================================

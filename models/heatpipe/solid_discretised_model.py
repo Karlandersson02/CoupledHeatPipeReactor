@@ -503,8 +503,9 @@ if __name__ == "__main__":
     geom = HeatpipeGeometry(**data["geometry"])
     mesh = HeatpipeMesh(N_R=N_R, N_Z=N_Z, N_wall=N_R//2)
     mat = HeatpipeMaterial(**data["material"])
+    wick = HeatpipeWick(**data["wick"])
     bc = HeatpipeBC(**data["bc"])
-    cfg = HeatpipeConfig(geom, mesh, mat, bc)
+    cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
     cfg = cfg.resolve()
 
     heatpipe = HeatpipeDiscretised(cfg)

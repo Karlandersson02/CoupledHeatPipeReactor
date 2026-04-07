@@ -77,7 +77,7 @@ if __name__ == "__main__":
     # "Is_annular": True,
     # "K":1e-10,
     import json
-    from models.heatpipe.heat_discretised_model import HeatpipeDiscretised
+    from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
     from utils.solver import Solver
     with open("./project_data/vapour_data.json", "r") as f:
         data_guoju = json.load(f)

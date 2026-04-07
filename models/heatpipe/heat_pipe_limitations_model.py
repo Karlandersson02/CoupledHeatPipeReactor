@@ -12,7 +12,7 @@ from utils.sodium_properties import (
     calculate_Na_thermal_conductivity_l,
 )
 
-from coupled_systems.Heatpipe import Heatpipe
+from coupled_systems.heatpipe import Heatpipe
 from project_data.heatpipe_dataclasses import *
 
 R = 8.314472

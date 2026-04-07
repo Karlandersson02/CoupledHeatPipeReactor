@@ -1,7 +1,7 @@
 import numpy as np
 import meshio
 
-from models.heatpipe.heat_discretised_model import heatpipe_discretised
+from models.heatpipe.solid_discretised_model import heatpipe_discretised
 from models.neutronics.axial_neutron_model import NeutronModel
 from models.fuel_pin.fuel_pin_model import FuelPin
 from models.mesh_heat_conduction.mesh_conduction_model import moderator_discretised_mesh

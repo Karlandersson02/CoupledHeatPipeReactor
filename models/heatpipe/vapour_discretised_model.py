@@ -605,7 +605,7 @@ class VapourDiscretised(Component):
 if __name__ == "__main__":
 
     import json
-    from models.heatpipe.heat_discretised_model import HeatpipeDiscretised
+    from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
     from utils.solver import Solver
 
     with open("./project_data/vapour_data.json", "r") as f:

@@ -2,7 +2,7 @@ import numpy as np
 
 import utils.sodium_properties as sodium_properties
 
-from models.heatpipe.heat_discretised_model import HeatpipeDiscretised
+from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
 from models.heatpipe.vapour_discretised_model import VapourDiscretised
 from models.heatpipe.liquid_discretised_model import LiquidDiscretised
 from utils.solver import Solver

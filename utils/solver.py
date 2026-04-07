@@ -1,7 +1,7 @@
 import numpy as np
 
 from models.component import Component
-from models.heatpipe.heat_discretised_model import HeatpipeDiscretised
+from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
 from models.neutronics.axial_neutron_model import NeutronicsModel
 
 from scipy.optimize import fsolve, newton_krylov
@@ -34,6 +34,9 @@ class Solver:
     def __init__(self, components: Sequence[Component], iterate = True):
         self.components = components
         self.iterate = iterate
+
+        if not self.iterate:
+            self.solutions = []
 
     def newton_krylov(self, verbose=True, **kwargs):
         X_initial = self.components[0].initial_guess()
@@ -87,8 +90,12 @@ class Solver:
                     )
 
                     X_initial = next_component.pack((X_out_interpolated, X_out[-1]))
+                
+            if not self.iterate:
+                self.solutions.append(X_out)
         
-        self.solution = X_out       # Not implemented multiple X_out
+        if self.iterate:
+            self.solution = X_out
     
     def fsolve(self, **kwargs):
         X_initial = self.components[0].initial_guess()
@@ -138,5 +145,9 @@ class Solver:
                     )
 
                     X_initial = next_component.pack((X_out_interpolated, X_out[-1]))
+            
+            if not self.iterate:
+                self.solutions.append(X_out)
         
-        self.solution = X_out
+        if self.iterate:
+            self.solution = X_out
