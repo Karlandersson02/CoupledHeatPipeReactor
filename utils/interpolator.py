@@ -20,11 +20,30 @@ from scipy.interpolate import RegularGridInterpolator
 T_MIN = 500.0
 T_MAX = 1200.0
 
+# -------------------------------------------------------------------------
+# Data / Config
+# -------------------------------------------------------------------------
+
+import json
+from project_data.heatpipe_dataclasses import *
+
+with open("./project_data/vapour_data.json", "r") as f:
+    data_guoju = json.load(f)
+    data = data_guoju["data_guoju_560"]
+
+geom = HeatpipeGeometry(**data["geometry"])
+mesh = HeatpipeMesh(**data["mesh"])
+mat = HeatpipeMaterial(**data["material"])
+wick = HeatpipeWick(**data["wick"])
+bc = HeatpipeBC(**data["bc"])
+cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
+cfg = cfg.resolve()
+
 # Number of grid points per dimension.
 # Total OpenMC runs = N_T_HEAT_PIPE * N_T_FUEL_PIN * N_T_MODERATOR
-N_T_HEAT_PIPE = 4
-N_T_FUEL_PIN = 4
-N_T_MODERATOR = 4
+N_T_HEAT_PIPE = 10
+N_T_FUEL_PIN = 10
+N_T_MODERATOR = 10
 
 # -------------------------------------------------------------------------
 # Output / storage
@@ -43,6 +62,7 @@ MODEL_FILE = MODEL_DIR / "rgi_surrogate.joblib"
 NUM_ENERGY_GROUPS = 8
 
 TARGET_KEYS = [
+    "diffusion_coefficient",
     "total_xs",            # shape (G,)
     "scatter_matrix_xs",   # shape (G, G)
     "fission_xs",          # shape (G,)
@@ -206,7 +226,7 @@ def run_openmc_case(
     """
     Run one OpenMC case and return homogenized MGXS outputs.
     """
-    from coupled_systems.Heatpipe import Heatpipe
+    from coupled_systems.heatpipe import Heatpipe
     from models.fuel_assembly.homogenised_cell_model import (
         create_openmc_model,
         load_homogenized_xs_from_statepoint,
@@ -214,33 +234,7 @@ def run_openmc_case(
 
     ensure_dir(case_dir)
 
-    data_Guoju_2 = {
-        "r_outer":     0.03 + 0.001 + 0.0005 + 0.0005,
-        "delta_wall":  0.001,
-        "delta_gap":   0.0005,
-        "delta_wick":  0.0005,
-        "l_evap":      0.1,
-        "l_adiabatic": 0.05,
-        "l_cond":      0.55,
-        "N_wick":      15,
-        "N_wall":      15,
-        "N_evap":      30,
-        "N_adiabatic": 15,
-        "N_cond":      165,
-        "adiabatic_radial_flux": False,
-        "Temperature_BC": True,
-        "h_vap":    1e6,
-        "h_cond":   62.6,
-        "T_cond":   300,
-        "T_op":     T_heat_pipe,
-        "k_wick":   66.2,
-        "k_wall":   19.0,
-        "P_C":      2476,
-        "T_C":      856,
-        "porosity": 0.7,
-    }
-
-    HP = Heatpipe(data_Guoju_2)
+    HP = Heatpipe(cfg)
 
     old_cwd = Path.cwd()
     try:
@@ -254,7 +248,7 @@ def run_openmc_case(
             T_fuel_pin=T_fuel_pin,
         )
 
-        statepoint_path = model.run()
+        statepoint_path = model.run(output=False)
         result_dict = load_homogenized_xs_from_statepoint(statepoint_path, mgxs_objects)
 
         result_dict = {k: np.asarray(result_dict[k], dtype=float) for k in TARGET_KEYS}
@@ -599,7 +593,7 @@ if __name__ == "__main__":
     ensure_dir(TRAINING_DATA_DIR)
     ensure_dir(MODEL_DIR)
 
-    FORCE_RECOMPUTE_DATA = False
+    FORCE_RECOMPUTE_DATA = True
 
     X, Y, specs, metadata = build_or_load_training_data(force_recompute=FORCE_RECOMPUTE_DATA)
     surrogate = train_and_save_model(X, Y, specs, metadata)

@@ -12,46 +12,16 @@ from utils.sodium_properties import (
     calculate_Na_thermal_conductivity_l,
 )
 
-from coupled_systems.Heatpipe import Heatpipe
+from coupled_systems.heatpipe import Heatpipe
+from project_data.heatpipe_dataclasses import *
+
+R = 8.314472
+R_Na = R / 0.022990
 
 class heat_pipe_limitations:
-    def __init__(self, HP):
-        self.HP = HP
-        self.r_outer    = HP.data.get("r_outer")
-        self.delta_wall = HP.data.get("delta_wall")
-        self.delta_gap  = HP.data.get("delta_gap")
-        self.delta_wick = HP.data.get("delta_wick")
-        self.r_gap    = self.r_outer - self.delta_wall
-        self.r_wick   = self.r_gap   - self.delta_gap
-        self.r_vapour = self.r_wick  - self.delta_wick
-
-        self.l_evap      = HP.data.get("l_evap")
-        self.l_adiabatic = HP.data.get("l_adiabatic")
-        self.l_cond      = HP.data.get("l_cond")
-        self.l_tot       = self.l_evap + self.l_adiabatic+ self.l_cond
-
-        self.N_wick   = HP.data.get("N_wick")
-        self.N_wall   = HP.data.get("N_wall")
-        self.N_R      = self.N_wick + self.N_wall
-
-        self.N_evap      = HP.data.get("N_evap")
-        self.N_adiabatic = HP.data.get("N_adiabatic")
-        self.N_cond      = HP.data.get("N_cond")
-        self.N_Z         = self.N_evap + self.N_adiabatic+ self.N_cond
-
-        self.k_wall   = HP.data.get("k_wall")
-        self.k_wick   = HP.data.get("k_wick")
-
-        self.r_pore   = HP.data.get("r_pore")
-        self.porosity = HP.data.get("porosity")
-        self.K          = HP.data.get("K")
-        self.Is_annular = HP.data.get("Is_annular")
-        self.T_op     = HP.data.get("T_op")
-        self.mdot_HP  = HP.data.get("mdot_HP")
-
-        self.R = 8.314472
-        self.R_Na = self.R / 0.022990
-
+    def __init__(self, heatpipe: Heatpipe, config: HeatpipeConfigResolved):
+        self.HP = heatpipe
+        self.cfg = config
 
     def plot_analytical_limits(self, T_low, T_high):
         T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
@@ -105,14 +75,14 @@ class heat_pipe_limitations:
 
         
         # Calculating the pressure drop due to viscous forces in the liquid flow.     
-        if self.Is_annular == True:
+        if self.cfg.wick.Is_annular == True:
             K = self.calculate_K_annular_wick()
-            A_wick = np.pi * (self.r_gap**2 - self.r_wick**2) 
+            A_wick = np.pi * (self.cfg.geometry.r_gap**2 - self.cfg.geometry.r_wick**2) 
         else:
-            K = self.K
-            A_wick = np.pi * (self.r_wick**2 - self.r_vapour**2)
+            K = self.cfg.wick.K
+            A_wick = np.pi * (self.cfg.geometry.r_wick**2 - self.cfg.geometry.r_vapour**2)
 
-        L_cap_max = (0.5 * self.l_evap + self.l_adiabatic+ 0.5 * self.l_cond)
+        L_cap_max = (0.5 * self.cfg.geometry.l_evap + self.cfg.geometry.l_adiabatic+ 0.5 * self.cfg.geometry.l_cond)
 
         F_l = mu_l * L_cap_max / (rho_l * A_wick * K * h_fg)
 
@@ -121,17 +91,17 @@ class heat_pipe_limitations:
         # Due to a circular duct 
         fRe_zv = 16
 
-        A_v = np.pi * self.r_vapour**2
+        A_v = np.pi * self.cfg.geometry.r_vapour**2
 
-        F_v_viscous = fRe_zv * mu_v / (2 * self.r_vapour**2 * A_v * rho_v * h_fg)
+        F_v_viscous = fRe_zv * mu_v / (2 * self.cfg.geometry.r_vapour**2 * A_v * rho_v * h_fg)
 
         # Calculating the pressure drop due to inertial forces in the vapour flow.
         cotter_recovery = 4.0 / np.pi**2          
         inertial_fraction = 1.0 - cotter_recovery  
-        F_v_inertial = inertial_fraction / (8 * rho_v * self.r_vapour**4 * h_fg**2)
+        F_v_inertial = inertial_fraction / (8 * rho_v * self.cfg.geometry.r_vapour**4 * h_fg**2)
 
         # Calculating Q_max based on the pressure drops.
-        Delta_p_cap_max = (2 * sigma_l / self.r_pore)
+        Delta_p_cap_max = (2 * sigma_l / self.cfg.wick.r_pore)
 
         # Equation is off the quadratic form.
         a = F_v_inertial
@@ -171,7 +141,7 @@ class heat_pipe_limitations:
             print(f"Progress: {(T - np.min(T_span))*100 / (np.max(T_span) - np.min(T_span))} %")
             # Calculate the max capillary head for the current temperature.
             sigma_l = calculate_Na_surface_tension(T)
-            Delta_p_cap_max = (2 * sigma_l / self.r_pore)
+            Delta_p_cap_max = (2 * sigma_l / self.cfg.wick.r_pore)
 
             # Set margin to 0 to force atleast two iterations, due to "< 0." in break condition.
             Delta_p_margin = 0.
@@ -250,14 +220,14 @@ class heat_pipe_limitations:
 
         nu_v = 1.0 / rho_v
         nu_l = 1.0 / rho_l
-        k_eff = (1 - self.porosity) * self.k_wick + self.porosity * k_l
+        k_eff = (1 - self.cfg.wick.porosity) * self.cfg.material.k_wick + self.cfg.wick.porosity * k_l
 
         def residual(Q, i):
-            q_r   = Q / (np.pi * self.r_vapour**2)
+            q_r   = Q / (np.pi * self.cfg.geometry.r_vapour**2)
             R_b   = np.sqrt((2 * sigma_l[i] * T_span[i] * k_l[i] * (nu_v[i] - nu_l[i]))
                             / (h_fg[i] * q_r))
-            dT    = (2 * sigma_l[i] * T_span[i]) / (h_fg[i] * rho_v[i]) * (1/R_b - 1/self.r_pore)
-            Q_rhs = (2 * np.pi * self.l_evap * k_eff[i] * dT) / np.log(self.r_wick / self.r_vapour)
+            dT    = (2 * sigma_l[i] * T_span[i]) / (h_fg[i] * rho_v[i]) * (1/R_b - 1/self.cfg.wick.r_pore)
+            Q_rhs = (2 * np.pi * self.cfg.geometry.l_evap * k_eff[i] * dT) / np.log(self.cfg.geometry.r_wick / self.cfg.geometry.r_vapour)
             return Q - Q_rhs
 
         def find_bracket(residual, i, Q_min=1e-3, Q_max=1e13, n_search=500):
@@ -291,10 +261,10 @@ class heat_pipe_limitations:
         h_fg    = calculate_Na_h_fg(T_span)
         rho_v   = calculate_Na_rho_v(T_span)
 
-        A_v = np.pi * self.r_vapour**2 
+        A_v = np.pi * self.cfg.geometry.r_vapour**2 
         gamma = 5/3
 
-        Q_sonic = A_v * rho_v * h_fg * np.sqrt( (gamma * self.R_Na * T_span) / (2 * (gamma + 1)) )
+        Q_sonic = A_v * rho_v * h_fg * np.sqrt( (gamma * R_Na * T_span) / (2 * (gamma + 1)) )
 
         # plt.plot(T_span, Q_sonic, label="Sonic limit")
         # plt.xlabel("Temperature [Kelvin]")
@@ -311,13 +281,13 @@ class heat_pipe_limitations:
         rho_v   = calculate_Na_rho_v(T_span)
         sigma_l = calculate_Na_surface_tension(T_span)
 
-        A_v = np.pi * self.r_vapour**2 
+        A_v = np.pi * self.cfg.geometry.r_vapour**2 
 
         # Assuming that the area of the individual pore is a half sphere (best case scenario)
-        #R_h_w = self.r_pore / 3
+        #R_h_w = self.cfg.wick.r_pore / 3
 
         # Assuming that the area of the individual pore is flat (worst case scenario)
-        R_h_w = self.r_pore
+        R_h_w = self.cfg.wick.r_pore
         
         Q_entrainment = A_v * h_fg * np.sqrt( (sigma_l * rho_v) / (2 * R_h_w) )
 
@@ -331,8 +301,8 @@ class heat_pipe_limitations:
     
 
     def calculate_K_annular_wick(self):
-        self.r_2 = self.r_wick
-        self.r_1 = self.r_gap
+        self.r_2 = self.cfg.geometry.r_wick
+        self.r_1 = self.cfg.geometry.r_gap
 
         R_star = self.r_2 / self.r_1
 
@@ -351,12 +321,12 @@ class heat_pipe_limitations:
         rho_v = calculate_Na_rho_v(T_v)
         mu_v  = calculate_Na_viscosity_v(T_v)
 
-        Rv  = self.r_vapour
+        Rv  = self.cfg.geometry.r_vapour
         d_v = 2.0 * Rv
-        L_C = self.l_cond
-        L_e = self.l_evap
+        L_C = self.cfg.geometry.l_cond
+        L_e = self.cfg.geometry.l_evap
 
-        Q_tot = self.HP.liquid_discretised.get_mdot()[self.N_evap] * h_fg
+        Q_tot = self.HP.liquid_discretised.get_mdot()[self.cfg.mesh.N_evap] * h_fg
 
         print(f"Q_tot = {Q_tot}")
 
@@ -378,41 +348,41 @@ class heat_pipe_limitations:
             return (15.0 / 22.0) * (inner + np.sqrt(disc))**0.5
 
         # --- Evaporator + adiabatic (combined, Busse 1967) ---
-        F = (7.0/9.0 - 1.7 * Re_re / (36 + 10*Re_re) * np.exp(-7.5 * self.l_adiabatic / (Re_re * L_e)))
+        F = (7.0/9.0 - 1.7 * Re_re / (36 + 10*Re_re) * np.exp(-7.5 * self.cfg.geometry.l_adiabatic / (Re_re * L_e)))
         
         dP_evap = ((-4.0/np.pi) * (mu_v * Q_tot) / (rho_v * Rv**4 * h_fg) * (L_e * (1.0 + Re_re * F)))
         
-        dP_adiabatic = -(8.0 * mu_v * Q_tot * self.l_adiabatic) / (rho_v * np.pi * Rv**4 * h_fg)
+        dP_adiabatic = -(8.0 * mu_v * Q_tot * self.cfg.geometry.l_adiabatic) / (rho_v * np.pi * Rv**4 * h_fg)
 
         # --- Condenser pressure recovery (Busse 1967, eq. 11) ---
-        dP_cond = -dP_evap + -dP_adiabatic - (4.0/np.pi) * (mu_v * Q_tot) / (rho_v * Rv**4 * h_fg) * (self.l_evap + 2*self.l_adiabatic + self.l_cond)
+        dP_cond = -dP_evap + -dP_adiabatic - (4.0/np.pi) * (mu_v * Q_tot) / (rho_v * Rv**4 * h_fg) * (self.cfg.geometry.l_evap + 2*self.cfg.geometry.l_adiabatic + self.cfg.geometry.l_cond)
 
         # --- Distribute onto spatial grid ---
-        dx   = np.zeros(self.N_Z, dtype=float)
+        dx   = np.zeros(self.cfg.mesh.N_Z, dtype=float)
 
-        dx[:self.N_evap] = self.l_evap / (self.N_evap)
-        dx[self.N_evap: self.N_evap + self.N_adiabatic] = self.l_adiabatic / (self.N_adiabatic)
-        dx[self.N_evap + self.N_adiabatic:] = self.l_cond / (self.N_cond)
+        dx[:self.cfg.mesh.N_evap] = self.cfg.geometry.l_evap / (self.cfg.mesh.N_evap)
+        dx[self.cfg.mesh.N_evap: self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic] = self.cfg.geometry.l_adiabatic / (self.cfg.mesh.N_adiabatic)
+        dx[self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic:] = self.cfg.geometry.l_cond / (self.cfg.mesh.N_cond)
         
-        dpdx = np.zeros(self.N_Z, dtype=float)
+        dpdx = np.zeros(self.cfg.mesh.N_Z, dtype=float)
 
-        x_evap  = np.linspace(0, L_e, self.N_evap)
+        x_evap  = np.linspace(0, L_e, self.cfg.mesh.N_evap)
         profile = (x_evap / L_e)**2
-        norm    = np.sum(profile) * (L_e / self.N_evap)
-        dpdx[:self.N_evap] = dP_evap * profile / norm
+        norm    = np.sum(profile) * (L_e / self.cfg.mesh.N_evap)
+        dpdx[:self.cfg.mesh.N_evap] = dP_evap * profile / norm
 
-        dpdx[self.N_evap:self.N_evap + self.N_adiabatic] = (
-            dP_adiabatic / (self.l_adiabatic)
+        dpdx[self.cfg.mesh.N_evap:self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic] = (
+            dP_adiabatic / (self.cfg.geometry.l_adiabatic)
         )
 
-        j0 = self.N_evap + self.N_adiabatic
-        x2     = L_e + self.l_adiabatic
-        x_cond = np.linspace(x2, x2 + L_C, self.N_cond)
+        j0 = self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic
+        x2     = L_e + self.cfg.geometry.l_adiabatic
+        x_cond = np.linspace(x2, x2 + L_C, self.cfg.mesh.N_cond)
         xi     = 1.0 - (x_cond - x2) / L_C
         dP_cond_total = dP_cond  # scalar total
         # distribute as (1 - xi)^2 profile, normalised to integrate to dP_cond_total
         profile    = (xi)**2
-        dpdx[j0:] = dP_cond_total * profile / (np.sum(profile) * dx[self.N_evap + self.N_adiabatic:])
+        dpdx[j0:] = dP_cond_total * profile / (np.sum(profile) * dx[self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic:])
 
         return np.cumsum(dpdx * dx) 
 
@@ -486,10 +456,16 @@ if __name__ == "__main__":
         Q = np.repeat(np.array([Qtot / N], dtype=float), N)
         return Q
 
-    Q = build_flat_profile(560, data_Guoju_2["N_evap"])
-    data_Guoju_2["Q"] = Q
-    HP = Heatpipe(data_Guoju_2)
-    HP_limits = heat_pipe_limitations(HP)
+    geom = HeatpipeGeometry(**data["geometry"])
+    mesh = HeatpipeMesh(**data["mesh"])
+    mat = HeatpipeMaterial(**data["material"])
+    bc = HeatpipeBC(**data["bc"])
+    wick = HeatpipeWick(**data["wick"])
+    cfg = HeatpipeConfig(geom, mesh, mat, bc, wick)
+    cfg = cfg.resolve()
+
+    HP = Heatpipe(cfg)
+    HP_limits = heat_pipe_limitations(HP, cfg)
 
     HP_limits.plot_analytical_limits(700, 1400)
 
