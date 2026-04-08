@@ -47,11 +47,11 @@ def create_heat_pipe_universe(HP, temperature):
     density_fecral = 7.15
     density_graphite = 2.0
 
-    porosity   = HP.data.get("porosity")
-    r_outer    = 1e2 * HP.data.get("r_outer")
-    delta_wall = 1e2 * HP.data.get("delta_wall")
-    delta_gap  = 1e2 * HP.data.get("delta_gap")
-    delta_wick = 1e2 * HP.data.get("delta_wick")
+    porosity   = HP.cfg.wick.porosity
+    r_outer    = 1e2 * HP.cfg.geometry.r_outer
+    delta_wall = 1e2 * HP.cfg.geometry.delta_wall
+    delta_gap  = 1e2 * HP.cfg.geometry.delta_gap
+    delta_wick = 1e2 * HP.cfg.geometry.delta_wick
 
     r_gap    = r_outer - delta_wall
     r_wick   = r_gap   - delta_gap
@@ -394,40 +394,29 @@ def print_homogenized_xs(results, energy_group_edges):
 # =============================================================================
 
 if __name__ == "__main__":
+    import json
+    from project_data.heatpipe_dataclasses import *
+
+    with open("./project_data/vapour_data.json", "r") as f:
+        data_guoju = json.load(f)
+        data = data_guoju["data_guoju_560"]
+
+    geom = HeatpipeGeometry(**data["geometry"])
+    mesh = HeatpipeMesh(**data["mesh"])
+    mat  = HeatpipeMaterial(**data["material"])
+    wick = HeatpipeWick(**data["wick"])
+    bc   = HeatpipeBC(**data["bc"])
+    cfg  = HeatpipeConfig(geom, mesh, mat, wick, bc)
+    cfg  = cfg.resolve()
+
+    heatpipe = Heatpipe(cfg)
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.chdir(OUTPUT_DIR)
     os.system("rm -f summary.h5 statepoint.*.h5 tallies.xml geometry.xml materials.xml settings.xml")
 
-    data_Guoju_2 = {
-        "r_outer":     0.03 + 0.001 + 0.0005 + 0.0005,
-        "delta_wall":  0.001,
-        "delta_gap":   0.0005,
-        "delta_wick":  0.0005,
-        "l_evap":      0.1,
-        "l_adiabatic": 0.05,
-        "l_cond":      0.55,
-        "N_wick":      15,
-        "N_wall":      15,
-        "N_evap":      30,
-        "N_adiabatic": 15,
-        "N_cond":      165,
-        "adiabatic_radial_flux": False,
-        "Temperature_BC": True,
-        "h_vap":    1e6,
-        "h_cond":   62.6,
-        "T_cond":   300,
-        "T_op":     850,
-        "k_wick":   66.2,
-        "k_wall":   19.0,
-        "P_C":      2476,
-        "T_C":      856,
-        "porosity": 0.7,
-    }
-
-    HP = Heatpipe(data_Guoju_2)
-
     model, mgxs_objects, energy_group_edges = create_openmc_model(
-        HP,
+        heatpipe,
         num_groups=NUM_ENERGY_GROUPS,
         T_heat_pipe=T_HEAT_PIPE,
         T_moderator=T_MODERATOR,

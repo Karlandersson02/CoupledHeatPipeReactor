@@ -11,7 +11,7 @@ from project_data.heatpipe_dataclasses import *
 
 class Heatpipe:
 
-    def __init__(self, data, config):
+    def __init__(self, config):
         self.cfg = config
         self.solid = HeatpipeDiscretised(self.cfg)
 
