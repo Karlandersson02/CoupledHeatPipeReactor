@@ -38,6 +38,8 @@ class HeatpipeDiscretised(Component):
             self.M, self.C = self._generate_matrix_form_heat_bc(alpha, k_matrix, h_matrix)
 
     def get_residuals(self, X):
+        self.assemble()
+
         res = self.M @ X - self.C
         return res
 
@@ -499,7 +501,7 @@ if __name__ == "__main__":
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
     
-    N_R, N_Z = 40, 100
+    N_R, N_Z = 20, 30
     geom = HeatpipeGeometry(**data["geometry"])
     mesh = HeatpipeMesh(N_R=N_R, N_Z=N_Z, N_wall=N_R//2)
     mat = HeatpipeMaterial(**data["material"])
@@ -511,7 +513,7 @@ if __name__ == "__main__":
     heatpipe = HeatpipeDiscretised(cfg)
 
     solver = Solver([heatpipe])
-    solver.newton_krylov()
+    solver.fsolve()
 
     T_solid, T_vap = solver.solution
 
