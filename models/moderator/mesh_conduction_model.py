@@ -4,11 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import meshio # type: ignore
-import pyvista as pv # type: ignore
+# import pyvista as pv # type: ignore
 
-from models.mesh_heat_conduction.triangle_mesh import UnstructuredMesh, Surface
+from models.moderator.triangle_mesh import UnstructuredMesh, Surface
 
-class moderator_discretised_mesh:
+class ModeratorDiscretisedMesh:
     def __init__(self, data, mesh):
         self.mesh = mesh
         n_triangles = mesh.triangles.shape[0]

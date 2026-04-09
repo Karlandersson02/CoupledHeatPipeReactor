@@ -169,36 +169,36 @@ class NeutronicsModel(Component):
     def get_axial_temperature(self, T):
         return T[::self.cfg.mesh.N_R]
 
-    # def get_material_data(self, T):
-    #     T_center_axial = self.get_axial_temperature(T)
-
-    #     D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T_center_axial)
-    #     return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
-    
     def get_material_data(self, T):
         T_center_axial = self.get_axial_temperature(T)
 
-        X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_center_axial])
-        params = interpolator_model.predict_dict(X)
+        D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T_center_axial)
+        return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
+    
+    # def get_material_data(self, T):
+    #     T_center_axial = self.get_axial_temperature(T)
 
-        Diffusivity = np.zeros((len(params), self.cfg.energy.N_G))
-        Sigma_t = np.zeros((len(params), self.cfg.energy.N_G))
-        Sigma_f = np.zeros((len(params), self.cfg.energy.N_G))
-        Sigma_s0 = np.zeros((len(params), self.cfg.energy.N_G, self.cfg.energy.N_G))
-        fission_number = np.zeros((len(params), self.cfg.energy.N_G))
-        Chi = np.zeros((len(params), self.cfg.energy.N_G))
-        kappa = np.zeros((len(params), self.cfg.energy.N_G))
+    #     X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_center_axial])
+    #     params = interpolator_model.predict_dict(X)
+
+    #     Diffusivity = np.zeros((len(params), self.cfg.energy.N_G))
+    #     Sigma_t = np.zeros((len(params), self.cfg.energy.N_G))
+    #     Sigma_f = np.zeros((len(params), self.cfg.energy.N_G))
+    #     Sigma_s0 = np.zeros((len(params), self.cfg.energy.N_G, self.cfg.energy.N_G))
+    #     fission_number = np.zeros((len(params), self.cfg.energy.N_G))
+    #     Chi = np.zeros((len(params), self.cfg.energy.N_G))
+    #     kappa = np.zeros((len(params), self.cfg.energy.N_G))
         
-        for i in range(len(params)):
-            Diffusivity[i] = np.array(params[i]["diffusion_coefficient"]) * 1e-2
-            Sigma_t[i] = np.array(params[i]["total_xs"]) * 1e2
-            Sigma_f[i] = np.array(params[i]["fission_xs"]) * 1e2
-            Sigma_s0[i] = (np.array(params[i]["scatter_matrix_xs"]) * 1e2)
-            fission_number[i] = np.array(params[i]["nu"])
-            Chi[i] = np.array(params[i]["chi"])
-            kappa[i] = np.array(params[i]["kappa"]) * 1.602176634e-19
+    #     for i in range(len(params)):
+    #         Diffusivity[i] = np.array(params[i]["diffusion_coefficient"]) * 1e-2
+    #         Sigma_t[i] = np.array(params[i]["total_xs"]) * 1e2
+    #         Sigma_f[i] = np.array(params[i]["fission_xs"]) * 1e2
+    #         Sigma_s0[i] = (np.array(params[i]["scatter_matrix_xs"]) * 1e2)
+    #         fission_number[i] = np.array(params[i]["nu"])
+    #         Chi[i] = np.array(params[i]["chi"])
+    #         kappa[i] = np.array(params[i]["kappa"]) * 1.602176634e-19
 
-        return Diffusivity, Sigma_t, Sigma_s0, Sigma_f, fission_number, Chi, kappa
+    #     return Diffusivity, Sigma_t, Sigma_s0, Sigma_f, fission_number, Chi, kappa
 
 if __name__ == "__main__":
     data = {}
