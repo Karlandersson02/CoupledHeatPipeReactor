@@ -3,20 +3,20 @@ import meshio # type: ignore
 
 from scipy.optimize import fsolve, newton_krylov
 
-from models.heatpipe.solid_discretised_model import heatpipe_discretised
-from models.neutronics.axial_neutron_model import NeutronModel
+from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
+from models.neutronics.axial_neutron_model import NeutronicsModel
 from models.fuel_pin.fuel_pin_model import FuelPin
-from models.mesh_heat_conduction.mesh_conduction_model import moderator_discretised_mesh
-from models.mesh_heat_conduction.triangle_mesh import UnstructuredMesh
+from models.moderator.mesh_conduction_model import moderator_discretised_mesh
+from models.moderator.triangle_mesh import UnstructuredMesh
 
 
 class Reactor:
     def __init__(self, data):
 
         # Models used
-        self.heat_pipe_thermal_model = heatpipe_discretised(data)
+        self.heat_pipe_thermal_model = HeatpipeDiscretised(data)
         self.fuel_pin_thermal_model = FuelPin(data)
-        self.neutron_flux_model = NeutronModel(data)
+        self.neutron_flux_model = NeutronicsModel(data)
         
         if data.get("thermal_resistance") is None:
             mesh = meshio.read("meshHeatConduction/mesh.msh")
@@ -81,11 +81,14 @@ class Reactor:
         qr = self.calculate_qr(T_FP_ave, phi_ng_hat) 
         Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
 
-        res_cond_HP = self.heat_pipe_thermal_model.get_residuals(T_HP, Q_HP)
+        self.heat_pipe_thermal_model.cfg.bc.Q = Q_HP
+        self.heat_pipe_thermal_model.assemble()
+        res_cond_HP = self.heat_pipe_thermal_model.get_residuals(T_HP)
         
         res_cond_FP = self.fuel_pin_thermal_model.get_residuals(T_FP, qr, T_mod)
         
-        res_flux = self.neutron_flux_model.get_residuals(phi_ng_hat, T_FP_ave)
+        self.neutron_flux_model.T_FP = T_FP
+        res_flux = self.neutron_flux_model.get_residuals(phi_ng_hat)
 
         return np.r_[res_cond_HP, res_cond_FP, res_flux]
     
