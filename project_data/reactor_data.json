@@ -58,7 +58,6 @@
         },
         "material": { 
             "k_fuel": 15.0,
-            "k_gap": 0.1,
             "k_clad": 16.5,
             "h_gap": 1e5,
             "h_mod": 1e4

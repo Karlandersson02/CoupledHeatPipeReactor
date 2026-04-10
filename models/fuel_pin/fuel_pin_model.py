@@ -14,6 +14,7 @@ class FuelPin:
         self.Sigma_f = np.array([9.4e-2, 5.48e1], dtype=float)
         self.kappa   = 3.204e-11
         self.T_mod   = np.ones(self.cfg.mesh.N_Z) * 1000.0
+        self.qr      = -1
 
         self.Delta_Z = self.cfg.geometry.l / self.cfg.mesh.N_Z
 
@@ -27,11 +28,14 @@ class FuelPin:
 
         alpha = self.calculate_alpha(surface_tensor)
 
-        self.qr = np.sum(self.phi_g * self.Sigma_f * self.kappa * self.Delta_V, axis = 1)
-
         self.M, self.C = self.generate_matrix_form(alpha, self.qr, self.T_mod)
 
+    def calculate_qr(self):
+        self.initialize_discretization()
+        self.qr = np.sum(self.phi_g * self.Sigma_f * self.kappa * self.Delta_V, axis = 1)
+
     def solve(self):
+        self.calculate_qr()
         self.assemble()
 
         T = np.linalg.solve(self.M, self.C)
@@ -43,7 +47,7 @@ class FuelPin:
     
         res = self.M @ T_FP - self.C
 
-        res_norm_denom = (np.sum(self.qr) * self.Delta_Z / self.cfg.geometry.l) / (np.pi * self.cfg.geometry.r **2)
+        res_norm_denom = (np.sum(self.qr) * self.Delta_Z / self.cfg.geometry.l) / (np.pi * self.cfg.geometry.r**2)
 
         return res / res_norm_denom
 
@@ -93,7 +97,7 @@ class FuelPin:
         k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R))
 
         k_matrix[:, :self.cfg.mesh.N_fuel]                                             = self.cfg.material.k_fuel
-        k_matrix[:, self.cfg.mesh.N_fuel:(self.cfg.mesh.N_fuel + self.cfg.mesh.N_gap)] = self.cfg.material.k_gap
+        k_matrix[:, self.cfg.mesh.N_fuel:(self.cfg.mesh.N_fuel + self.cfg.mesh.N_gap)] = self.cfg.material.h_gap * self.cfg.geometry.delta_gap    # effective gap conductivity
         k_matrix[:, -self.cfg.mesh.N_wall:]                                            = self.cfg.material.k_clad
 
         self.k_matrix = k_matrix
@@ -310,7 +314,6 @@ if __name__ == "__main__":
 
         "material": {
             "k_fuel": 15.0,
-            "k_gap": 0.1,
             "k_clad": 16.5,
             "h_gap": 1e5,
             "h_mod": 1e4,

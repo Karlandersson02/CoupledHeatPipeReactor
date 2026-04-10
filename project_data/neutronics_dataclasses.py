@@ -59,7 +59,6 @@ class FuelPinEnergy:
 class FuelPinMaterial:
     k_fuel: int | float
     k_clad: int | float
-    k_gap : int | float
     h_gap : int | float
     h_mod : int | float
 
