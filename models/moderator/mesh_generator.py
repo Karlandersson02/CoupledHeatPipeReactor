@@ -147,7 +147,7 @@ def create_hexagonal_reactor_mesh(data, show_mesh=True):
         if '-nopopup' not in sys.argv:
             gmsh.fltk.run()
     
-    gmsh.write("meshHeatConduction/hex_mesh.msh")
+    gmsh.write("hex_mesh.msh")
 
     gmsh.finalize()
 
@@ -186,7 +186,7 @@ def create_rectangular_mesh(show_mesh=True):
         if '-nopopup' not in sys.argv:
             gmsh.fltk.run()
     
-    gmsh.write("meshHeatConduction/rect_mesh.msh")
+    gmsh.write("rect_mesh.msh")
 
     gmsh.finalize()
 
@@ -201,7 +201,7 @@ if __name__ == "__main__":
 
     create_hexagonal_reactor_mesh(data)
 
-    create_rectangular_mesh()
+    #create_rectangular_mesh()
 
     # points = mesh.points[:, :2]                 # x,y coordinates
     # triangles = mesh.cells_dict["triangle"]     # element connectivity
