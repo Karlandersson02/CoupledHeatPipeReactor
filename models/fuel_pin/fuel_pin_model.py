@@ -3,43 +3,21 @@ import matplotlib.pyplot as plt
 
 from scipy.optimize import fsolve
 
+from project_data.neutronics_dataclasses import *
+
 class FuelPin:
-    def __init__(self, data):
+    def __init__(self, config: FuelPinConfigResolved):
 
-        # Geometry
-        self.N_R = data.get("N_R")
-        self.N_Z = data.get("N_Z")
-        self.r = data.get("r_FP")
-        self.l = data.get("l_FP")
+        self.cfg = config
 
-        self.delta_gap = data.get("delta_gap")
+        self.phi_g   = np.tile(np.array([4.16e18, 5.47e17], dtype=float), (self.cfg.mesh.N_Z, 1))
+        self.Sigma_f = np.array([9.4e-2, 5.48e1], dtype=float)
+        self.kappa   = 3.204e-11
+        self.T_mod   = np.ones(self.cfg.mesh.N_Z) * 1000.0
 
-        self.N_clad = data.get("N_clad")
-        self.N_gap = data.get("N_gap")
-        self.N_fuel = self.N_R - self.N_clad - self.N_gap
+        self.Delta_Z = self.cfg.geometry.l / self.cfg.mesh.N_Z
 
-        self.Delta_Z = self.l / self.N_Z 
-
-        # Neutron flux properties
-        self.N_G = data.get("N_G")
-        self.phi_g = data.get("phi_g")
-
-        # Neutron material properties
-        self.Sigma_f = data.get("Sigma_f")
-        self.kappa = data.get("kappa")
-
-        # Material properties
-        self.k_fuel = data.get("k_fuel")
-        self.k_clad = data.get("k_clad")
-        self.h_gap = data.get("h_gap")
-        self.k_gap = self.h_gap * self.delta_gap
-        self.h_moderator = data.get("h_moderator")
-
-        self.T_moderator = data.get("T_moderator")
-        self.T_HP_c = 300.
-
-
-    def solve(self):
+    def assemble(self):
         self.initialize_discretization()
 
         surface_tensor = self.calculate_surfaces()
@@ -49,48 +27,45 @@ class FuelPin:
 
         alpha = self.calculate_alpha(surface_tensor)
 
-        qr = np.sum(self.phi_g * self.Sigma_f * self.kappa * np.pi * self.Delta_V)
-        M, C = self.generate_matrix_form(alpha, qr, self.T_moderator)
-    
-        T = np.linalg.solve(M, C)
+        self.qr = np.sum(self.phi_g * self.Sigma_f * self.kappa * self.Delta_V, axis = 1)
+
+        self.M, self.C = self.generate_matrix_form(alpha, self.qr, self.T_mod)
+
+    def solve(self):
+        self.assemble()
+
+        T = np.linalg.solve(self.M, self.C)
 
         self.T = T
 
-    def get_residuals(self, T_FP, qr, T_mod):
-        self.initialize_discretization()
-
-        surface_tensor = self.calculate_surfaces()
-
-        self.generate_k_matrix(T_FP)
-        self.generate_h_matrix(T_FP)
-
-        alpha = self.calculate_alpha(surface_tensor)
-        
-        M, C = self.generate_matrix_form(alpha, qr, T_mod)
+    def get_residuals(self, T_FP):
+        self.assemble()
     
-        res = M @ T_FP - C 
+        res = self.M @ T_FP - self.C
 
-        res_norm_denom = (np.sum(qr) * self.Delta_Z / self.l) / (np.pi * self.r **2)
+        res_norm_denom = (np.sum(self.qr) * self.Delta_Z / self.cfg.geometry.l) / (np.pi * self.cfg.geometry.r **2)
 
         return res / res_norm_denom
 
     def initialize_discretization(self):     
-        R         = np.zeros(2 * self.N_R, dtype=float)
-        delta_R   = np.zeros(2 * self.N_R, dtype=float)
+        R         = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)
+        delta_R   = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)
         
         # Calculating the radii of the half-elements
-        R[0] = np.sqrt(self.r**2 / (self.N_R * 2))
+        R[0] = np.sqrt(self.cfg.geometry.r**2 / (self.cfg.mesh.N_R * 2))
 
-        for i in range(1, 2 * self.N_R):
+        for i in range(1, 2 * self.cfg.mesh.N_R):
             R[i] = np.sqrt(R[i-1]**2 + R[0]**2)
 
         # Calculating the differences in the radius of the half-elements
         delta_R[0] = R[0]
-        for i in range(1, 2 * self.N_R):
+        for i in range(1, 2 * self.cfg.mesh.N_R):
             delta_R[i] = R[i] - R[i - 1]
 
         delta_Rm = delta_R[0::2]
         delta_Rp = delta_R[1::2]
+
+        self.R = R
 
         self.delta_Rm = delta_Rm
         self.delta_Rp = delta_Rp
@@ -108,26 +83,26 @@ class FuelPin:
         S_z = (Rp**2 - Rm**2) * np.pi
 
         surface_tensor = np.concatenate([S_rp[:, None], S_rm[:, None], S_z[:, None], S_z[:, None]], axis=1)
-        surface_tensor = np.repeat(surface_tensor[None], self.N_Z, axis=0)
+        surface_tensor = np.repeat(surface_tensor[None], self.cfg.mesh.N_Z, axis=0)
         surface_tensor[..., 0:2] *= 2 * self.Delta_Z
 
         return surface_tensor
     
     
     def generate_k_matrix(self, T=800.):
-        k_matrix = np.zeros((self.N_Z, self.N_R))
+        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R))
 
-        k_matrix[:, :self.N_fuel]                           = self.k_fuel
-        k_matrix[:, self.N_fuel:(self.N_fuel + self.N_gap)] = self.k_gap
-        k_matrix[:, (self.N_fuel + self.N_gap):]            = self.k_clad
+        k_matrix[:, :self.cfg.mesh.N_fuel]                                             = self.cfg.material.k_fuel
+        k_matrix[:, self.cfg.mesh.N_fuel:(self.cfg.mesh.N_fuel + self.cfg.mesh.N_gap)] = self.cfg.material.k_gap
+        k_matrix[:, -self.cfg.mesh.N_wall:]                                            = self.cfg.material.k_clad
 
         self.k_matrix = k_matrix
 
 
     def generate_h_matrix(self, T=800.):
-        h_matrix = np.zeros((self.N_Z, self.N_R))
+        h_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R))
 
-        h_matrix[:, -1] = self.h_moderator
+        h_matrix[:, -1] = self.cfg.material.h_mod
 
         self.h_matrix = h_matrix
 
@@ -159,8 +134,8 @@ class FuelPin:
     
     
     def generate_matrix_form(self, alpha, qr, T_mod):
-        N = self.N_R * self.N_Z
-        stride = self.N_R 
+        N = self.cfg.mesh.N_R * self.cfg.mesh.N_Z
+        stride = self.cfg.mesh.N_R 
 
         k = self.k_matrix
         h = self.h_matrix
@@ -170,8 +145,8 @@ class FuelPin:
 
         # -----------------------
         # Bulk elements.
-        for z in range(1, self.N_Z - 1):
-            for r in range(1, self.N_R - 1):
+        for z in range(1, self.cfg.mesh.N_Z - 1):
+            for r in range(1, self.cfg.mesh.N_R - 1):
                 T_idx = (stride * z) + r
 
                 M[T_idx][T_idx] = -k[z][r] * (
@@ -189,7 +164,7 @@ class FuelPin:
         # -----------------------
         # Insulated wall at z = 0, no corners.
         z = 0
-        for r in range(1, self.N_R - 1):
+        for r in range(1, self.cfg.mesh.N_R - 1):
             T_idx = (stride * z) + r
 
             M[T_idx][T_idx] = -k[z][r] * (
@@ -204,8 +179,8 @@ class FuelPin:
 
         # -----------------------
         # Insulated wall at z = N_Z - 1, no corners.
-        z = self.N_Z - 1
-        for r in range(1, self.N_R - 1):
+        z = self.cfg.mesh.N_Z - 1
+        for r in range(1, self.cfg.mesh.N_R - 1):
             T_idx = (stride * z) + r
 
             M[T_idx][T_idx] = -k[z][r] * (
@@ -220,8 +195,8 @@ class FuelPin:
 
         # -----------------------
         # Cladding BC elements, no corners.
-        r = self.N_R - 1
-        for z in range(1, self.N_Z-1): #
+        r = self.cfg.mesh.N_R - 1
+        for z in range(1, self.cfg.mesh.N_Z-1): #
             T_idx = z * stride + r 
 
             M[T_idx][T_idx]  = -k[z][r] * (
@@ -240,7 +215,7 @@ class FuelPin:
         # -----------------------
         # Fuel inner BC elements, no corners.
         r = 0
-        for z in range(1, self.N_Z-1):
+        for z in range(1, self.cfg.mesh.N_Z-1):
             T_idx = z * stride + r 
 
             M[T_idx][T_idx]  = -k[z][r] * (
@@ -256,7 +231,7 @@ class FuelPin:
         # -----------------------
         # Lowermost cladding outer corner (z = 0, r = N_R-1).
         z = 0
-        r = self.N_R - 1
+        r = self.cfg.mesh.N_R - 1
         T_idx = z * stride + r 
 
         M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][2])
@@ -269,8 +244,8 @@ class FuelPin:
 
         # -----------------------
         # Uppermost cladding outer corner (z = N_Z - 1, r = N_R - 1).
-        z = self.N_Z - 1
-        r = self.N_R - 1
+        z = self.cfg.mesh.N_Z - 1
+        r = self.cfg.mesh.N_R - 1
         T_idx = z * stride + r 
 
         M[T_idx][T_idx]  = -k[z][r] * (alpha[z][r][1] + alpha[z][r][3])
@@ -294,7 +269,7 @@ class FuelPin:
 
         # -----------------------
         # Uppermost fuel inner corner (z = N_Z - 1, r = 0).
-        z = self.N_Z - 1
+        z = self.cfg.mesh.N_Z - 1
         r = 0
         T_idx = z * stride + r
 
@@ -305,8 +280,8 @@ class FuelPin:
 
         # -----------------------
         # Fuel heat production
-        for z in range(0, self.N_Z):
-            for r in range(0, self.N_fuel):
+        for z in range(0, self.cfg.mesh.N_Z):
+            for r in range(0, self.cfg.mesh.N_fuel):
                 T_idx = (stride * z) + r
                 
                 C[T_idx] += -qr[z]
@@ -317,63 +292,50 @@ if __name__ == "__main__":
     N_Z = 30
     N_R = 20
     data = {
-        # ---------------------------
-        # Geometry / mesh
-        # ---------------------------
-        "N_R": N_R,                 # radial cells (numerical choice)
-        "N_Z": N_Z,                 # axial cells (numerical choice)
+        "geometry": {
+            "delta_gap": 2.5e-3,     # random
+            "delta_wall": 2.5e-3,
+            "r": 1e-2,
+            "l": 2.,
+        },
 
-        # Treat r_FP as OUTER fuel-pin radius, since your model has fuel + gap + clad
-        "r_FP": 1e-2,           # [m] = 1 cm outer radius
-        "l_FP": 2.,             # [m] active fuel length
+        "mesh": {
+            "N_R": N_R,
+            "N_Z": N_Z,
+        },
 
-        "delta_gap": 1e-3,
+        "energy": {
+            "N_G": 2,
+        },
 
-        "N_gap": 1,                # radial cells assigned to gas gap
-        "N_clad": 5,               # radial cells assigned to cladding
-
-        # ---------------------------
-        # Neutronics
-        # ---------------------------
-        "N_G": 2,                  # 2-group model: [fast, thermal]
-
-        # Approximate 2-group flux [n/m^2/s]
-        # fast group = collapsed from non-thermal groups
-        # thermal group = lowest-energy group
-        "phi_g": np.tile(
-            np.array([4.16e18, 5.47e17], dtype=float),
-            (N_Z, 1)
-        ),
-
-        # Approximate macroscopic fission cross section [1/m]
-        "Sigma_f": np.array([
-            9.4e-2,                # fast-group placeholder
-            5.48e1                 # thermal-group estimate
-        ], dtype=float),
-
-        # Recoverable energy per fission
-        "kappa": 3.204e-11,        # [J/fission]
-
-        # ---------------------------
-        # Thermal material properties
-        # ---------------------------
-        "k_fuel": 15.0,             # [W/m-K] simple UO2 operating-value placeholder
-        "k_clad": 16.5,            # [W/m-K] Zircaloy near ~600 K
-        "h_gap": 1e5,            # [W/m^2-K] reasonable mid-range gap conductance
-        "h_moderator": 1e4,
-        # ---------------------------
-        # Coolant / moderator
-        # ---------------------------
-        "T_moderator": np.ones(N_Z) * 1000.0       # [K]
+        "material": {
+            "k_fuel": 15.0,
+            "k_gap": 0.1,
+            "k_clad": 16.5,
+            "h_gap": 1e5,
+            "h_mod": 1e4,
+        },
     }
 
-    fuelPin_conduction = FuelPin(data)
+    phi_ng  = np.tile(np.array([4.16e18, 5.47e17], dtype=float), (N_Z, 1))
+    Sigma_f = np.array([9.4e-2, 5.48e1], dtype=float)
+    kappa   = 3.204e-11
+    T_mod   = np.ones(N_Z) * 1000.0
+
+    geom   = FuelPinGeometry(**data["geometry"])
+    mesh   = FuelPinMesh(**data["mesh"])
+    energy = FuelPinEnergy(**data["energy"])
+    mat    = FuelPinMaterial(**data["material"])
+    cfg    = FuelPinConfig(geom, mesh, energy, mat)
+    cfg = cfg.resolve()
+
+    fuelPin_conduction = FuelPin(cfg)
     fuelPin_conduction.solve()
 
     sol, info, ier, mesg = fsolve(fuelPin_conduction.get_residuals, fuelPin_conduction.T, full_output=True)
 
-    plt.plot(300. * sol.reshape(N_Z, N_R)[0], label="non-linear")
-    plt.plot(fuelPin_conduction.T.reshape(N_Z, N_R)[0], ls="--", label="linear")
+    plt.plot(fuelPin_conduction.R[::2], sol.reshape(N_Z, N_R)[0], label="non-linear")
+    plt.plot(fuelPin_conduction.R[::2], fuelPin_conduction.T.reshape(N_Z, N_R)[0], ls="--", label="linear")
     
     plt.legend()
     plt.show()

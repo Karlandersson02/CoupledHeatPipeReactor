@@ -248,6 +248,48 @@ class HeatpipeConfig:
         material = self.material.resolve()
         wick = self.wick.resolve()
 
+        lengths = np.array([
+            geometry.delta_wick,
+            geometry.delta_gap,
+            geometry.delta_wall
+        ], dtype=float)
+
+        # Normalize to proportions
+        proportions = lengths / lengths.sum()
+
+        # Ideal (non-integer) counts
+        raw = proportions * mesh.N_R
+
+        # Base integer part
+        counts = np.floor(raw).astype(int)
+
+        # Remaining cells to distribute
+        remainder = mesh.N_R - counts.sum()
+
+        # Distribute to largest fractional parts
+        fractional = raw - counts
+        indices = np.argsort(fractional)[::-1]
+
+        for i in range(remainder):
+            counts[indices[i]] += 1
+
+        N_wick, N_gap, N_wall = counts
+
+        delta_wick = N_wick / mesh.N_R * (geometry.r_outer - geometry.r_vapour)
+        delta_gap  = N_gap  / mesh.N_R * (geometry.r_outer - geometry.r_vapour)
+        delta_wall = N_wall / mesh.N_R * (geometry.r_outer - geometry.r_vapour)
+
+        if not np.isclose(delta_wick, geometry.delta_wick):
+            print("\033[33mGeometry warning: \033[0m", f"delta_wick changed from {geometry.delta_wick} to {delta_wick}")
+        if not np.isclose(delta_gap, geometry.delta_gap):
+            print("\033[33mGeometry warning: \033[0m", f"delta_gap changed from {geometry.delta_gap} to {delta_gap}")
+        if not np.isclose(delta_wall, geometry.delta_wall):
+            print("\033[33mGeometry warning: \033[0m", f"delta_wall changed from {geometry.delta_wall} to {delta_wall}")
+
+        geometry.delta_wick = delta_wick
+        geometry.delta_gap  = delta_gap
+        geometry.delta_wall = delta_wall
+
         Q = self.bc.Q
         if type(Q) is float or type(Q) is int:
             Qnew = np.repeat(np.array([Q / mesh.N_evap], dtype=float), mesh.N_evap)

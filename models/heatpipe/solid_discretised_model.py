@@ -503,7 +503,7 @@ if __name__ == "__main__":
     
     N_R, N_Z = 20, 30
     geom = HeatpipeGeometry(**data["geometry"])
-    mesh = HeatpipeMesh(N_R=N_R, N_Z=N_Z, N_wall=N_R//2)
+    mesh = HeatpipeMesh(N_R=N_R, N_Z=N_Z)
     mat = HeatpipeMaterial(**data["material"])
     wick = HeatpipeWick(**data["wick"])
     bc = HeatpipeBC(**data["bc"])
