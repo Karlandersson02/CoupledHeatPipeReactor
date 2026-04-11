@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 
 import meshio # type: ignore
 
+import json
+
 from scipy.optimize import fsolve, newton_krylov
 
 from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
@@ -86,16 +88,12 @@ class Reactor(Component):
         qr = self.calculate_qr(T_FP, phi_ng_hat[:-1]) 
         Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
 
-        # print(np.sum(Q_HP) - self.cfg_N.energy.power)
-        # print(np.sum(Q_HP) - np.sum(qr * self.cfg_FP.mesh.N_fuel))
-
         self.heat_pipe_thermal_model.cfg.bc.Q = Q_HP
         self.heat_pipe_thermal_model.assemble()
         res_cond_HP = self.heat_pipe_thermal_model.get_residuals(T_HP)
         
         self.fuel_pin_thermal_model.qr = qr
         self.fuel_pin_thermal_model.T_mod = T_mod
-
         res_cond_FP = self.fuel_pin_thermal_model.get_residuals(T_FP)
         
         self.neutron_flux_model.T_FP = T_FP
@@ -132,101 +130,40 @@ class Reactor(Component):
 
 if __name__ == "__main__":
 
-    # HeatPipe ---------------
-    data_HP = {
-        "geometry": {
-            "r_outer": .007 + 0.001 + 0.0005,
-            "delta_wick": 0.0003,
-            "delta_gap": 0.0002,
-            "delta_wall": 0.001,
-            "l_evap": 0.75,
-            "l_adiabatic": 0.15,
-            "l_cond": 0.6,
-        },
+    with open("./project_data/reactor_data.json", "r") as f:
+        data = json.load(f)
+    
+    # Mesh dimensions
+    N_R_HP, N_R_FP, N_Z = 15, 15, 50
 
-        "mesh": {
-            "N_R": 10,
-            "N_evap": 10,
-            "N_adiabatic": 4,
-            "N_cond": 16,
-        },
-
-        "material": {
-            "k_wick": 66.2,
-            "k_gap": 80,
-            "k_wall": 19.0,
-            "h_vap": 1e6,
-            "h_cond": 62.6,
-        },
-
-        "wick": {
-            "Is_annular": True,
-            "K":1e-10,
-            "r_pore": 0.00002,
-            "porosity": 0.7
-        },
-
-        "bc": {
-            "Temperature_BC": True,
-            "T_cond": 300,
-            "T_op": 850,
-            "Q": 1000,
-        },
-    }
-
-    geom   = HeatpipeGeometry(**data_HP["geometry"])
-    mesh   = HeatpipeMesh(**data_HP["mesh"])
-    mat    = HeatpipeMaterial(**data_HP["material"])
-    wick   = HeatpipeWick(**data_HP["wick"])
-    bc     = HeatpipeBC(**data_HP["bc"])
+    # Heat pipe
+    geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
+    mesh   = HeatpipeMesh(N_R=N_R_HP, N_Z=N_Z)
+    mat    = HeatpipeMaterial(**data["HeatPipe"]["material"])
+    wick   = HeatpipeWick(**data["HeatPipe"]["wick"])
+    bc     = HeatpipeBC(**data["HeatPipe"]["bc"])
     cfg_HP = HeatpipeConfig(geom, mesh, mat, wick, bc)
     cfg_HP = cfg_HP.resolve()
 
-    # FuelPin ---------------
-    N_Z_FP = cfg_HP.mesh.N_evap
-    N_R_FP = 10
-    data_FP = {
-        "geometry": {
-            "delta_gap": 1e-3,
-            "delta_wall": 1e-3,
-            "r": 1e-2,
-            "l": cfg_HP.geometry.l_evap,
-        },
-        "mesh": {
-            "N_R": N_R_FP,
-            "N_Z": N_Z_FP,
-        },
-
-        "energy": {
-            "N_G": 8,
-        },
-
-        "material": {
-            "k_fuel": 15.0,
-            "k_clad": 16.5,
-            "h_gap": 1e5,
-            "h_mod": 1e4,
-        }
-    }
-
-    geom_FP   = FuelPinGeometry(**data_FP["geometry"])
-    mesh_FP   = FuelPinMesh(**data_FP["mesh"])
-    energy_FP = FuelPinEnergy(**data_FP["energy"])
-    mat_FP    = FuelPinMaterial(**data_FP["material"])
+    # Fuel pin
+    geom_FP   = FuelPinGeometry(**data["FuelPin"]["geometry"])
+    mesh_FP   = FuelPinMesh(N_R=N_R_FP, N_Z=cfg_HP.mesh.N_evap)
+    energy_FP = FuelPinEnergy(**data["FuelPin"]["energy"])
+    mat_FP    = FuelPinMaterial(**data["FuelPin"]["material"])
     cfg_FP    = FuelPinConfig(geom_FP, mesh_FP, energy_FP, mat_FP)
-    cfg_FP = cfg_FP.resolve()
+    cfg_FP    = cfg_FP.resolve()
 
-    # Neutronics ---------------
+    # Neutronics 
     mesh_N = NeutronicsMesh(
-        N_R = N_R_FP,
-        N_Z = cfg_HP.mesh.N_evap,
-        l = cfg_HP.geometry.l_evap
+        N_R   = N_R_FP,
+        N_Z   = cfg_HP.mesh.N_evap,
+        l     = cfg_HP.geometry.l_evap
     )
     energy = NeutronicsEnergy(
-        N_G = 8,
-        power = 1000
+        N_G   = cfg_FP.energy.N_G,
+        power = data["Reactor"]["power"]["thermal"] / data["Reactor"]["components"]["N_FP"]
     )
-    cfg_N = NeutronicsConfig(mesh_N, energy)\
+    cfg_N = NeutronicsConfig(mesh_N, energy)
     
     # Reactor ------------------
     reactor = Reactor(cfg_FP, cfg_HP, cfg_N)
@@ -249,7 +186,7 @@ if __name__ == "__main__":
     z_flux = range(len(phi_ng_hat[:, 0]))
 
     fig, axs = plt.subplots(4, 1, figsize=(8, 10))
-    fig.suptitle(f"Reactor Profiles | $k_{{eff}} = {k:.4f}$ | $Q_{{in}} = {cfg_N.energy.power}$ W | $Q_{{out}} = {Q_out:.1f}$ W", fontsize=14)
+    fig.suptitle(f"Reactor Profiles | $k_{{eff}} = ${k:.4f} | $Q_{{in}} = ${cfg_N.energy.power:.1e} W | $Q_{{out}} = ${Q_out:.1e} W", fontsize=14)
 
     # Fuel pin radial temperature
     axs[0].plot(r_fp, T_FP[0], linewidth=2)
