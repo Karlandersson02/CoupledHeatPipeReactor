@@ -116,11 +116,27 @@ class HeatpipeDiscretised(Component):
 
         return surface_tensor
 
-    def _generate_k_matrix(self):
-        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R))
-        k_matrix[:, :self.cfg.mesh.N_wick] = self.cfg.material.k_wick
-        k_matrix[:, self.cfg.mesh.N_wick:(self.cfg.mesh.N_wick + self.cfg.mesh.N_gap)] = self.cfg.material.k_gap
-        k_matrix[:, -self.cfg.mesh.N_wall:] = self.cfg.material.k_wall
+    def _generate_k_matrix(self, T=None):
+        if T is None:
+            T = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
+
+        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
+
+        def eval_material_prop(prop, T_slice, scale=1.0):
+            value = prop(T_slice) if callable(prop) else prop
+            return value * scale    # type: ignore
+
+        wick_slice = slice(0, self.cfg.mesh.N_wick)
+        gap_slice  = slice(self.cfg.mesh.N_wick, self.cfg.mesh.N_wick + self.cfg.mesh.N_gap)
+        wall_slice = slice(self.cfg.mesh.N_R - self.cfg.mesh.N_wall, self.cfg.mesh.N_R)
+
+        T_wick = T[:, wick_slice]
+        T_gap  = T[:, gap_slice]
+        T_wall = T[:, wall_slice]
+
+        k_matrix[:, wick_slice] = eval_material_prop(self.cfg.material.k_wick, T_wick)
+        k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.k_gap, T_gap)
+        k_matrix[:, wall_slice] = eval_material_prop(self.cfg.material.k_wall, T_wall)
 
         return k_matrix
     

@@ -93,12 +93,27 @@ class FuelPin:
         return surface_tensor
     
     
-    def generate_k_matrix(self, T=800.):
-        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R))
+    def generate_k_matrix(self, T=None):
+        if T is None:
+            T = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
 
-        k_matrix[:, :self.cfg.mesh.N_fuel]                                             = self.cfg.material.k_fuel
-        k_matrix[:, self.cfg.mesh.N_fuel:(self.cfg.mesh.N_fuel + self.cfg.mesh.N_gap)] = self.cfg.material.h_gap * self.cfg.geometry.delta_gap    # effective gap conductivity
-        k_matrix[:, -self.cfg.mesh.N_wall:]                                            = self.cfg.material.k_clad
+        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
+
+        def eval_material_prop(prop, T_slice, scale=1.0):
+            value = prop(T_slice) if callable(prop) else prop
+            return value * scale     # type: ignore
+
+        fuel_slice = slice(0, self.cfg.mesh.N_fuel)
+        gap_slice  = slice(self.cfg.mesh.N_fuel, self.cfg.mesh.N_fuel + self.cfg.mesh.N_gap)
+        clad_slice = slice(self.cfg.mesh.N_fuel + self.cfg.mesh.N_gap, self.cfg.mesh.N_R)
+
+        T_fuel = T[:, fuel_slice]
+        T_gap  = T[:, gap_slice]
+        T_clad = T[:, clad_slice]
+
+        k_matrix[:, fuel_slice] = eval_material_prop(self.cfg.material.k_fuel, T_fuel)
+        k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.h_gap, T_gap, scale=self.cfg.geometry.delta_gap)
+        k_matrix[:, clad_slice] = eval_material_prop(self.cfg.material.k_clad, T_clad)
 
         self.k_matrix = k_matrix
 
