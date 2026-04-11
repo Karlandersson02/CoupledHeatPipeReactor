@@ -1,4 +1,6 @@
 import numpy as np
+import matplotlib.pyplot as plt
+
 import meshio # type: ignore
 
 from scipy.optimize import fsolve, newton_krylov
@@ -60,8 +62,9 @@ class Reactor(Component):
         return X_initial
     
     def solve(self, monolithic=True):
+        X_initial = np.linspace(0.9, 1.1, self.N_var)
 
-        X_initial = np.ones(self.N_var)
+        # self.get_residuals(X_initial)
 
         sol, info, ier, mesg = fsolve(self.get_residuals, X_initial, full_output=True)
 
@@ -79,16 +82,20 @@ class Reactor(Component):
 
         self.fuel_pin_thermal_model.initialize_discretization()
 
-        T_FP_ave = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=0)
-        qr = self.calculate_qr(T_FP_ave, phi_ng_hat[:-1]) 
-        Q_HP, T_mod, T_edge_FP = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
+        T_FP_ave = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=1)
+        qr = self.calculate_qr(T_FP, phi_ng_hat[:-1]) 
+        Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
+
+        # print(np.sum(Q_HP) - self.cfg_N.energy.power)
+        # print(np.sum(Q_HP) - np.sum(qr * self.cfg_FP.mesh.N_fuel))
 
         self.heat_pipe_thermal_model.cfg.bc.Q = Q_HP
         self.heat_pipe_thermal_model.assemble()
         res_cond_HP = self.heat_pipe_thermal_model.get_residuals(T_HP)
         
         self.fuel_pin_thermal_model.qr = qr
-        self.fuel_pin_thermal_model.T_mod = T_edge_FP
+        self.fuel_pin_thermal_model.T_mod = T_mod
+
         res_cond_FP = self.fuel_pin_thermal_model.get_residuals(T_FP)
         
         self.neutron_flux_model.T_FP = T_FP
@@ -106,18 +113,20 @@ class Reactor(Component):
 
         power_rel = np.sum(qr_rel)
 
-        return qr_rel * self.cfg_N.energy.power / power_rel
-    
+        return qr_rel * self.cfg_N.energy.power / (power_rel * self.cfg_FP.mesh.N_fuel)
+            
 
     def calculate_HP_FP_boundary_cond(self, T_FP, T_HP):
         T_edge_FP = T_FP[self.cfg_FP.mesh.N_R - 1::self.cfg_FP.mesh.N_R]
         T_edge_HP = T_HP[self.cfg_HP.mesh.N_R - 1:(self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap):self.cfg_HP.mesh.N_R]
 
-        Q_HP = (T_edge_FP - T_edge_HP) / self.moderator_eff_res
+        Delta_z = self.cfg_HP.geometry.l_evap / self.cfg_HP.mesh.N_evap
+        R_seg = self.moderator_eff_res / Delta_z
+        Q_HP = (T_edge_FP - T_edge_HP) / R_seg
 
-        T_mod = (T_edge_FP + T_edge_HP) / 2
+        T_mod = T_edge_FP - Q_HP / (self.cfg_FP.material.h_mod * 2 * self.cfg_FP.geometry.r * np.pi * self.cfg_FP.geometry.l / self.cfg_FP.mesh.N_Z)
 
-        return Q_HP, T_mod, T_edge_FP
+        return Q_HP, T_mod
 
     
 
@@ -138,8 +147,8 @@ if __name__ == "__main__":
         "mesh": {
             "N_R": 10,
             "N_evap": 10,
-            "N_adiabatic": 2,
-            "N_cond": 8,
+            "N_adiabatic": 4,
+            "N_cond": 16,
         },
 
         "material": {
@@ -175,7 +184,7 @@ if __name__ == "__main__":
 
     # FuelPin ---------------
     N_Z_FP = cfg_HP.mesh.N_evap
-    N_R_FP = 20
+    N_R_FP = 10
     data_FP = {
         "geometry": {
             "delta_gap": 1e-3,
@@ -221,7 +230,6 @@ if __name__ == "__main__":
     
     # Reactor ------------------
     reactor = Reactor(cfg_FP, cfg_HP, cfg_N)
-    # X = reactor.solve()
 
     from utils.solver import Solver
 
@@ -230,13 +238,46 @@ if __name__ == "__main__":
 
     ((T_solid, T_vap), T_FP, (phi_ng_hat, k)) = solver.solution
 
-    import matplotlib.pyplot as plt
+    # Calculating Q_out
+    T_edge_cond_HP = T_solid[(cfg_HP.mesh.N_evap + cfg_HP.mesh.N_adiabatic):, -1]
+    Q_out = np.sum((T_edge_cond_HP - 300.) * cfg_HP.material.h_cond * cfg_HP.geometry.r_outer * 2 * np.pi * cfg_HP.geometry.l_cond / cfg_HP.mesh.N_cond)
 
-    plt.plot(reactor.fuel_pin_thermal_model.R[1::2], T_FP[0])
-    plt.show()
+    r_fp = reactor.fuel_pin_thermal_model.R[1::2]
 
-    plt.plot(T_solid[0])
-    plt.show()
+    x_hp = range(len(T_solid[0]))
 
-    plt.plot(phi_ng_hat[:, 0])
+    z_flux = range(len(phi_ng_hat[:, 0]))
+
+    fig, axs = plt.subplots(4, 1, figsize=(8, 10))
+    fig.suptitle(f"Reactor Profiles | $k_{{eff}} = {k:.4f}$ | $Q_{{in}} = {cfg_N.energy.power}$ W | $Q_{{out}} = {Q_out:.1f}$ W", fontsize=14)
+
+    # Fuel pin radial temperature
+    axs[0].plot(r_fp, T_FP[0], linewidth=2)
+    axs[0].set_title("Fuel Pin Radial Temperature Profile")
+    axs[0].set_xlabel("Radius [m]")
+    axs[0].set_ylabel("Temperature [K]")
+    axs[0].grid(True)
+
+    # Heat pipe evap radial temperature
+    axs[1].plot(x_hp, T_solid[0], linewidth=2)
+    axs[1].set_title("Heat Pipe evaporator Radial Temperature Profile")
+    axs[1].set_xlabel("Radial Cell Index")
+    axs[1].set_ylabel("Temperature [K]")
+    axs[1].grid(True)
+
+    # Heat pipe condenser radial temperature
+    axs[2].plot(x_hp, T_solid[-1], linewidth=2)
+    axs[2].set_title("Heat Pipe condenser Radial Temperature Profile")
+    axs[2].set_xlabel("Radial Cell Index")
+    axs[2].set_ylabel("Temperature [K]")
+    axs[2].grid(True)
+
+    # Axial neutron flux
+    axs[3].plot(z_flux, phi_ng_hat[:, 0], linewidth=2)
+    axs[3].set_title("Axial Neutron Flux Profile")
+    axs[3].set_xlabel("Axial Cell Index")
+    axs[3].set_ylabel("Flux")
+    axs[3].grid(True)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()

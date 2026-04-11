@@ -112,7 +112,7 @@ class HeatpipeDiscretised(Component):
 
         surface_tensor = np.concatenate([S_rp[:, None], S_rm[:, None], S_z[:, None], S_z[:, None]], axis=1)
         surface_tensor = np.repeat(surface_tensor[None], self.cfg.mesh.N_Z, axis=0)
-        surface_tensor[..., 0:2] *= 2*delta_Z[:, None, None]
+        surface_tensor[..., 0:2] *= 2 * delta_Z[:, None, None] # This *2 should be there due to Deltz_Z is half the distance between cell centers!!!
 
         return surface_tensor
 

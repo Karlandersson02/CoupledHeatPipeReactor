@@ -82,13 +82,13 @@ class FuelPin:
         Rp = np.cumsum(delta_R)
         Rm = Rp - delta_R
 
-        S_rp = Rp * 2*np.pi
-        S_rm = Rm * 2*np.pi
+        S_rp = Rp * 2 * np.pi
+        S_rm = Rm * 2 * np.pi
         S_z = (Rp**2 - Rm**2) * np.pi
 
         surface_tensor = np.concatenate([S_rp[:, None], S_rm[:, None], S_z[:, None], S_z[:, None]], axis=1)
         surface_tensor = np.repeat(surface_tensor[None], self.cfg.mesh.N_Z, axis=0)
-        surface_tensor[..., 0:2] *= 2 * self.Delta_Z
+        surface_tensor[..., 0:2] *= self.Delta_Z
 
         return surface_tensor
     
@@ -293,7 +293,7 @@ class FuelPin:
         return M, C
 
 if __name__ == "__main__":
-    N_Z = 30
+    N_Z = 10
     N_R = 20
     data = {
         "geometry": {
