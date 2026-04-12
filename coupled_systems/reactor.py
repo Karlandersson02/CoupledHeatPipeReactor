@@ -1,11 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-import meshio # type: ignore
-
 import json
-
-from scipy.optimize import fsolve, newton_krylov
 
 from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
 from models.neutronics.axial_neutron_model import NeutronicsModel
@@ -63,20 +59,6 @@ class Reactor(Component):
         X_initial = np.ones(self.N_var)
         return X_initial
     
-    def solve(self, monolithic=True):
-        X_initial = np.linspace(0.9, 1.1, self.N_var)
-
-        # self.get_residuals(X_initial)
-
-        sol, info, ier, mesg = fsolve(self.get_residuals, X_initial, full_output=True)
-
-        print(info)
-        print(ier)
-        print(mesg)
-
-        return sol 
-    
-    
     def get_residuals(self, X):
         T_HP = self.T_cond * X[:(self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1)]
         T_FP = self.T_cond * X[(self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1):((self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1) + self.cfg_N.mesh.N_R * self.cfg_N.mesh.N_Z)]
@@ -98,7 +80,7 @@ class Reactor(Component):
         
         self.neutron_flux_model.T_FP = T_FP
         self.neutron_flux_model.T_M  = np.mean(T_mod)
-        self.neutron_flux_model.T_HP = np.mean(T_HP[:self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap])
+        self.neutron_flux_model.T_HP = np.mean(T_HP[:self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap], dtype=float)
         res_flux = self.neutron_flux_model.get_residuals(phi_ng_hat)
 
         return np.r_[res_cond_HP, res_cond_FP, res_flux]
@@ -181,40 +163,45 @@ if __name__ == "__main__":
 
     r_fp = reactor.fuel_pin_thermal_model.R[1::2]
 
-    x_hp = range(len(T_solid[0]))
+    r_hp = reactor.heat_pipe_thermal_model.R[1::2]
 
-    z_flux = range(len(phi_ng_hat[:, 0]))
+    z_flux = reactor.neutron_flux_model.Z
 
-    fig, axs = plt.subplots(4, 1, figsize=(8, 10))
-    fig.suptitle(f"Reactor Profiles | $k_{{eff}} = ${k:.4f} | $Q_{{in}} = ${cfg_N.energy.power:.1e} W | $Q_{{out}} = ${Q_out:.1e} W", fontsize=14)
+    fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+    fig.suptitle(
+        f"Reactor Profiles | $k_{{eff}} = ${k:.4f} | "
+        f"$Q_{{in}} = ${cfg_N.energy.power:.0f} W | "
+        f"$Q_{{out}} = ${Q_out:.0f} W",
+        fontsize=14
+    )
 
-    # Fuel pin radial temperature
-    axs[0].plot(r_fp, T_FP[0], linewidth=2)
-    axs[0].set_title("Fuel Pin Radial Temperature Profile")
-    axs[0].set_xlabel("Radius [m]")
-    axs[0].set_ylabel("Temperature [K]")
-    axs[0].grid(True)
+    # --- Top left: Neutronics ---
+    axs[0, 0].plot(z_flux, phi_ng_hat[:, 0], linewidth=2)
+    axs[0, 0].set_title("Axial Neutron Flux Profile")
+    axs[0, 0].set_xlabel("Length [m]")
+    axs[0, 0].set_ylabel("Flux")
+    axs[0, 0].grid(True)
 
-    # Heat pipe evap radial temperature
-    axs[1].plot(x_hp, T_solid[0], linewidth=2)
-    axs[1].set_title("Heat Pipe evaporator Radial Temperature Profile")
-    axs[1].set_xlabel("Radial Cell Index")
-    axs[1].set_ylabel("Temperature [K]")
-    axs[1].grid(True)
+    # --- Top right: Heat pipe evaporator ---
+    axs[0, 1].plot(r_hp, T_solid[0], linewidth=2)
+    axs[0, 1].set_title("Heat Pipe Evaporator Radial Temperature")
+    axs[0, 1].set_xlabel("Radius [m]")
+    axs[0, 1].set_ylabel("Temperature [K]")
+    axs[0, 1].grid(True)
 
-    # Heat pipe condenser radial temperature
-    axs[2].plot(x_hp, T_solid[-1], linewidth=2)
-    axs[2].set_title("Heat Pipe condenser Radial Temperature Profile")
-    axs[2].set_xlabel("Radial Cell Index")
-    axs[2].set_ylabel("Temperature [K]")
-    axs[2].grid(True)
+    # --- Bottom left: Fuel pin ---
+    axs[1, 0].plot(r_fp, T_FP[0], linewidth=2)
+    axs[1, 0].set_title("Fuel Pin Radial Temperature Profile")
+    axs[1, 0].set_xlabel("Radius [m]")
+    axs[1, 0].set_ylabel("Temperature [K]")
+    axs[1, 0].grid(True)
 
-    # Axial neutron flux
-    axs[3].plot(z_flux, phi_ng_hat[:, 0], linewidth=2)
-    axs[3].set_title("Axial Neutron Flux Profile")
-    axs[3].set_xlabel("Axial Cell Index")
-    axs[3].set_ylabel("Flux")
-    axs[3].grid(True)
+    # --- Bottom right: Heat pipe condenser ---
+    axs[1, 1].plot(r_hp, T_solid[-1], linewidth=2)
+    axs[1, 1].set_title("Heat Pipe Condenser Radial Temperature")
+    axs[1, 1].set_xlabel("Radius [m]")
+    axs[1, 1].set_ylabel("Temperature [K]")
+    axs[1, 1].grid(True)
 
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    plt.tight_layout(rect=(0, 0, 1, 0.95))
     plt.show()

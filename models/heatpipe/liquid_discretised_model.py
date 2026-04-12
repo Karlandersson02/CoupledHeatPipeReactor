@@ -7,7 +7,7 @@ from utils.sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_l
 from project_data.heatpipe_dataclasses import *
 
 class LiquidDiscretised:
-    def __init__(self, config, T_HP):
+    def __init__(self, config: HeatpipeConfigResolved, T_HP):
         self.cfg = config
         self.T_HP = T_HP
 
@@ -73,36 +73,33 @@ class LiquidDiscretised:
 
 
 if __name__ == "__main__":
-    # "T_HP":[0],
-    # "Is_annular": True,
-    # "K":1e-10,
     import json
     from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
     from utils.solver import Solver
+
     with open("./project_data/vapour_data.json", "r") as f:
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
 
     geom = HeatpipeGeometry(**data["geometry"])
     mesh = HeatpipeMesh(**data["mesh"])
+    mesh.N_Z = 30
+    mesh.N_R = 20
     mat = HeatpipeMaterial(**data["material"])
     wick = HeatpipeWick(**data["wick"])
     bc = HeatpipeBC(**data["bc"])
-    heatpipe_cfg = HeatpipeConfig(geom, mesh, mat, bc, wick)
-    heatpipe_cfg = heatpipe_cfg.resolve()
+    cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
+    cfg = cfg.resolve()
 
-    heatpipe = HeatpipeDiscretised(heatpipe_cfg)
+    heatpipe = HeatpipeDiscretised(cfg)
     solver = Solver([heatpipe])
-    solver.newton_krylov()
+    solver.fsolve()
 
     T_HP = heatpipe.pack(solver.solution)
+    cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
+    cfg = cfg.resolve()
 
-    data["wick"]["K"] = 1e-10
-    data["wick"]["Is_annular"] = True
-    liquid_cfg = LiquidConfig(geom, mesh, mat, wick)
-    liquid_cfg = liquid_cfg.resolve()
-    liquid = LiquidDiscretised(liquid_cfg, T_HP)
-
+    liquid = LiquidDiscretised(cfg, T_HP)
     P = liquid.get_pressure_drop_profile()
 
     plt.rcParams["font.size"] = 22

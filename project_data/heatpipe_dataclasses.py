@@ -1,366 +1,9 @@
 import numpy as np
 from dataclasses import dataclass
 
-# ---------------------------------------------
-# Data classes used by the user
-# ---------------------------------------------
 
 @dataclass(slots=True, kw_only=True)
 class HeatpipeGeometry:
-    r_vapour: float | None = None
-    delta_wick: float | None = None
-    delta_gap: float | None = None
-    delta_wall: float | None = None
-    r_outer: float | None = None
-
-    l_evap: float | None = None
-    l_adiabatic: float | None = None
-    l_cond: float | None = None
-    l_tot: float | None = None
-
-    def resolve(self):
-        r_vapour, delta_wick, delta_gap, delta_wall = self._resolve_group(
-            values=(self.r_vapour, self.delta_wick, self.delta_gap, self.delta_wall),
-            total=self.r_outer,
-            names=("r_vapour", "delta_wick", "delta_wall"),
-            total_name="r_outer",
-        )
-
-        l_evap, l_adiabatic, l_cond = self._resolve_group(
-            values=(self.l_evap, self.l_adiabatic, self.l_cond),
-            total=self.l_tot,
-            names=("l_evap", "l_adiabatic", "l_cond"),
-            total_name="l_tot",
-        )
-
-        return HeatpipeGeometryResolved(
-            r_vapour=r_vapour,
-            delta_wick=delta_wick,
-            delta_gap=delta_gap,
-            delta_wall=delta_wall,
-            l_evap=l_evap,
-            l_adiabatic=l_adiabatic,
-            l_cond=l_cond,
-        )
-
-    @staticmethod
-    def _resolve_group(
-        *,
-        values: tuple[float | None, ...],
-        total: float | None,
-        names: tuple[str, ...],
-        total_name: str,
-    ) -> tuple[float, ...]:
-        n_parts = len(values)
-
-        for name, value in zip(names, values):
-            if value is not None and value <= 0:
-                raise ValueError(f"{name} must be positive if provided.")
-
-        if total is not None and total <= 0:
-            raise ValueError(f"{total_name} must be positive if provided.")
-
-        n_given = sum(v is not None for v in values)
-        all_given = n_given == n_parts
-
-        if all_given:
-            if total is not None:
-                raise ValueError(
-                    f"Provide either all of {names} or {total_name}, not both."
-                )
-            return tuple(values)
-
-        if total is None:
-            raise ValueError(
-                f"If not all of {names} are provided, you must provide {total_name}."
-            )
-
-        known_sum = sum(v for v in values if v is not None)
-        n_missing = n_parts - n_given
-        remainder = total - known_sum
-
-        if remainder <= 0:
-            raise ValueError(
-                f"{total_name} is too small given the specified values in {names}."
-            )
-
-        fill_value = remainder / n_missing
-
-        resolved = tuple(
-            v if v is not None else fill_value
-            for v in values
-        )
-
-        return resolved
-
-@dataclass(slots=True, kw_only=True)
-class HeatpipeMesh:
-    N_wick: int | None = None
-    N_wall: int | None = None
-    N_gap: int | None = None
-    N_evap: int | None = None
-    N_adiabatic: int | None = None
-    N_cond: int | None = None
-    N_R: int | None = None
-    N_Z: int | None = None
-
-    def resolve(self):
-        N_wick, N_gap, N_wall = self._resolve_group(
-            values=(self.N_wick, self.N_gap, self.N_wall),
-            total=self.N_R,
-            names=("N_wick", "N_wall"),
-            total_name="N_R",
-        )
-
-        N_evap, N_adiabatic, N_cond = self._resolve_group(
-            values=(self.N_evap, self.N_adiabatic, self.N_cond),
-            total=self.N_Z,
-            names=("N_evap", "N_adiabatic", "N_cond"),
-            total_name="N_Z",
-        )
-
-        return HeatpipeMeshResolved(
-            N_wick=N_wick,
-            N_gap=N_gap,
-            N_wall=N_wall,
-            N_evap=N_evap,
-            N_adiabatic=N_adiabatic,
-            N_cond=N_cond,
-        )
-    
-    @staticmethod
-    def _resolve_group(
-        *,
-        values: tuple[int | None, ...],
-        total: int | None,
-        names: tuple[str, ...],
-        total_name: str,
-    ) -> tuple[int, ...]:
-        n_parts = len(values)
-
-        # Basic validation of provided entries
-        for name, value in zip(names, values):
-            if value is not None and value <= 0:
-                raise ValueError(f"{name} must be positive if provided.")
-
-        if total is not None and total <= 0:
-            raise ValueError(f"{total_name} must be positive if provided.")
-
-        n_given = sum(v is not None for v in values)
-        all_given = n_given == n_parts
-        none_given = n_given == 0
-
-        # Case 1: all parts given
-        if all_given:
-            if total is not None:
-                raise ValueError(
-                    f"Provide either all of {names} or {total_name}, not both."
-                )
-            return tuple(values)
-
-        # Case 2: total must be given if not all parts are given
-        if total is None:
-            raise ValueError(
-                f"If not all of {names} are provided, you must provide {total_name}."
-            )
-
-        # Split remainder among missing parts
-        known_sum = sum(v for v in values if v is not None)
-        n_missing = n_parts - n_given
-        remainder = total - known_sum
-
-        if remainder < n_missing:
-            raise ValueError(
-                f"{total_name}={total} is too small given the specified values; "
-                f"each unspecified entry in {names} must receive at least 1."
-            )
-
-        base = remainder // n_missing
-        extra = remainder % n_missing
-
-        resolved = []
-        missing_seen = 0
-
-        for value in values:
-            if value is not None:
-                resolved.append(value)
-            else:
-                fill = base + (1 if missing_seen < extra else 0)
-                resolved.append(fill)
-                missing_seen += 1
-
-        return tuple(resolved)
-
-@dataclass(slots=True, kw_only=True)
-class HeatpipeMaterial:
-    k_wall: float
-    k_gap: float
-    k_wick: float
-    h_vap: float
-    h_cond: float
-
-    def resolve(self):
-        return HeatpipeMaterialResolved(
-            k_wick = self.k_wick,
-            k_gap = self.k_gap,
-            k_wall = self.k_wall,
-            h_vap = self.h_vap,
-            h_cond = self.h_cond,
-        )
-
-@dataclass(slots=True, kw_only=True)
-class HeatpipeBC:
-    Temperature_BC: bool
-    T_op: float
-    T_cond: float
-    Q: np.ndarray | float | int
-
-    def resolve(self):
-        return
-    
-
-@dataclass(slots=True, kw_only=True)
-class HeatpipeWick:
-    r_pore: float
-    porosity: float
-    K: float
-    Is_annular: bool
-
-    def resolve(self):
-        return HeatpipeWickResolved(
-            r_pore = self.r_pore,
-            porosity = self.porosity,
-            K = self.K,
-            Is_annular = self.Is_annular
-        )
-    
-@dataclass(slots=True)
-class HeatpipeConfig:
-    geometry: HeatpipeGeometry
-    mesh: HeatpipeMesh
-    material: HeatpipeMaterial
-    wick: HeatpipeWick
-    bc: HeatpipeBC
-
-    def resolve(self):
-        geometry = self.geometry.resolve()
-        mesh = self.mesh.resolve()
-        material = self.material.resolve()
-        wick = self.wick.resolve()
-
-        lengths = np.array([
-            geometry.delta_wick,
-            geometry.delta_gap,
-            geometry.delta_wall
-        ], dtype=float)
-
-        # Normalize to proportions
-        proportions = lengths / lengths.sum()
-
-        # Ideal (non-integer) counts
-        raw = proportions * mesh.N_R
-
-        # Base integer part
-        counts = np.floor(raw).astype(int)
-
-        # Remaining cells to distribute
-        remainder = mesh.N_R - counts.sum()
-
-        # Distribute to largest fractional parts
-        fractional = raw - counts
-        indices = np.argsort(fractional)[::-1]
-
-        for i in range(remainder):
-            counts[indices[i]] += 1
-
-        N_wick, N_gap, N_wall = counts
-
-        delta_wick = N_wick / mesh.N_R * (geometry.r_outer - geometry.r_vapour)
-        delta_gap  = N_gap  / mesh.N_R * (geometry.r_outer - geometry.r_vapour)
-        delta_wall = N_wall / mesh.N_R * (geometry.r_outer - geometry.r_vapour)
-
-        if not np.isclose(delta_wick, geometry.delta_wick):
-            print("\033[33mGeometry warning: \033[0m", f"delta_wick changed from {geometry.delta_wick} to {delta_wick}")
-        if not np.isclose(delta_gap, geometry.delta_gap):
-            print("\033[33mGeometry warning: \033[0m", f"delta_gap changed from {geometry.delta_gap} to {delta_gap}")
-        if not np.isclose(delta_wall, geometry.delta_wall):
-            print("\033[33mGeometry warning: \033[0m", f"delta_wall changed from {geometry.delta_wall} to {delta_wall}")
-
-        geometry.delta_wick = delta_wick
-        geometry.delta_gap  = delta_gap
-        geometry.delta_wall = delta_wall
-
-        Q = self.bc.Q
-        if type(Q) is float or type(Q) is int:
-            Qnew = np.repeat(np.array([Q / mesh.N_evap], dtype=float), mesh.N_evap)
-            Q = Qnew
-
-        if not self.bc.Temperature_BC:
-            Qout = -np.ones(mesh.N_cond) * np.sum(Q) / mesh.N_cond
-
-            Qnew = np.zeros(mesh.N_Z)
-            Qnew[:mesh.N_evap] = Q
-            Qnew[(mesh.N_evap + mesh.N_adiabatic):] = Qout
-            Q = Qnew
-
-        bc = HeatpipeBCResolved(
-            Temperature_BC = self.bc.Temperature_BC,
-            T_op = self.bc.T_op,
-            T_cond = self.bc.T_cond,
-            Q = Q,
-        )
-
-        return HeatpipeConfigResolved(
-            geometry = geometry,
-            mesh = mesh,
-            material = material,
-            wick = wick,
-            bc = bc,
-        )
-    
-@dataclass(slots=True)
-class VapourConfig:
-    geometry: HeatpipeGeometry
-    mesh: HeatpipeMesh
-    material: HeatpipeMaterial
-
-    def resolve(self):
-        geometry = self.geometry.resolve()
-        mesh = self.mesh.resolve()
-        material = self.material.resolve()
-
-        return VapourConfigResolved(
-            geometry = geometry,
-            mesh = mesh,
-            material = material,
-        )
-
-@dataclass(slots=True)
-class LiquidConfig:
-    geometry: HeatpipeGeometry
-    mesh: HeatpipeMesh
-    material: HeatpipeMaterial
-    wick: HeatpipeWick
-
-    def resolve(self):
-        geometry = self.geometry.resolve()
-        mesh = self.mesh.resolve()
-        material = self.material.resolve()
-        wick = self.wick.resolve()
-
-        return LiquidConfigResolved(
-            geometry = geometry,
-            mesh = mesh,
-            material = material,
-            wick = wick,
-        )
-
-# ---------------------------------------------
-# Resolved data classes
-# ---------------------------------------------
-
-@dataclass(slots=True, kw_only=True)
-class HeatpipeGeometryResolved:
     r_vapour: float
     delta_wick: float
     delta_gap: float
@@ -387,10 +30,17 @@ class HeatpipeGeometryResolved:
         return self.l_evap + self.l_adiabatic + self.l_cond
 
 @dataclass(slots=True)
+class HeatpipeMesh:
+    N_R: int
+    N_Z: int
+
+    
+@dataclass(slots=True)
 class HeatpipeMeshResolved:
     N_wick: int
     N_gap: int
     N_wall: int
+
     N_evap: int
     N_adiabatic: int
     N_cond: int
@@ -404,12 +54,19 @@ class HeatpipeMeshResolved:
         return self.N_evap + self.N_adiabatic + self.N_cond
 
 @dataclass(slots=True, kw_only=True)
-class HeatpipeMaterialResolved:
+class HeatpipeMaterial:
     k_wall: float
-    k_wick: float
     k_gap: float
+    k_wick: float
     h_vap: float
     h_cond: float
+
+@dataclass(slots=True, kw_only=True)
+class HeatpipeBC:
+    Temperature_BC: bool
+    T_op: float
+    T_cond: float
+    Q: float
 
 @dataclass(slots=True, kw_only=True)
 class HeatpipeBCResolved:
@@ -420,29 +77,194 @@ class HeatpipeBCResolved:
 
 
 @dataclass(slots=True, kw_only=True)
-class HeatpipeWickResolved:
+class HeatpipeWick:
     r_pore: float
     porosity: float
     K: float
     Is_annular: bool
+
+
+@dataclass(slots=True)
+class HeatpipeConfig:
+    geometry: HeatpipeGeometry
+    mesh: HeatpipeMesh
+    material: HeatpipeMaterial
+    wick: HeatpipeWick
+    bc: HeatpipeBC
+
+    def resolve(self):
+        def allocate_counts(lengths: np.ndarray, total_cells: int) -> np.ndarray:
+            lengths = np.asarray(lengths, dtype=float)
+
+            if total_cells <= 0:
+                raise ValueError("total_cells must be positive.")
+            if np.any(lengths < 0):
+                raise ValueError("All lengths must be non-negative.")
+            if np.isclose(lengths.sum(), 0.0):
+                raise ValueError("The provided lengths must not all be zero.")
+
+            proportions = lengths / lengths.sum()
+            raw = proportions * total_cells
+            counts = np.floor(raw).astype(int)
+
+            remainder = total_cells - counts.sum()
+            fractional = raw - counts
+            indices = np.argsort(fractional)[::-1]
+
+            for i in range(remainder):
+                counts[indices[i]] += 1
+
+            return counts
+
+        # -----------------------
+        # Resolve radial mesh from radial geometry
+        radial_lengths = np.array([
+            self.geometry.delta_wick,
+            self.geometry.delta_gap,
+            self.geometry.delta_wall,
+        ], dtype=float)
+
+        N_wick, N_gap, N_wall = allocate_counts(radial_lengths, self.mesh.N_R)
+
+        radial_total = self.geometry.r_outer - self.geometry.r_vapour
+        delta_wick = N_wick / self.mesh.N_R * radial_total
+        delta_gap  = N_gap  / self.mesh.N_R * radial_total
+        delta_wall = N_wall / self.mesh.N_R * radial_total
+
+        if not np.isclose(delta_wick, self.geometry.delta_wick):
+            print("\033[33mGeometry warning:\033[0m",
+                  f"delta_wick changed from {self.geometry.delta_wick} to {delta_wick}")
+        if not np.isclose(delta_gap, self.geometry.delta_gap):
+            print("\033[33mGeometry warning:\033[0m",
+                  f"delta_gap changed from {self.geometry.delta_gap} to {delta_gap}")
+        if not np.isclose(delta_wall, self.geometry.delta_wall):
+            print("\033[33mGeometry warning:\033[0m",
+                  f"delta_wall changed from {self.geometry.delta_wall} to {delta_wall}")
+
+        self.geometry.delta_wick = delta_wick
+        self.geometry.delta_gap  = delta_gap
+        self.geometry.delta_wall = delta_wall
+
+        # -----------------------
+        # Resolve axial mesh from axial geometry
+        axial_lengths = np.array([
+            self.geometry.l_evap,
+            self.geometry.l_adiabatic,
+            self.geometry.l_cond,
+        ], dtype=float)
+
+        N_evap, N_adiabatic, N_cond = allocate_counts(axial_lengths, self.mesh.N_Z)
+
+        axial_total = self.geometry.l_tot
+        l_evap      = N_evap      / self.mesh.N_Z * axial_total
+        l_adiabatic = N_adiabatic / self.mesh.N_Z * axial_total
+        l_cond      = N_cond      / self.mesh.N_Z * axial_total
+
+        if not np.isclose(l_evap, self.geometry.l_evap):
+            print("\033[33mGeometry warning:\033[0m",
+                  f"l_evap changed from {self.geometry.l_evap} to {l_evap}")
+        if not np.isclose(l_adiabatic, self.geometry.l_adiabatic):
+            print("\033[33mGeometry warning:\033[0m",
+                  f"l_adiabatic changed from {self.geometry.l_adiabatic} to {l_adiabatic}")
+        if not np.isclose(l_cond, self.geometry.l_cond):
+            print("\033[33mGeometry warning:\033[0m",
+                  f"l_cond changed from {self.geometry.l_cond} to {l_cond}")
+
+        self.geometry.l_evap = l_evap
+        self.geometry.l_adiabatic = l_adiabatic
+        self.geometry.l_cond = l_cond
+
+        # -----------------------
+        # Resolve Q
+        Q = self.bc.Q
+        if isinstance(Q, (float, int)):
+            Q = np.repeat(np.array([Q / N_evap], dtype=float), N_evap)
+
+        if not self.bc.Temperature_BC:
+            Qout = -np.ones(N_cond) * np.sum(Q) / N_cond
+
+            Qnew = np.zeros(N_evap + N_adiabatic + N_cond)
+            Qnew[:N_evap] = Q
+            Qnew[(N_evap + N_adiabatic):] = Qout
+            Q = Qnew
+
+        mesh_resolved = HeatpipeMeshResolved(
+            N_wick      = N_wick,
+            N_gap       = N_gap,
+            N_wall      = N_wall,
+            N_evap      = N_evap,
+            N_adiabatic = N_adiabatic,
+            N_cond      = N_cond,
+        )
+
+        bc_resolved = HeatpipeBCResolved(
+            Temperature_BC = self.bc.Temperature_BC,
+            T_op           = self.bc.T_op,
+            T_cond         = self.bc.T_cond,
+            Q              = Q,
+        )
+
+        return HeatpipeConfigResolved(
+            geometry = self.geometry,
+            mesh     = mesh_resolved,
+            material = self.material,
+            wick     = self.wick,
+            bc       = bc_resolved,
+        )
     
+
 @dataclass(slots=True)
 class HeatpipeConfigResolved:
-    geometry: HeatpipeGeometryResolved
+    geometry: HeatpipeGeometry
     mesh: HeatpipeMeshResolved
-    material: HeatpipeMaterialResolved
-    wick: HeatpipeWickResolved
+    material: HeatpipeMaterial
+    wick: HeatpipeWick
     bc: HeatpipeBCResolved
 
-@dataclass(slots=True)
-class VapourConfigResolved:
-    geometry: HeatpipeGeometryResolved
-    mesh: HeatpipeMeshResolved
-    material: HeatpipeMaterialResolved
 
-@dataclass(slots=True)
-class LiquidConfigResolved:
-    geometry: HeatpipeGeometryResolved
-    mesh: HeatpipeMeshResolved
-    material: HeatpipeMaterialResolved
-    wick: HeatpipeWickResolved
+# @dataclass(slots=True)
+# class VapourConfig:
+#     geometry: HeatpipeGeometry
+#     mesh: HeatpipeMesh
+#     material: HeatpipeMaterial
+
+#     def resolve(self):
+#         return VapourConfigResolved(
+#             geometry = self.geometry,
+#             mesh = self.mesh,
+#             material = self.material,
+#         )
+
+# @dataclass(slots=True)
+# class LiquidConfig:
+#     geometry: HeatpipeGeometry
+#     mesh: HeatpipeMesh
+#     material: HeatpipeMaterial
+#     wick: HeatpipeWick
+
+#     def resolve(self):
+#         geometry = self.geometry.resolve()
+#         mesh = self.mesh.resolve()
+#         material = self.material.resolve()
+#         wick = self.wick.resolve()
+
+#         return LiquidConfigResolved(
+#             geometry = geometry,
+#             mesh = mesh,
+#             material = material,
+#             wick = wick,
+#         )
+
+
+# @dataclass(slots=True)
+# class VapourConfigResolved:
+#     geometry: HeatpipeGeometry
+#     mesh: HeatpipeMeshResolved
+#     material: HeatpipeMaterial
+
+# @dataclass(slots=True)
+# class LiquidConfigResolved:
+#     geometry: HeatpipeGeometry
+#     mesh: HeatpipeMeshResolved
+#     material: HeatpipeMaterial
+#     wick: HeatpipeWick

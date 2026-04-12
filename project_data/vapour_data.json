@@ -10,12 +10,8 @@
       "l_cond": 0.35
     },
     "mesh": {
-      "N_wick": 15,
-      "N_gap": 15,
-      "N_wall": 30,
-      "N_evap": 30,
-      "N_adiabatic": 15,
-      "N_cond": 105
+      "N_R": 16,
+      "N_Z": 30
     },
     "bc": {
       "Temperature_BC": true,
@@ -52,12 +48,8 @@
       "l_cond": 0.55
     },
     "mesh": {
-      "N_wick": 15,
-      "N_gap": 15,
-      "N_wall": 30,
-      "N_evap": 30,
-      "N_adiabatic": 15,
-      "N_cond": 165
+      "N_R": 16,
+      "N_Z": 28
     },
     "bc": {
       "Temperature_BC": true,

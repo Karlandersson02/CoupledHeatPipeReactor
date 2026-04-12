@@ -1,13 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from pathlib import Path
 
 from scipy.optimize import fsolve, newton_krylov
 
 from project_data.neutronics_dataclasses import *
 from models.component import Component
 
-MODEL_PATH = "./utils/rgi_surrogate.joblib"
+MODEL_PATH = Path("./utils/rgi_surrogate.joblib")
 from utils.interpolator import OpenMCTallyGridSurrogate
 interpolator_model = OpenMCTallyGridSurrogate()
 interpolator_model = interpolator_model.load(MODEL_PATH)
@@ -76,6 +77,8 @@ class NeutronicsModel(Component):
         self.T_FP = np.full((self.cfg.mesh.N_Z*self.cfg.mesh.N_R), 900)
         self.T_HP = 900
         self.T_M = 900
+
+        self.Z = np.linspace(0, self.cfg.mesh.l, self.cfg.mesh.N_Z)
 
     def initial_guess(self):
         phi_ng_initial = np.full((self.cfg.mesh.N_Z*self.cfg.energy.N_G), 1e12)

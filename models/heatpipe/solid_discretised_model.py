@@ -73,6 +73,7 @@ class HeatpipeDiscretised(Component):
         delta_Z   = np.zeros(self.cfg.mesh.N_Z, dtype=float)
 
         self.R = R
+        self.delta_R = delta_R
         
         # Calculating the radii of the half-elements
         R[0] = np.sqrt((self.cfg.geometry.r_outer**2 - self.cfg.geometry.r_vapour**2) / (self.cfg.mesh.N_R * 2) + self.cfg.geometry.r_vapour**2)
@@ -519,9 +520,12 @@ if __name__ == "__main__":
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
     
-    N_R, N_Z = 20, 30
+    N_R, N_Z = 30, 30
     geom = HeatpipeGeometry(**data["geometry"])
-    mesh = HeatpipeMesh(N_R=N_R, N_Z=N_Z)
+    geom.delta_wick = 0.00025
+    geom.delta_gap = 0.00025
+    mesh = HeatpipeMesh(**data["mesh"])
+    mesh.N_R = N_R
     mat = HeatpipeMaterial(**data["material"])
     wick = HeatpipeWick(**data["wick"])
     bc = HeatpipeBC(**data["bc"])
@@ -547,8 +551,17 @@ if __name__ == "__main__":
     fig = plt.figure(figsize = (16, 9))
 
     ax = fig.add_subplot(111)
-    ax.plot(T_solid[0], lw=4, label="non-linear")
-    ax.plot(T_linear[:-1].reshape(N_Z, N_R)[0], ls="--", lw=4, label="linear")
+    r_centers = heatpipe.R[0::2]
+
+    delta_R = heatpipe.delta_R[0::2] + heatpipe.delta_R[1::2]
+    r_faces = np.r_[heatpipe.cfg.geometry.r_vapour, heatpipe.cfg.geometry.r_vapour + np.cumsum(delta_R)]
+
+    r_wick_disc = r_faces[heatpipe.cfg.mesh.N_wick]
+    r_gap_disc  = r_faces[heatpipe.cfg.mesh.N_wick + heatpipe.cfg.mesh.N_gap]
+
+    ax.plot(r_centers, T_solid[0], lw=4, label="non-linear")
+    ax.plot(r_centers, T_linear[:-1].reshape(N_Z, N_R)[0], ls="--", lw=4, label="linear")
+    ax.vlines([r_wick_disc, r_gap_disc], np.min(T_solid[0]), np.max(T_solid[0]), colors="black")
     
     plt.legend()
     plt.show()
