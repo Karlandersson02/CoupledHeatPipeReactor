@@ -64,14 +64,14 @@ class Reactor(Component):
         T_FP = self.T_cond * X[(self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1):((self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1) + self.cfg_N.mesh.N_R * self.cfg_N.mesh.N_Z)]
         phi_ng_hat = X[((self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1) + self.cfg_N.mesh.N_R * self.cfg_N.mesh.N_Z):]
 
-        self.fuel_pin_thermal_model.initialize_discretization()
+        # self.fuel_pin_thermal_model.initialize_discretization()
 
         T_FP_ave = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=1)
         qr = self.calculate_qr(T_FP, phi_ng_hat[:-1]) 
         Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
 
         self.heat_pipe_thermal_model.cfg.bc.Q = Q_HP
-        self.heat_pipe_thermal_model.assemble()
+        # self.heat_pipe_thermal_model.assemble()
         res_cond_HP = self.heat_pipe_thermal_model.get_residuals(T_HP)
         
         self.fuel_pin_thermal_model.qr = qr
@@ -116,7 +116,7 @@ if __name__ == "__main__":
         data = json.load(f)
     
     # Mesh dimensions
-    N_R_HP, N_R_FP, N_Z = 15, 15, 50
+    N_R_HP, N_R_FP, N_Z = 30, 30, 50
 
     # Heat pipe
     geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
@@ -137,9 +137,9 @@ if __name__ == "__main__":
 
     # Neutronics 
     mesh_N = NeutronicsMesh(
-        N_R   = N_R_FP,
-        N_Z   = cfg_HP.mesh.N_evap,
-        l     = cfg_HP.geometry.l_evap
+        N_R = N_R_FP,
+        N_Z = cfg_HP.mesh.N_evap,
+        l   = cfg_HP.geometry.l_evap
     )
     energy = NeutronicsEnergy(
         N_G   = cfg_FP.energy.N_G,
@@ -153,7 +153,7 @@ if __name__ == "__main__":
     from utils.solver import Solver
 
     solver = Solver([reactor])
-    solver.fsolve()
+    solver.newton_krylov()
 
     ((T_solid, T_vap), T_FP, (phi_ng_hat, k)) = solver.solution
 

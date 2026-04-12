@@ -1,11 +1,9 @@
 import numpy as np
-import matplotlib.pyplot as plt
 
-from scipy.optimize import fsolve
-
+from models.component import Component
 from project_data.neutronics_dataclasses import *
 
-class FuelPin:
+class FuelPin(Component):
     def __init__(self, config: FuelPinConfigResolved):
 
         self.cfg = config
@@ -14,42 +12,191 @@ class FuelPin:
         self.Sigma_f = np.array([9.4e-2, 5.48e1], dtype=float)
         self.kappa   = 3.204e-11
         self.T_mod   = np.ones(self.cfg.mesh.N_Z) * 1000.0
-        self.qr      = -1
 
         self.Delta_Z = self.cfg.geometry.l / self.cfg.mesh.N_Z
+        
+        self.calculate_qr()
+
+    def initial_guess(self):
+        X_initial = np.ones((self.cfg.mesh.N_Z * self.cfg.mesh.N_R, ))
+        return X_initial
 
     def assemble(self):
         self.initialize_discretization()
 
-        surface_tensor = self.calculate_surfaces()
+        k = self.generate_k_matrix()
+        h = self.generate_h_matrix()
 
-        self.generate_k_matrix()
-        self.generate_h_matrix()
+        alpha = self.calculate_alpha(k)
 
-        alpha = self.calculate_alpha(surface_tensor)
-
-        self.M, self.C = self.generate_matrix_form(alpha, self.qr, self.T_mod)
+        self.M, self.C = self.generate_matrix_form(alpha, self.qr, self.T_mod, k, h)
 
     def calculate_qr(self):
         self.initialize_discretization()
         self.qr = np.sum(self.phi_g * self.Sigma_f * self.kappa * self.Delta_V, axis = 1)
 
-    def solve(self):
+    def get_residuals(self, X):
+        T = X.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
+
+        self.calculate_qr()
+        self.initialize_discretization()
+
+        k = self.generate_k_matrix(T)
+        h = self.generate_h_matrix()
+        alpha = self.calculate_alpha(k)
+
+        qr = self.qr
+        T_mod = self.T_mod
+
+        N_Z = self.cfg.mesh.N_Z
+        N_R = self.cfg.mesh.N_R
+        N_fuel = self.cfg.mesh.N_fuel
+
+        res = np.zeros((N_Z, N_R), dtype=float)
+
+        # -----------------------
+        # Bulk elements
+        if N_Z > 2 and N_R > 2:
+            kc = k[1:-1, 1:-1]
+            ac = alpha[1:-1, 1:-1]
+
+            res[1:-1, 1:-1] = (
+                -kc * (ac[..., 0] + ac[..., 1] + ac[..., 2] + ac[..., 3]) * T[1:-1, 1:-1]
+                + kc * ac[..., 0] * T[1:-1, 2:]
+                + kc * ac[..., 1] * T[1:-1, :-2]
+                + kc * ac[..., 2] * T[2:, 1:-1]
+                + kc * ac[..., 3] * T[:-2, 1:-1]
+            )
+
+        # -----------------------
+        # Insulated wall at z = 0, excluding corners
+        if N_R > 2:
+            z = 0
+            kc = k[z, 1:-1]
+            ac = alpha[z, 1:-1]
+
+            res[z, 1:-1] = (
+                -kc * (ac[:, 0] + ac[:, 1] + ac[:, 2]) * T[z, 1:-1]
+                + kc * ac[:, 0] * T[z, 2:]
+                + kc * ac[:, 1] * T[z, :-2]
+                + kc * ac[:, 2] * T[z + 1, 1:-1]
+            )
+
+        # -----------------------
+        # Insulated wall at z = N_Z - 1, excluding corners
+        if N_R > 2:
+            z = N_Z - 1
+            kc = k[z, 1:-1]
+            ac = alpha[z, 1:-1]
+
+            res[z, 1:-1] = (
+                -kc * (ac[:, 0] + ac[:, 1] + ac[:, 3]) * T[z, 1:-1]
+                + kc * ac[:, 0] * T[z, 2:]
+                + kc * ac[:, 1] * T[z, :-2]
+                + kc * ac[:, 3] * T[z - 1, 1:-1]
+            )
+
+        # -----------------------
+        # Cladding BC elements, excluding corners
+        if N_Z > 2:
+            r = N_R - 1
+            kc = k[1:-1, r]
+            ac = alpha[1:-1, r]
+            hc = h[1:-1, r]
+
+            res[1:-1, r] = (
+                (-kc * (ac[:, 1] + ac[:, 2] + ac[:, 3]) - hc * ac[:, 0]) * T[1:-1, r]
+                + kc * ac[:, 1] * T[1:-1, r - 1]
+                + kc * ac[:, 2] * T[2:, r]
+                + kc * ac[:, 3] * T[:-2, r]
+                + hc * ac[:, 0] * T_mod[1:-1]
+            )
+
+        # -----------------------
+        # Fuel inner BC elements, excluding corners
+        if N_Z > 2:
+            r = 0
+            kc = k[1:-1, r]
+            ac = alpha[1:-1, r]
+
+            res[1:-1, r] = (
+                -kc * (ac[:, 0] + ac[:, 2] + ac[:, 3]) * T[1:-1, r]
+                + kc * ac[:, 0] * T[1:-1, r + 1]
+                + kc * ac[:, 2] * T[2:, r]
+                + kc * ac[:, 3] * T[:-2, r]
+            )
+
+        # -----------------------
+        # Lowermost cladding outer corner: z = 0, r = N_R - 1
+        z = 0
+        r = N_R - 1
+        res[z, r] = (
+            (-k[z, r] * (alpha[z, r, 1] + alpha[z, r, 2]) - h[z, r] * alpha[z, r, 0]) * T[z, r]
+            + k[z, r] * alpha[z, r, 1] * T[z, r - 1]
+            + k[z, r] * alpha[z, r, 2] * T[z + 1, r]
+            + h[z, r] * alpha[z, r, 0] * T_mod[z]
+        )
+
+        # -----------------------
+        # Uppermost cladding outer corner: z = N_Z - 1, r = N_R - 1
+        z = N_Z - 1
+        r = N_R - 1
+        res[z, r] = (
+            (-k[z, r] * (alpha[z, r, 1] + alpha[z, r, 3]) - h[z, r] * alpha[z, r, 0]) * T[z, r]
+            + k[z, r] * alpha[z, r, 1] * T[z, r - 1]
+            + k[z, r] * alpha[z, r, 3] * T[z - 1, r]
+            + h[z, r] * alpha[z, r, 0] * T_mod[z]
+        )
+
+        # -----------------------
+        # Lowermost fuel inner corner: z = 0, r = 0
+        z = 0
+        r = 0
+        res[z, r] = (
+            -k[z, r] * (alpha[z, r, 0] + alpha[z, r, 2]) * T[z, r]
+            + k[z, r] * alpha[z, r, 0] * T[z, r + 1]
+            + k[z, r] * alpha[z, r, 2] * T[z + 1, r]
+        )
+
+        # -----------------------
+        # Uppermost fuel inner corner: z = N_Z - 1, r = 0
+        z = N_Z - 1
+        r = 0
+        res[z, r] = (
+            -k[z, r] * (alpha[z, r, 0] + alpha[z, r, 3]) * T[z, r]
+            + k[z, r] * alpha[z, r, 0] * T[z, r + 1]
+            + k[z, r] * alpha[z, r, 3] * T[z - 1, r]
+        )
+
+        # -----------------------
+        # Fuel heat production
+        res[:, :N_fuel] += qr[:, None]
+
+        res_norm_denom = (
+            (np.sum(qr) * self.Delta_Z / self.cfg.geometry.l)
+            / (np.pi * self.cfg.geometry.r**2)
+        )
+
+        return res.reshape(-1) / res_norm_denom
+
+    def post_process(self, X):
+        return self.unpack(X)
+
+    def unpack(self, X):
+        T_HP = X.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
+        return (T_HP, )
+    
+    def pack(self, X_tuple):
+        X = X_tuple[0].reshape(self.cfg.mesh.N_Z * self.cfg.mesh.N_R)
+        return X
+
+    def linear_solve(self):
         self.calculate_qr()
         self.assemble()
 
         T = np.linalg.solve(self.M, self.C)
 
         self.T = T
-
-    def get_residuals(self, T_FP):
-        self.assemble()
-    
-        res = self.M @ T_FP - self.C
-
-        res_norm_denom = (np.sum(self.qr) * self.Delta_Z / self.cfg.geometry.l) / (np.pi * self.cfg.geometry.r**2)
-
-        return res / res_norm_denom
 
     def initialize_discretization(self):     
         R         = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)
@@ -69,16 +216,17 @@ class FuelPin:
         delta_Rm = delta_R[0::2]
         delta_Rp = delta_R[1::2]
 
-        self.R = R
+        surface_tensor = self.calculate_surfaces(delta_Rp, delta_Rm)
 
+        self.R = R
         self.delta_Rm = delta_Rm
         self.delta_Rp = delta_Rp
-
         self.Delta_V = np.pi * (delta_Rp[0] + delta_Rm[0])**2 * self.Delta_Z 
+        self.surface_tensor = surface_tensor
 
 
-    def calculate_surfaces(self):
-        delta_R = self.delta_Rp + self.delta_Rm
+    def calculate_surfaces(self, delta_Rp, delta_Rm):
+        delta_R = delta_Rp + delta_Rm
         Rp = np.cumsum(delta_R)
         Rm = Rp - delta_R
 
@@ -115,7 +263,7 @@ class FuelPin:
         k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.h_gap, T_gap, scale=self.cfg.geometry.delta_gap)
         k_matrix[:, clad_slice] = eval_material_prop(self.cfg.material.k_clad, T_clad)
 
-        self.k_matrix = k_matrix
+        return k_matrix
 
 
     def generate_h_matrix(self, T=800.):
@@ -123,41 +271,46 @@ class FuelPin:
 
         h_matrix[:, -1] = self.cfg.material.h_mod
 
-        self.h_matrix = h_matrix
+        return h_matrix
 
 
-    def calculate_alpha(self, surface_tensor):
-        alpha_tensor = np.zeros_like(surface_tensor)
+    def calculate_alpha(self, k_matrix):
+        alpha = np.zeros_like(self.surface_tensor)
 
-        for i in range(alpha_tensor.shape[0]):
-            for j in range(alpha_tensor.shape[1]):
-                if not (j == alpha_tensor.shape[1] - 1):
-                    alpha_tensor[i, j, 0] = (surface_tensor[i, j, 0] * self.k_matrix[i, j+1]) / (self.k_matrix[i, j]*self.delta_Rm[j+1] + self.k_matrix[i, j+1]*self.delta_Rp[j])
-                if not (j == 0):
-                    alpha_tensor[i, j, 1] = (surface_tensor[i, j, 1] * self.k_matrix[i, j-1]) / (self.k_matrix[i, j]*self.delta_Rp[j-1] + self.k_matrix[i, j-1]*self.delta_Rm[j])
-                if not (i == alpha_tensor.shape[0] - 1):
-                    alpha_tensor[i, j, 2] = (surface_tensor[i, j, 2] * self.k_matrix[i+1, j]) / (self.k_matrix[i, j]*self.Delta_Z + self.k_matrix[i+1, j]*self.Delta_Z)
-                if not (i == 0):
-                    alpha_tensor[i, j, 3] = (surface_tensor[i, j, 3] * self.k_matrix[i-1, j]) / (self.k_matrix[i, j]*self.Delta_Z + self.k_matrix[i-1, j]*self.Delta_Z)
+        alpha[:, :-1, 0] = (
+            self.surface_tensor[:, :-1, 0] * k_matrix[:, 1:]
+            / (k_matrix[:, :-1] * self.delta_Rm[1:] + k_matrix[:, 1:] * self.delta_Rp[:-1])
+        )
 
+        alpha[:, 1:, 1] = (
+            self.surface_tensor[:, 1:, 1] * k_matrix[:, :-1]
+            / (k_matrix[:, 1:] * self.delta_Rp[:-1] + k_matrix[:, :-1] * self.delta_Rm[1:])
+        )
+
+        alpha[:-1, :, 2] = (
+            self.surface_tensor[:-1, :, 2] * k_matrix[1:, :]
+            / (k_matrix[:-1, :] * self.Delta_Z + k_matrix[1:, :] * self.Delta_Z)
+        )
+
+        alpha[1:, :, 3] = (
+            self.surface_tensor[1:, :, 3] * k_matrix[:-1, :]
+            / (k_matrix[1:, :] * self.Delta_Z + k_matrix[:-1, :] * self.Delta_Z)
+        )
         # Init mask
-        cooling_mask = np.zeros_like(alpha_tensor, dtype=bool)
+        cooling_mask = np.zeros_like(alpha, dtype=bool)
                                      
         # Configure masks
         cooling_mask[:, -1, 0] = True
 
         # Apply masks
-        alpha_tensor[cooling_mask] = surface_tensor[cooling_mask]
+        alpha[cooling_mask] = self.surface_tensor[cooling_mask]
 
-        return alpha_tensor
+        return alpha
     
     
-    def generate_matrix_form(self, alpha, qr, T_mod):
+    def generate_matrix_form(self, alpha, qr, T_mod, k, h):
         N = self.cfg.mesh.N_R * self.cfg.mesh.N_Z
         stride = self.cfg.mesh.N_R 
-
-        k = self.k_matrix
-        h = self.h_matrix
 
         M = np.zeros((N, N), dtype=float)
         C = np.zeros(N, dtype=float)
@@ -308,8 +461,11 @@ class FuelPin:
         return M, C
 
 if __name__ == "__main__":
-    N_Z = 10
-    N_R = 20
+    import matplotlib.pyplot as plt
+    from utils.solver import Solver
+
+    N_Z = 100
+    N_R = 30
     data = {
         "geometry": {
             "delta_gap": 2.5e-3,     # random
@@ -347,13 +503,16 @@ if __name__ == "__main__":
     cfg    = FuelPinConfig(geom, mesh, energy, mat)
     cfg = cfg.resolve()
 
-    fuelPin_conduction = FuelPin(cfg)
-    fuelPin_conduction.solve()
+    fuel_pin = FuelPin(cfg)
+    solver = Solver([fuel_pin])
+    solver.newton_krylov()
 
-    sol, info, ier, mesg = fsolve(fuelPin_conduction.get_residuals, fuelPin_conduction.T, full_output=True)
+    T, = solver.solution
 
-    plt.plot(fuelPin_conduction.R[::2], sol.reshape(N_Z, N_R)[0], label="non-linear")
-    plt.plot(fuelPin_conduction.R[::2], fuelPin_conduction.T.reshape(N_Z, N_R)[0], ls="--", label="linear")
+    fuel_pin.linear_solve()
+
+    plt.plot(fuel_pin.R[::2], T[0], label="non-linear")
+    plt.plot(fuel_pin.R[::2], fuel_pin.T.reshape(N_Z, N_R)[0], ls="--", label="linear")
     
     plt.legend()
     plt.show()
