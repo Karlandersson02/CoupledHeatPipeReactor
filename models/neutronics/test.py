@@ -1,6 +1,7 @@
 import numpy as np
+from pathlib import Path
 
-MODEL_PATH = r"./utils/rgi_surrogate.joblib"
+MODEL_PATH = Path(r"./utils/rgi_surrogate.joblib")
 from utils.interpolator import OpenMCTallyGridSurrogate
 interpolator_model = OpenMCTallyGridSurrogate()
 interpolator_model = interpolator_model.load(MODEL_PATH)

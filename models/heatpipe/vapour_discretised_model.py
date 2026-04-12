@@ -2,7 +2,7 @@ import numpy as np
 
 from utils.sodium_properties import calculate_Na_h_fg, calculate_Na_viscosity_v, calculate_Na_pressure_v, calculate_Na_rho_v, calculate_Na_temperature_v
 from models.component import Component
-from project_data.heatpipe_dataclasses import *
+from data.dataclass import *
 
 R_constant = 8.314472
 R_constant_Na = R_constant / 0.022990

@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 
 from utils.sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_l, calculate_Na_h_fg
-from project_data.heatpipe_dataclasses import *
+from data.dataclass import *
 
 class LiquidDiscretised:
     def __init__(self, config: HeatpipeConfigResolved, T_HP):

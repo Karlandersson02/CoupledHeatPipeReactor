@@ -3,7 +3,7 @@ import numpy as np
 from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import spsolve
 
-from project_data.heatpipe_dataclasses import *
+from data.dataclass import *
 from models.component import Component
 
 class HeatpipeDiscretised(Component):

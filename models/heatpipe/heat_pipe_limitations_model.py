@@ -13,7 +13,7 @@ from utils.sodium_properties import (
 )
 
 from coupled_systems.heatpipe import Heatpipe
-from project_data.heatpipe_dataclasses import *
+from data.dataclass import *
 
 R = 8.314472
 R_Na = R / 0.022990

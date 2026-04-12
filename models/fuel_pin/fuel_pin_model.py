@@ -1,7 +1,7 @@
 import numpy as np
 
 from models.component import Component
-from project_data.neutronics_dataclasses import *
+from data.dataclass import *
 
 class FuelPin(Component):
     def __init__(self, config: FuelPinConfigResolved):

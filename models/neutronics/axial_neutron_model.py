@@ -5,7 +5,7 @@ from pathlib import Path
 
 from scipy.optimize import fsolve, newton_krylov
 
-from project_data.neutronics_dataclasses import *
+from data.dataclass import *
 from models.component import Component
 
 MODEL_PATH = Path("./utils/rgi_surrogate.joblib")

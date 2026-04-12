@@ -10,8 +10,7 @@ from models.moderator.mesh_conduction_model import ModeratorDiscretisedMesh
 from models.moderator.triangle_mesh import UnstructuredMesh
 
 from models.component import Component
-from project_data.heatpipe_dataclasses import *
-from project_data.neutronics_dataclasses import *
+from data.dataclass import *
 
 class Reactor(Component):
     def __init__(self, cfg_FP, cfg_HP: HeatpipeConfigResolved, cfg_N: NeutronicsConfig):
