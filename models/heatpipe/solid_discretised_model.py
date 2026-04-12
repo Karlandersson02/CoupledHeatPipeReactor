@@ -71,6 +71,8 @@ class HeatpipeDiscretised(Component):
         delta_R_p = np.zeros(self.cfg.mesh.N_R, dtype=float)
         Z         = np.zeros(2 * self.cfg.mesh.N_Z, dtype=float)
         delta_Z   = np.zeros(self.cfg.mesh.N_Z, dtype=float)
+
+        self.R = R
         
         # Calculating the radii of the half-elements
         R[0] = np.sqrt((self.cfg.geometry.r_outer**2 - self.cfg.geometry.r_vapour**2) / (self.cfg.mesh.N_R * 2) + self.cfg.geometry.r_vapour**2)
