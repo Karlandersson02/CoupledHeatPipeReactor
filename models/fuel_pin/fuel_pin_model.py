@@ -82,23 +82,38 @@ class FuelPin:
         Rp = np.cumsum(delta_R)
         Rm = Rp - delta_R
 
-        S_rp = Rp * 2*np.pi
-        S_rm = Rm * 2*np.pi
+        S_rp = Rp * 2 * np.pi
+        S_rm = Rm * 2 * np.pi
         S_z = (Rp**2 - Rm**2) * np.pi
 
         surface_tensor = np.concatenate([S_rp[:, None], S_rm[:, None], S_z[:, None], S_z[:, None]], axis=1)
         surface_tensor = np.repeat(surface_tensor[None], self.cfg.mesh.N_Z, axis=0)
-        surface_tensor[..., 0:2] *= 2 * self.Delta_Z
+        surface_tensor[..., 0:2] *= self.Delta_Z
 
         return surface_tensor
     
     
-    def generate_k_matrix(self, T=800.):
-        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R))
+    def generate_k_matrix(self, T=None):
+        if T is None:
+            T = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
 
-        k_matrix[:, :self.cfg.mesh.N_fuel]                                             = self.cfg.material.k_fuel
-        k_matrix[:, self.cfg.mesh.N_fuel:(self.cfg.mesh.N_fuel + self.cfg.mesh.N_gap)] = self.cfg.material.h_gap * self.cfg.geometry.delta_gap    # effective gap conductivity
-        k_matrix[:, -self.cfg.mesh.N_wall:]                                            = self.cfg.material.k_clad
+        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
+
+        def eval_material_prop(prop, T_slice, scale=1.0):
+            value = prop(T_slice) if callable(prop) else prop
+            return value * scale     # type: ignore
+
+        fuel_slice = slice(0, self.cfg.mesh.N_fuel)
+        gap_slice  = slice(self.cfg.mesh.N_fuel, self.cfg.mesh.N_fuel + self.cfg.mesh.N_gap)
+        clad_slice = slice(self.cfg.mesh.N_fuel + self.cfg.mesh.N_gap, self.cfg.mesh.N_R)
+
+        T_fuel = T[:, fuel_slice]
+        T_gap  = T[:, gap_slice]
+        T_clad = T[:, clad_slice]
+
+        k_matrix[:, fuel_slice] = eval_material_prop(self.cfg.material.k_fuel, T_fuel)
+        k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.h_gap, T_gap, scale=self.cfg.geometry.delta_gap)
+        k_matrix[:, clad_slice] = eval_material_prop(self.cfg.material.k_clad, T_clad)
 
         self.k_matrix = k_matrix
 
@@ -293,7 +308,7 @@ class FuelPin:
         return M, C
 
 if __name__ == "__main__":
-    N_Z = 30
+    N_Z = 10
     N_R = 20
     data = {
         "geometry": {

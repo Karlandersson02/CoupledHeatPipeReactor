@@ -9,14 +9,6 @@
             "l_adiabatic": 0.4,
             "l_cond": 1.80
         },
-        "mesh": {
-            "N_wick": 10,
-            "N_gap": 10,
-            "N_wall": 30,
-            "N_evap": 30,
-            "N_adiabatic": 9,
-            "N_cond": 30
-        },
         "bc": {
             "Temperature_BC": true,
             "T_cond": 300,
@@ -49,12 +41,8 @@
             "r": 0.0085,
             "l": 1.8
         },
-        "mesh": {
-            "N_R": 10,
-            "N_Z": 10
-        },
         "energy": {
-            "N_G": 2
+            "N_G": 8
         },
         "material": { 
             "k_fuel": 15.0,
@@ -78,7 +66,7 @@
             "N_HP": 876,
             "N_FP": 2970
         },
-        "Power": {
+        "power": {
             "thermal": 15e6,
             "electric": 5e6
         }

@@ -1,5 +1,9 @@
 import numpy as np
+import matplotlib.pyplot as plt
+
 import meshio # type: ignore
+
+import json
 
 from scipy.optimize import fsolve, newton_krylov
 
@@ -60,8 +64,9 @@ class Reactor(Component):
         return X_initial
     
     def solve(self, monolithic=True):
+        X_initial = np.linspace(0.9, 1.1, self.N_var)
 
-        X_initial = np.ones(self.N_var)
+        # self.get_residuals(X_initial)
 
         sol, info, ier, mesg = fsolve(self.get_residuals, X_initial, full_output=True)
 
@@ -79,16 +84,16 @@ class Reactor(Component):
 
         self.fuel_pin_thermal_model.initialize_discretization()
 
-        T_FP_ave = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=0)
-        qr = self.calculate_qr(T_FP_ave, phi_ng_hat[:-1]) 
-        Q_HP, T_mod, T_edge_FP = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
+        T_FP_ave = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=1)
+        qr = self.calculate_qr(T_FP, phi_ng_hat[:-1]) 
+        Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
 
         self.heat_pipe_thermal_model.cfg.bc.Q = Q_HP
         self.heat_pipe_thermal_model.assemble()
         res_cond_HP = self.heat_pipe_thermal_model.get_residuals(T_HP)
         
         self.fuel_pin_thermal_model.qr = qr
-        self.fuel_pin_thermal_model.T_mod = T_edge_FP
+        self.fuel_pin_thermal_model.T_mod = T_mod
         res_cond_FP = self.fuel_pin_thermal_model.get_residuals(T_FP)
         
         self.neutron_flux_model.T_FP = T_FP
@@ -106,122 +111,62 @@ class Reactor(Component):
 
         power_rel = np.sum(qr_rel)
 
-        return qr_rel * self.cfg_N.energy.power / power_rel
-    
+        return qr_rel * self.cfg_N.energy.power / (power_rel * self.cfg_FP.mesh.N_fuel)
+            
 
     def calculate_HP_FP_boundary_cond(self, T_FP, T_HP):
         T_edge_FP = T_FP[self.cfg_FP.mesh.N_R - 1::self.cfg_FP.mesh.N_R]
         T_edge_HP = T_HP[self.cfg_HP.mesh.N_R - 1:(self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap):self.cfg_HP.mesh.N_R]
 
-        Q_HP = (T_edge_FP - T_edge_HP) / self.moderator_eff_res
+        Delta_z = self.cfg_HP.geometry.l_evap / self.cfg_HP.mesh.N_evap
+        R_seg = self.moderator_eff_res / Delta_z
+        Q_HP = (T_edge_FP - T_edge_HP) / R_seg
 
-        T_mod = (T_edge_FP + T_edge_HP) / 2
+        T_mod = T_edge_FP - Q_HP / (self.cfg_FP.material.h_mod * 2 * self.cfg_FP.geometry.r * np.pi * self.cfg_FP.geometry.l / self.cfg_FP.mesh.N_Z)
 
-        return Q_HP, T_mod, T_edge_FP
+        return Q_HP, T_mod
 
     
 
 if __name__ == "__main__":
 
-    # HeatPipe ---------------
-    data_HP = {
-        "geometry": {
-            "r_outer": .007 + 0.001 + 0.0005,
-            "delta_wick": 0.0003,
-            "delta_gap": 0.0002,
-            "delta_wall": 0.001,
-            "l_evap": 0.75,
-            "l_adiabatic": 0.15,
-            "l_cond": 0.6,
-        },
+    with open("./project_data/reactor_data.json", "r") as f:
+        data = json.load(f)
+    
+    # Mesh dimensions
+    N_R_HP, N_R_FP, N_Z = 15, 15, 50
 
-        "mesh": {
-            "N_R": 10,
-            "N_evap": 10,
-            "N_adiabatic": 2,
-            "N_cond": 8,
-        },
-
-        "material": {
-            "k_wick": 66.2,
-            "k_gap": 80,
-            "k_wall": 19.0,
-            "h_vap": 1e6,
-            "h_cond": 62.6,
-        },
-
-        "wick": {
-            "Is_annular": True,
-            "K":1e-10,
-            "r_pore": 0.00002,
-            "porosity": 0.7
-        },
-
-        "bc": {
-            "Temperature_BC": True,
-            "T_cond": 300,
-            "T_op": 850,
-            "Q": 1000,
-        },
-    }
-
-    geom   = HeatpipeGeometry(**data_HP["geometry"])
-    mesh   = HeatpipeMesh(**data_HP["mesh"])
-    mat    = HeatpipeMaterial(**data_HP["material"])
-    wick   = HeatpipeWick(**data_HP["wick"])
-    bc     = HeatpipeBC(**data_HP["bc"])
+    # Heat pipe
+    geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
+    mesh   = HeatpipeMesh(N_R=N_R_HP, N_Z=N_Z)
+    mat    = HeatpipeMaterial(**data["HeatPipe"]["material"])
+    wick   = HeatpipeWick(**data["HeatPipe"]["wick"])
+    bc     = HeatpipeBC(**data["HeatPipe"]["bc"])
     cfg_HP = HeatpipeConfig(geom, mesh, mat, wick, bc)
     cfg_HP = cfg_HP.resolve()
 
-    # FuelPin ---------------
-    N_Z_FP = cfg_HP.mesh.N_evap
-    N_R_FP = 20
-    data_FP = {
-        "geometry": {
-            "delta_gap": 1e-3,
-            "delta_wall": 1e-3,
-            "r": 1e-2,
-            "l": cfg_HP.geometry.l_evap,
-        },
-        "mesh": {
-            "N_R": N_R_FP,
-            "N_Z": N_Z_FP,
-        },
-
-        "energy": {
-            "N_G": 8,
-        },
-
-        "material": {
-            "k_fuel": 15.0,
-            "k_clad": 16.5,
-            "h_gap": 1e5,
-            "h_mod": 1e4,
-        }
-    }
-
-    geom_FP   = FuelPinGeometry(**data_FP["geometry"])
-    mesh_FP   = FuelPinMesh(**data_FP["mesh"])
-    energy_FP = FuelPinEnergy(**data_FP["energy"])
-    mat_FP    = FuelPinMaterial(**data_FP["material"])
+    # Fuel pin
+    geom_FP   = FuelPinGeometry(**data["FuelPin"]["geometry"])
+    mesh_FP   = FuelPinMesh(N_R=N_R_FP, N_Z=cfg_HP.mesh.N_evap)
+    energy_FP = FuelPinEnergy(**data["FuelPin"]["energy"])
+    mat_FP    = FuelPinMaterial(**data["FuelPin"]["material"])
     cfg_FP    = FuelPinConfig(geom_FP, mesh_FP, energy_FP, mat_FP)
-    cfg_FP = cfg_FP.resolve()
+    cfg_FP    = cfg_FP.resolve()
 
-    # Neutronics ---------------
+    # Neutronics 
     mesh_N = NeutronicsMesh(
-        N_R = N_R_FP,
-        N_Z = cfg_HP.mesh.N_evap,
-        l = cfg_HP.geometry.l_evap
+        N_R   = N_R_FP,
+        N_Z   = cfg_HP.mesh.N_evap,
+        l     = cfg_HP.geometry.l_evap
     )
     energy = NeutronicsEnergy(
-        N_G = 8,
-        power = 1000
+        N_G   = cfg_FP.energy.N_G,
+        power = data["Reactor"]["power"]["thermal"] / data["Reactor"]["components"]["N_FP"]
     )
-    cfg_N = NeutronicsConfig(mesh_N, energy)\
+    cfg_N = NeutronicsConfig(mesh_N, energy)
     
     # Reactor ------------------
     reactor = Reactor(cfg_FP, cfg_HP, cfg_N)
-    # X = reactor.solve()
 
     from utils.solver import Solver
 
@@ -230,13 +175,46 @@ if __name__ == "__main__":
 
     ((T_solid, T_vap), T_FP, (phi_ng_hat, k)) = solver.solution
 
-    import matplotlib.pyplot as plt
+    # Calculating Q_out
+    T_edge_cond_HP = T_solid[(cfg_HP.mesh.N_evap + cfg_HP.mesh.N_adiabatic):, -1]
+    Q_out = np.sum((T_edge_cond_HP - 300.) * cfg_HP.material.h_cond * cfg_HP.geometry.r_outer * 2 * np.pi * cfg_HP.geometry.l_cond / cfg_HP.mesh.N_cond)
 
-    plt.plot(reactor.fuel_pin_thermal_model.R[1::2], T_FP[0])
-    plt.show()
+    r_fp = reactor.fuel_pin_thermal_model.R[1::2]
 
-    plt.plot(T_solid[0])
-    plt.show()
+    x_hp = range(len(T_solid[0]))
 
-    plt.plot(phi_ng_hat[:, 0])
+    z_flux = range(len(phi_ng_hat[:, 0]))
+
+    fig, axs = plt.subplots(4, 1, figsize=(8, 10))
+    fig.suptitle(f"Reactor Profiles | $k_{{eff}} = ${k:.4f} | $Q_{{in}} = ${cfg_N.energy.power:.1e} W | $Q_{{out}} = ${Q_out:.1e} W", fontsize=14)
+
+    # Fuel pin radial temperature
+    axs[0].plot(r_fp, T_FP[0], linewidth=2)
+    axs[0].set_title("Fuel Pin Radial Temperature Profile")
+    axs[0].set_xlabel("Radius [m]")
+    axs[0].set_ylabel("Temperature [K]")
+    axs[0].grid(True)
+
+    # Heat pipe evap radial temperature
+    axs[1].plot(x_hp, T_solid[0], linewidth=2)
+    axs[1].set_title("Heat Pipe evaporator Radial Temperature Profile")
+    axs[1].set_xlabel("Radial Cell Index")
+    axs[1].set_ylabel("Temperature [K]")
+    axs[1].grid(True)
+
+    # Heat pipe condenser radial temperature
+    axs[2].plot(x_hp, T_solid[-1], linewidth=2)
+    axs[2].set_title("Heat Pipe condenser Radial Temperature Profile")
+    axs[2].set_xlabel("Radial Cell Index")
+    axs[2].set_ylabel("Temperature [K]")
+    axs[2].grid(True)
+
+    # Axial neutron flux
+    axs[3].plot(z_flux, phi_ng_hat[:, 0], linewidth=2)
+    axs[3].set_title("Axial Neutron Flux Profile")
+    axs[3].set_xlabel("Axial Cell Index")
+    axs[3].set_ylabel("Flux")
+    axs[3].grid(True)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     plt.show()
