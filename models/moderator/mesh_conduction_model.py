@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import meshio # type: ignore
-# import pyvista as pv # type: ignore
+import pyvista as pv # type: ignore
 
 from models.moderator.triangle_mesh import UnstructuredMesh, Surface
 
@@ -20,6 +20,12 @@ class ModeratorDiscretisedMesh:
 
         self.HP_radius       = data.get("HP_radius")
         self.fuel_pin_radius = data.get("fuel_pin_radius")
+
+        self.T_HP = data.get("T_HP")
+        self.T_FP = data.get("T_FP")
+
+        self.HP_BC = data.get("HP_BC")
+        self.FP_BC = data.get("FP_BC")
 
         self.cell_k = (
             np.ones(mesh.n_triangles, dtype=float)
@@ -37,13 +43,15 @@ class ModeratorDiscretisedMesh:
         if self.cell_T.shape != (n_triangles,):
             raise ValueError("cell_T must have shape (n_triangles,)")
         
+
     def solve(self, iterations: int):
         
         self.calculate_von_Neumann_boundary_conditions()
+        self.calculate_Dirichlet_boundary_conditions()
 
         # Iterations to allow for cross diffusion correction to converge.
         for i in range(iterations):
-            n_triangles = mesh.triangles.shape[0]
+            n_triangles = self.mesh.triangles.shape[0]
 
             M = np.zeros((n_triangles, n_triangles))
             C = np.zeros(n_triangles)
@@ -57,9 +65,14 @@ class ModeratorDiscretisedMesh:
                 # Setting the FluxF and FluxC terms, in addition to the boundary FluxV terms (BC). 
                 for neighbour_idx, surface in zip(neighbours, surfaces):    
                     if neighbour_idx == -1: # Indicating a boundary triangle. 
-                        FluxV_f_BC = self.vN_boundary_conditions[triangle_idx]
+                        FluxV_f_BC_vN = self.vN_boundary_conditions[triangle_idx]
+                        FluxV_f_BC_Di = self.di_boundary_conditions[triangle_idx][1]
 
-                        C[triangle_idx] += -FluxV_f_BC
+                        FluxC_f_BC_Di = self.di_boundary_conditions[triangle_idx][0]
+
+                        M[triangle_idx][triangle_idx ] += FluxC_f_BC_Di
+
+                        C[triangle_idx] += -FluxV_f_BC_vN -FluxV_f_BC_Di 
                     
                     else:
                         neighbour_center = self.mesh.get_center_point(neighbour_idx)
@@ -102,30 +115,35 @@ class ModeratorDiscretisedMesh:
         HP_triangle_indices = []
         fuel_pin_triangle_indices = []
 
-        # Iterating over all the boundary edges to see which are in contact with HP and fuel pins. 
         self.vN_boundary_conditions = np.zeros(self.mesh.triangles.shape[0])
+
+        # Iterating over all the boundary edges to see which are in contact with HP and fuel pins. 
         for boundary_edge in self.mesh.get_boundary_edges():
             triangle_idx = self.mesh._edge_to_triangles[boundary_edge]
 
-            if self.is_edge_on_circumference(boundary_edge, self.HP_centers, self.HP_radius):
+            if ((self.is_edge_on_circumference(boundary_edge, self.HP_centers, self.HP_radius)) and
+                (self.HP_BC == "vonNeumann")):
+
                 HP_triangle_indices.append(triangle_idx)
 
                 edge_length = np.linalg.norm(
                     self.mesh.points[boundary_edge[0]] - self.mesh.points[boundary_edge[1]])
 
                 # Positive due to "q dot S > 0" since both S and q points outward. 
-                self.vN_boundary_conditions[triangle_idx] = self.Q_in * edge_length
+                self.vN_boundary_conditions[triangle_idx] += self.Q_in * edge_length
 
                 total_length_HP += edge_length
             
-            elif self.is_edge_on_circumference(boundary_edge, self.fuel_pin_centers, self.fuel_pin_radius):
+            if ((self.is_edge_on_circumference(boundary_edge, self.fuel_pin_centers, self.fuel_pin_radius)) and
+                (self.FP_BC == "vonNeumann")):
+
                 fuel_pin_triangle_indices.append(triangle_idx)
 
                 edge_length = np.linalg.norm(
                     self.mesh.points[boundary_edge[0]] - self.mesh.points[boundary_edge[1]])
 
                 # Negative due to "q dot S < 0" since both S points outwards and q point inward.
-                self.vN_boundary_conditions[triangle_idx] = -self.Q_in * edge_length
+                self.vN_boundary_conditions[triangle_idx] += -self.Q_in * edge_length
 
                 total_length_fuel_pin += edge_length
                 
@@ -138,6 +156,50 @@ class ModeratorDiscretisedMesh:
         for triangle_idx in fuel_pin_triangle_indices:
             # Negative due to "q dot S < 0" since both S points outwards and q point inward.
             self.vN_boundary_conditions[triangle_idx] *= 1 / total_length_fuel_pin
+
+
+    def calculate_Dirichlet_boundary_conditions(self):
+
+        # First term in the matrix represents FluxC_b, the second represents FluxV_b.
+        self.di_boundary_conditions = np.zeros((self.mesh.triangles.shape[0], 2))
+
+        # Iterating over all the boundary edges to see which are in contact with HP and fuel pins. 
+        for boundary_edge in self.mesh.get_boundary_edges():
+            triangle_idx = self.mesh._edge_to_triangles[boundary_edge][0]
+
+            if ((self.is_edge_on_circumference(boundary_edge, self.HP_centers, self.HP_radius)) and
+                (self.HP_BC == "Dirichlet")):
+
+                edge_length = np.linalg.norm(
+                    self.mesh.points[boundary_edge[0]] - self.mesh.points[boundary_edge[1]])
+                
+                edge_center = (self.mesh.points[boundary_edge[0]] + self.mesh.points[boundary_edge[1]]) / 2.
+                
+                d_Cb = np.linalg.norm(self.mesh._centers[triangle_idx] - edge_center)
+
+                Diff_b = edge_length / d_Cb
+                Flux_C_b = Diff_b * self.cell_k[triangle_idx]
+
+                # Positive due to "q dot S > 0" since both S and q points outward. 
+                self.di_boundary_conditions[triangle_idx][0] += Flux_C_b
+                self.di_boundary_conditions[triangle_idx][1] += -Flux_C_b * self.T_HP
+
+            if ((self.is_edge_on_circumference(boundary_edge, self.fuel_pin_centers, self.fuel_pin_radius)) and
+                  (self.FP_BC == "Dirichlet")):
+                
+                edge_length = np.linalg.norm(
+                    self.mesh.points[boundary_edge[0]] - self.mesh.points[boundary_edge[1]])
+                
+                edge_center = (self.mesh.points[boundary_edge[0]] + self.mesh.points[boundary_edge[1]]) / 2.
+                
+                d_Cb = np.linalg.norm(self.mesh._centers[triangle_idx] - edge_center)
+
+                Diff_b = edge_length / d_Cb
+                Flux_C_b = Diff_b * self.cell_k[triangle_idx]
+
+                # Positive due to "q dot S > 0" since both S and q points outward. 
+                self.di_boundary_conditions[triangle_idx][0] += Flux_C_b
+                self.di_boundary_conditions[triangle_idx][1] += -Flux_C_b * self.T_FP
 
 
     def calculate_cross_diffusion_correction(self):
@@ -153,20 +215,25 @@ class ModeratorDiscretisedMesh:
             for neighbour_idx, surface in zip(neighbours_C, surfaces_C):
 
                 if neighbour_idx == -1:
-                    # If the neighbouring triangle is an boundary then apply note 3., eq. (8.42) on page 222 in F.Moukalled et al.
-                    T_C = self.cell_T[triangle_idx]
-                    q_surface = self.vN_boundary_conditions[triangle_idx] / surface.length
-                    k_C = self.cell_k[triangle_idx]
-                    
-                    # Not multiplying gDiff with S due to q_surface is equal to "S * q_b" 
-                    d_Cf = np.linalg.norm(surface.center - C_center)
+                    if self.is_edge_on_circumference(surface.nodes, self.HP_centers, self.HP_radius) and self.HP_BC == "Dirichlet":
+                        T_surface = self.T_HP
+                    elif self.is_edge_on_circumference(surface.nodes, self.fuel_pin_centers, self.fuel_pin_radius) and self.FP_BC == "Dirichlet":
+                        T_surface = self.T_FP
+                    else:
+                        # If the neighbouring triangle is an boundary then apply note 3., eq. (8.42) on page 222 in F.Moukalled et al.
+                        T_C = self.cell_T[triangle_idx]
+                        q_surface = self.vN_boundary_conditions[triangle_idx] / surface.length
+                        k_C = self.cell_k[triangle_idx]
+                        
+                        # Not multiplying gDiff with S due to q_surface is equal to "S * q_b" 
+                        d_Cf = np.linalg.norm(surface.center - C_center)
 
-                    T_surface = T_C - q_surface * d_Cf / k_C
-                    
-                    n = self.mesh.get_surface_normal(triangle_idx, surface)
-                    S_surface = surface.length * n
+                        T_surface = T_C - q_surface * d_Cf / k_C
+                        
+                        n = self.mesh.get_surface_normal(triangle_idx, surface)
+                        S_surface = surface.length * n
 
-                    flux_gradient_C += S_surface * T_surface
+                        flux_gradient_C += S_surface * T_surface
 
                 else:
                     F_center = self.mesh._centers[neighbour_idx]
@@ -196,7 +263,7 @@ class ModeratorDiscretisedMesh:
             grad_flux_C = calculate_cell_flux_gradient(triangle_idx)
             C_center = self.mesh._centers[triangle_idx]
 
-            # iterating over all surfaces in all triangles. Reduntant, since most surfaces are calculated twice, but simple. 
+            # iterating over all surfaces in all triangles. Reduntant, since most surfaces are calculated twice, but its a simple solution. 
             for neighbour_idx, surface in zip(neighbours_C, surfaces_C):
                 
                 # Assuming that the grad_flux is parallel with the surface and the iteration can be skipped.
@@ -224,9 +291,9 @@ class ModeratorDiscretisedMesh:
                 e = np.array(F_center - C_center) / d_CF
 
                 # Using the orthogonal correction approach
-                T_surface = (n - e) * surface.length
+                T_vector_surface = (n - e) * surface.length
 
-                self.cross_diffusion_correction[triangle_idx] += k_surface * np.dot(grad_flux_surface, T_surface)
+                self.cross_diffusion_correction[triangle_idx] += k_surface * np.dot(grad_flux_surface, T_vector_surface)
                 
 
     def calculate_effective_thermal_resistance(self):
@@ -271,9 +338,23 @@ class ModeratorDiscretisedMesh:
                 T_surface = T_C - q_surface * d_Cf / k_C
 
                 FP_boundary_temps.append(T_surface)
-                
-        mean_HP_temp = np.mean(np.array(HP_boundary_temps))
-        mean_FP_temp = np.mean(np.array(FP_boundary_temps))
+        
+        if self.HP_BC == "vonNeumann":
+            mean_HP_temp = np.mean(np.array(HP_boundary_temps))
+        elif self.HP_BC == "Dirichlet":
+            mean_HP_temp = self.T_HP
+        else:
+            raise ValueError(f"Unsupported HP_BC: {self.HP_BC!r}. Expected 'vonNeumann' or 'Dirichlet'.")
+
+        if self.FP_BC == "vonNeumann":
+            mean_FP_temp = np.mean(np.array(FP_boundary_temps))
+        elif self.FP_BC == "Dirichlet":
+            mean_FP_temp = self.T_FP
+        else:
+            raise ValueError(f"Unsupported HP_BC: {self.FP_BC!r}. Expected 'vonNeumann' or 'Dirichlet'.")
+        
+        if self.FP_BC == "Dirichlet" and self.HP_BC == "Dirichlet":
+            raise ValueError(f"Calculations not correct for both BC set to Dirichlet.")
 
         r_eff = (mean_FP_temp - mean_HP_temp) / self.Q_in
 
@@ -298,7 +379,7 @@ class ModeratorDiscretisedMesh:
 # -------------------- Rectangular test of the thermal mesh conduction code --------------------
  
 
-class rectangular_test_discretised_mesh:
+class RectangularTestDiscretisedMesh:
     def __init__(self, data, mesh):
         self.mesh = mesh
         n_triangles = mesh.triangles.shape[0]
@@ -773,7 +854,7 @@ def plot_mesh_with_temp_profile(points, triangles, T):
 
 
 if __name__ == "__main__":
-    mesh = meshio.read("meshHeatConduction/hex_mesh.msh")
+    mesh = meshio.read("models/moderator/hex_mesh.msh")
 
     points = mesh.points[:, :2]                
     triangles = mesh.cells_dict["triangle"]     
@@ -797,11 +878,17 @@ if __name__ == "__main__":
         "HP_centers":       [[0., 0.], [np.tan(theta_hex) * 2. * l_pitch, 2. * l_pitch]],
         "fuel_pin_centers": [[0, l_pitch * 3./2.], [0, l_pitch * 5./2.], [np.tan(theta_hex) * 2 * l_pitch, l_pitch * 7./2.]],
         "HP_radius": r_HP,
-        "fuel_pin_radius": r_f
+        "fuel_pin_radius": r_f,
+
+        "T_HP": 850,
+        "T_FP": 885,
+
+        "HP_BC": "vonNeumann", #"Dirichlet"
+        "FP_BC": "Dirichlet"   #"vonNeumann"
     }
 
-    mod_mesh = moderator_discretised_mesh(mesh=mesh, data=data)
-    rect_mesh = rectangular_test_discretised_mesh(mesh=mesh, data=data)
+    mod_mesh = ModeratorDiscretisedMesh(mesh=mesh, data=data)
+    #rect_mesh = RectangularTestDiscretisedMesh(mesh=mesh, data=data)
     T = np.array(mod_mesh.solve(iterations=1))
     T = T - np.min(T)
 
