@@ -2,9 +2,9 @@
     "HeatPipe": {
         "geometry": {
             "r_vapour": 0.00654,
-            "delta_wick": 0.00038,
-            "delta_gap": 0.0007,
-            "delta_wall": 0.00038,
+            "delta_wick": 0.00038933333333333344,
+            "delta_gap": 0.0006813333333333335,
+            "delta_wall": 0.00038933333333333344,
             "l_evap": 1.80,
             "l_adiabatic": 0.4,
             "l_cond": 1.80
@@ -36,9 +36,9 @@
 
     "FuelPin": {
         "geometry": {
-            "delta_gap": 2.5e-3, 
-            "delta_wall": 2.5e-3,
-            "r": 0.0085,
+            "delta_gap": 2e-3, 
+            "delta_wall": 2e-3,
+            "r": 0.008,
             "l": 1.8
         },
         "energy": {

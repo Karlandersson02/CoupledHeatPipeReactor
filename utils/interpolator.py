@@ -25,9 +25,9 @@ T_MAX = 1200.0
 # -------------------------------------------------------------------------
 
 import json
-from project_data.heatpipe_dataclasses import *
+from data.dataclass import *
 
-with open("./project_data/vapour_data.json", "r") as f:
+with open("./data/vapour_data.json", "r") as f:
     data_guoju = json.load(f)
     data = data_guoju["data_guoju_560"]
 
@@ -37,7 +37,7 @@ mat = HeatpipeMaterial(**data["material"])
 wick = HeatpipeWick(**data["wick"])
 bc = HeatpipeBC(**data["bc"])
 cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
-cfg = cfg.resolve()
+cfg = cfg.resolve_geometry()
 
 # Number of grid points per dimension.
 # Total OpenMC runs = N_T_HEAT_PIPE * N_T_FUEL_PIN * N_T_MODERATOR

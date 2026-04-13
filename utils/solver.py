@@ -1,153 +1,234 @@
 import numpy as np
+import inspect
 
-from models.component import Component
-from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
-from models.neutronics.axial_neutron_model import NeutronicsModel
-
+from typing import Sequence, Callable, Any
 from scipy.optimize import fsolve, newton_krylov
 from scipy.interpolate import RegularGridInterpolator
 
-from typing import Sequence
+from models.component import Component
+from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
+from models.fuel_pin.fuel_pin_model import FuelPin
+from models.neutronics.axial_neutron_model import NeutronicsModel
+from coupled_systems.reactor import Reactor
 
-def interpolate_2D(x_coarse, y_coarse, x_fine, y_fine, U_coarse):
-    # Build interpolator
 
+def interpolate_2d(
+    x_coarse: np.ndarray,
+    y_coarse: np.ndarray,
+    x_fine: np.ndarray,
+    y_fine: np.ndarray,
+    u_coarse: np.ndarray,
+) -> np.ndarray:
     interp = RegularGridInterpolator(
         (x_coarse, y_coarse),
-        U_coarse,
+        u_coarse,
         method="linear",
         bounds_error=False,
         fill_value=None,
     )
 
-    Xf, Yf = np.meshgrid(x_fine, y_fine, indexing="ij")
+    x_mesh, y_mesh = np.meshgrid(x_fine, y_fine, indexing="ij")
+    points_fine = np.column_stack((x_mesh.ravel(), y_mesh.ravel()))
+    return interp(points_fine).reshape(len(x_fine), len(y_fine))
 
-    # Points where interpolation is evaluated
-    points_fine = np.stack([Xf.ravel(), Yf.ravel()], axis=-1)
-
-    # Interpolated fine-grid solution
-    U_fine = interp(points_fine).reshape(len(x_fine), len(y_fine))
-    return U_fine
 
 class Solver:
-
-    def __init__(self, components: Sequence[Component], iterate = True):
-        self.components = components
+    def __init__(self, components: Sequence[Component], iterate: bool = True):
+        self.components = list(components)
         self.iterate = iterate
+        self.solutions: list[Any] = []
+        self.solution: Any | None = None
+
+    def _solve_component(
+        self,
+        component: Component,
+        x_initial: np.ndarray,
+        solver_fn: Callable[..., np.ndarray],
+        solver_kwargs: dict[str, Any] | None = None,
+    ) -> np.ndarray:
+        component.assemble()
+        kwargs = {} if solver_kwargs is None else solver_kwargs
+
+        # Filter kwargs to only what the solver accepts
+        sig = inspect.signature(solver_fn)
+        valid_kwargs = {
+            k: v for k, v in kwargs.items()
+            if k in sig.parameters
+        }
+
+        return solver_fn(component.get_residuals, x_initial, **valid_kwargs)
+
+    def _transfer_heatpipe(
+        self,
+        current: HeatpipeDiscretised,
+        nxt: HeatpipeDiscretised,
+        x_sol: np.ndarray,
+    ) -> np.ndarray:
+        x_out = current.unpack(x_sol)
+
+        z_coarse = np.linspace(1.0, current.cfg.geometry.l_tot, current.cfg.mesh.N_Z)
+        r_coarse = np.linspace(1.0, current.cfg.geometry.r_outer, current.cfg.mesh.N_R)
+
+        z_fine = np.linspace(1.0, nxt.cfg.geometry.l_tot, nxt.cfg.mesh.N_Z)
+        r_fine = np.linspace(1.0, nxt.cfg.geometry.r_outer, nxt.cfg.mesh.N_R)
+
+        field = x_out[0].reshape(current.cfg.mesh.N_Z, current.cfg.mesh.N_R)
+        field_interp = interpolate_2d(z_coarse, r_coarse, z_fine, r_fine, field)
+
+        return nxt.pack((field_interp, x_out[-1]))
+
+    def _transfer_fuel_pin(
+        self,
+        current: FuelPin,
+        nxt: FuelPin,
+        x_sol: np.ndarray,
+    ) -> np.ndarray:
+        x_out = current.unpack(x_sol)
+
+        z_coarse = np.linspace(1.0, current.cfg.geometry.l, current.cfg.mesh.N_Z)
+        r_coarse = np.linspace(1.0, current.cfg.geometry.r, current.cfg.mesh.N_R)
+
+        z_fine = np.linspace(1.0, nxt.cfg.geometry.l, nxt.cfg.mesh.N_Z)
+        r_fine = np.linspace(1.0, nxt.cfg.geometry.r, nxt.cfg.mesh.N_R)
+
+        field = x_out[0].reshape(current.cfg.mesh.N_Z, current.cfg.mesh.N_R)
+        field_interp = interpolate_2d(z_coarse, r_coarse, z_fine, r_fine, field)
+
+        return nxt.pack((field_interp, x_out[-1]))
+
+    def _transfer_neutronics(
+        self,
+        current: NeutronicsModel,
+        nxt: NeutronicsModel,
+        x_sol: np.ndarray,
+    ) -> np.ndarray:
+        x_out = current.unpack(x_sol)
+
+        z_coarse = np.linspace(1.0, current.cfg.mesh.l, current.cfg.mesh.N_Z)
+        g_coarse = np.linspace(1.0, current.cfg.energy.N_G, current.cfg.energy.N_G)
+
+        z_fine = np.linspace(1.0, nxt.cfg.mesh.l, nxt.cfg.mesh.N_Z)
+        g_fine = np.linspace(1.0, nxt.cfg.energy.N_G, nxt.cfg.energy.N_G)
+
+        field = x_out[0].reshape(current.cfg.mesh.N_Z, current.cfg.energy.N_G)
+        field_interp = interpolate_2d(z_coarse, g_coarse, z_fine, g_fine, field)
+
+        return nxt.pack((field_interp, x_out[-1]))
+
+    def _transfer_reactor(
+        self,
+        current: Reactor,
+        nxt: Reactor,
+        x_sol: np.ndarray,
+    ) -> np.ndarray:
+        x_out = current.unpack(x_sol)
+
+        hp_current = current.heat_pipe_thermal_model
+        fp_current = current.fuel_pin_thermal_model
+        neu_current = current.neutron_flux_model
+
+        hp_next = nxt.heat_pipe_thermal_model
+        fp_next = nxt.fuel_pin_thermal_model
+        neu_next = nxt.neutron_flux_model
+
+        x_init_hp = self._transfer_heatpipe(hp_current, hp_next, x_out[0])
+        x_init_fp = self._transfer_fuel_pin(fp_current, fp_next, x_out[1])
+        x_init_neu = self._transfer_neutronics(neu_current, neu_next, x_out[2])
+
+        return nxt.pack((x_init_hp, x_init_fp, x_init_neu))
+
+    def _is_type(self, obj: object, name: str) -> bool:
+        return type(obj).__name__ == name
+
+    def _get_next_initial_guess(
+        self,
+        current: Component,
+        nxt: Component,
+        x_sol: np.ndarray,
+    ) -> np.ndarray:
+        if self._is_type(current, "HeatpipeDiscretised") and self._is_type(nxt, "HeatpipeDiscretised"):
+            return self._transfer_heatpipe(current, nxt, x_sol)
+
+        if self._is_type(current, "FuelPin") and self._is_type(nxt, "FuelPin"):
+            return self._transfer_fuel_pin(current, nxt, x_sol)
+
+        if self._is_type(current, "NeutronicsModel") and self._is_type(nxt, "NeutronicsModel"):
+            return self._transfer_neutronics(current, nxt, x_sol)
+
+        if self._is_type(current, "Reactor") and self._is_type(nxt, "Reactor"):
+            return self._transfer_reactor(current, nxt, x_sol)
+
+        raise TypeError(
+            f"Unsupported component transfer: {type(current).__name__} -> {type(nxt).__name__}"
+        )
+
+    def _normalize_solver_inputs(
+        self,
+        solvers: Callable[..., np.ndarray] | Sequence[Callable[..., np.ndarray]],
+        solver_kwargs: dict[str, Any] | Sequence[dict[str, Any]] | None = None,
+    ) -> tuple[list[Callable[..., np.ndarray]], list[dict[str, Any]]]:
+        n_components = len(self.components)
+
+        if callable(solvers):
+            solver_list = [solvers] * n_components
+        else:
+            solver_list = list(solvers)
+            if len(solver_list) != n_components:
+                raise ValueError(
+                    f"Expected {n_components} solvers, got {len(solver_list)}."
+                )
+
+        if solver_kwargs is None:
+            kwargs_list = [{} for _ in range(n_components)]
+        elif isinstance(solver_kwargs, dict):
+            kwargs_list = [solver_kwargs.copy() for _ in range(n_components)]
+        else:
+            kwargs_list = list(solver_kwargs)
+            if len(kwargs_list) != n_components:
+                raise ValueError(
+                    f"Expected {n_components} solver kwargs dictionaries, got {len(kwargs_list)}."
+                )
+
+        return solver_list, kwargs_list
+
+    def run(
+        self,
+        solvers: Callable[..., np.ndarray] | Sequence[Callable[..., np.ndarray]],
+        solver_kwargs: dict[str, Any] | Sequence[dict[str, Any]] | None = None,
+    ) -> None:
+        solver_list, kwargs_list = self._normalize_solver_inputs(solvers, solver_kwargs)
+
+        x_initial = self.components[0].initial_guess()
 
         if not self.iterate:
             self.solutions = []
 
-    def newton_krylov(self, verbose=True, **kwargs):
-        X_initial = self.components[0].initial_guess()
-
         for i, component in enumerate(self.components):
-            component.assemble()
             if not self.iterate and i > 0:
-                X_initial = component.initial_guess()
-            
-            X_sol = newton_krylov(
-                component.get_residuals,
-                X_initial,
-                verbose = True,
-                **kwargs
+                x_initial = component.initial_guess()
+
+            x_sol = self._solve_component(
+                component,
+                x_initial,
+                solver_list[i],
+                kwargs_list[i],
             )
 
-            X_out = component.post_process(np.array(X_sol))
-            if self.iterate and i < len(self.components)-1:
-            
-                if type(component) is HeatpipeDiscretised:
-                    z_coarse = np.linspace(1, component.cfg.geometry.l_tot, component.cfg.mesh.N_Z)
-                    r_coarse = np.linspace(1, component.cfg.geometry.r_outer, component.cfg.mesh.N_R)
+            is_last = i == len(self.components) - 1
 
-                    next_component = self.components[i+1]
-                    z_fine = np.linspace(1, next_component.cfg.geometry.l_tot, next_component.cfg.mesh.N_Z)
-                    r_fine = np.linspace(1, next_component.cfg.geometry.r_outer, next_component.cfg.mesh.N_R)
+            if self.iterate and not is_last:
+                next_component = self.components[i + 1]
+                x_initial = self._get_next_initial_guess(component, next_component, x_sol)
+            else:
+                x_out = component.post_process(np.asarray(x_sol))
 
-                    X_out_interpolated = interpolate_2D(
-                        z_coarse, r_coarse,
-                        z_fine, r_fine,
-                        X_out[0]
-                    )
+                if not self.iterate:
+                    self.solutions.append(x_out)
+                else:
+                    self.solution = x_out
 
-                    X_initial = next_component.pack((X_out_interpolated, X_out[-1]))
-                    # X_out = next_component.post_process(X_initial)
-                    # self.solution = X_out
-                    # return
+    def newton_krylov(self, verbose: bool = True, **kwargs) -> None:
+        self.run(newton_krylov, solver_kwargs={"verbose": verbose, **kwargs})
 
-                if type(component) is NeutronicsModel:
-                    z_coarse = np.linspace(1, component.cfg.mesh.l, component.cfg.mesh.l)
-                    g_coarse = np.linspace(1, component.cfg.mesh.N_G, component.cfg.mesh.N_G)
-
-                    next_component = self.components[i+1]
-                    z_fine = np.linspace(1, next_component.cfg.mesh.l, next_component.cfg.mesh.l)
-                    g_fine = np.linspace(1, next_component.cfg.energy.N_G, next_component.cfg.energy.N_G)
-
-                    X_out_interpolated = interpolate_2D(
-                        z_coarse, g_coarse,
-                        z_fine, g_fine,
-                        X_out[0]
-                    )
-
-                    X_initial = next_component.pack((X_out_interpolated, X_out[-1]))
-                
-            if not self.iterate:
-                self.solutions.append(X_out)
-        
-        if self.iterate:
-            self.solution = X_out
-    
-    def fsolve(self, **kwargs):
-        X_initial = self.components[0].initial_guess()
-
-        for i, component in enumerate(self.components):
-            component.assemble()
-            if not self.iterate and i > 0:
-                X_initial = component.initial_guess()
-            
-            X_sol = fsolve(
-                component.get_residuals,
-                X_initial,
-                **kwargs
-            )
-
-            X_out = component.post_process(np.array(X_sol))
-            if self.iterate and i < len(self.components)-1:
-            
-                if type(component) is HeatpipeDiscretised:
-                    r_coarse = np.linspace(1, component.cfg.mesh.N_R, component.cfg.mesh.N_R)
-                    z_coarse = np.linspace(1, component.cfg.mesh.N_Z, component.cfg.mesh.N_Z)
-
-                    next_component = self.components[i+1]
-                    r_fine = np.linspace(1, next_component.cfg.mesh.N_R, next_component.cfg.mesh.N_R)
-                    z_fine = np.linspace(1, next_component.cfg.mesh.N_Z, next_component.cfg.mesh.N_Z)
-
-                    X_out_interpolated = interpolate_2D(
-                        r_coarse, z_coarse,
-                        r_fine, z_fine,
-                        X_out[0]
-                    )
-
-                    X_initial = next_component.pack((X_out_interpolated, X_out[-1]))
-
-                if type(component) is NeutronicsModel:
-                    r_coarse = np.linspace(1, component.cfg.mesh.N_G, component.cfg.mesh.N_G)
-                    z_coarse = np.linspace(1, component.cfg.mesh.N_Z, component.cfg.mesh.N_Z)
-
-                    next_component = self.components[i+1]
-                    r_fine = np.linspace(1, next_component.cfg.geometry.r_outer, next_component.cfg.mesh.N_R)
-                    z_fine = np.linspace(1, next_component.cfg.geometry.l_tot, next_component.cfg.mesh.N_Z)
-
-                    X_out_interpolated = interpolate_2D(
-                        r_coarse, z_coarse,
-                        r_fine, z_fine,
-                        X_out[0]
-                    )
-
-                    X_initial = next_component.pack((X_out_interpolated, X_out[-1]))
-            
-            if not self.iterate:
-                self.solutions.append(X_out)
-        
-        if self.iterate:
-            self.solution = X_out
+    def fsolve(self, **kwargs) -> None:
+        self.run(fsolve, solver_kwargs=kwargs)

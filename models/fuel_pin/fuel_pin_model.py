@@ -38,8 +38,7 @@ class FuelPin(Component):
     def get_residuals(self, X):
         T = X.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
 
-        self.calculate_qr()
-        self.initialize_discretization()
+        # self.initialize_discretization()
 
         k = self.generate_k_matrix(T)
         h = self.generate_h_matrix()
@@ -180,11 +179,10 @@ class FuelPin(Component):
         return res.reshape(-1) / res_norm_denom
 
     def post_process(self, X):
-        return self.unpack(X)
+        return (X.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R), )
 
     def unpack(self, X):
-        T_HP = X.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
-        return (T_HP, )
+        return (X, )
     
     def pack(self, X_tuple):
         X = X_tuple[0].reshape(self.cfg.mesh.N_Z * self.cfg.mesh.N_R)
@@ -501,7 +499,7 @@ if __name__ == "__main__":
     energy = FuelPinEnergy(**data["energy"])
     mat    = FuelPinMaterial(**data["material"])
     cfg    = FuelPinConfig(geom, mesh, energy, mat)
-    cfg = cfg.resolve()
+    cfg = cfg.resolve_geometry()
 
     fuel_pin = FuelPin(cfg)
     solver = Solver([fuel_pin])
@@ -512,7 +510,7 @@ if __name__ == "__main__":
     fuel_pin.linear_solve()
 
     plt.plot(fuel_pin.R[::2], T[0], label="non-linear")
-    plt.plot(fuel_pin.R[::2], fuel_pin.T.reshape(N_Z, N_R)[0], ls="--", label="linear")
+    plt.plot(fuel_pin.R[::2], fuel_pin.T.reshape(cfg.mesh.N_Z, cfg.mesh.N_R)[0], ls="--", label="linear")
     
     plt.legend()
     plt.show()

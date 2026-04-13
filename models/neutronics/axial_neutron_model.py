@@ -120,6 +120,9 @@ class NeutronicsModel(Component):
         phi_n_g *= self.cfg.energy.power / power
         return phi_n_g, X[-1]
     
+    def unpack(self, X):
+        return X[:-1], X[-1]
+    
     def pack(self, X_tuple):
         X = np.r_[X_tuple[0].reshape(self.cfg.mesh.N_Z * self.cfg.energy.N_G), X_tuple[1]]
         return X

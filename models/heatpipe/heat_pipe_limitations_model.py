@@ -462,7 +462,7 @@ if __name__ == "__main__":
     bc = HeatpipeBC(**data["bc"])
     wick = HeatpipeWick(**data["wick"])
     cfg = HeatpipeConfig(geom, mesh, mat, bc, wick)
-    cfg = cfg.resolve()
+    cfg = cfg.resolve_geometry()
 
     HP = Heatpipe(cfg)
     HP_limits = heat_pipe_limitations(HP, cfg)

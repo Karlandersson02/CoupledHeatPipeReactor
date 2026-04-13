@@ -77,7 +77,7 @@ if __name__ == "__main__":
     from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
     from utils.solver import Solver
 
-    with open("./project_data/vapour_data.json", "r") as f:
+    with open("./data/vapour_data.json", "r") as f:
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
 
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     wick = HeatpipeWick(**data["wick"])
     bc = HeatpipeBC(**data["bc"])
     cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
-    cfg = cfg.resolve()
+    cfg = cfg.resolve_geometry()
 
     heatpipe = HeatpipeDiscretised(cfg)
     solver = Solver([heatpipe])
@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
     T_HP = heatpipe.pack(solver.solution)
     cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
-    cfg = cfg.resolve()
+    cfg = cfg.resolve_geometry()
 
     liquid = LiquidDiscretised(cfg, T_HP)
     P = liquid.get_pressure_drop_profile()

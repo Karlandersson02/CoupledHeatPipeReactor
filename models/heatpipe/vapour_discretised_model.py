@@ -30,13 +30,13 @@ class VapourDiscretised(Component):
     def post_process(self, X):
         return self.unpack(X)
     
-    def pack(self, X_tuple):
-        return np.r_[*X_tuple]
-    
     def unpack(self, X):
         u = X[:self.cfg.mesh.N_Z-1]
         T = X[self.cfg.mesh.N_Z-1:]
         return u, T
+    
+    def pack(self, X_tuple):
+        return np.r_[*X_tuple]
     
     def get_residuals(self, X):
         u, T = X[:self.cfg.mesh.N_Z-1], X[self.cfg.mesh.N_Z-1:]
@@ -289,7 +289,7 @@ if __name__ == "__main__":
     from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
     from utils.solver import Solver
 
-    with open("./project_data/vapour_data.json", "r") as f:
+    with open("./data/vapour_data.json", "r") as f:
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
 
@@ -303,7 +303,7 @@ if __name__ == "__main__":
     wick = HeatpipeWick(**data["wick"])
     pipe_bc = HeatpipeBC(**data["bc"])
     cfg = HeatpipeConfig(geom, mesh, mat, wick, pipe_bc)
-    cfg = cfg.resolve()
+    cfg = cfg.resolve_geometry()
 
     heatpipe = HeatpipeDiscretised(cfg)
     T_HP = heatpipe.linear_solve()

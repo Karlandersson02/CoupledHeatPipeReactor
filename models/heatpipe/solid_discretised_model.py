@@ -11,6 +11,8 @@ class HeatpipeDiscretised(Component):
 
         self.cfg = config
 
+        self._initialize_discretization()
+
     def initial_guess(self):
         X_initial = np.full(self.cfg.mesh.N_Z * self.cfg.mesh.N_R + 1, 800)
         if not self.cfg.bc.Temperature_BC:
@@ -28,6 +30,7 @@ class HeatpipeDiscretised(Component):
 
     def get_residuals(self, X):
         T, T_v = self.unpack(X)
+        T = T.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
 
         surface_areas, delta_Rp, delta_Rm, delta_Z = self._initialize_discretization()
         k = self._generate_k_matrix(T)
@@ -175,15 +178,15 @@ class HeatpipeDiscretised(Component):
         return T
 
     def post_process(self, X):
-        return self.unpack(X)
+        X_tuple = (X[:-1].reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R), X[-1])
+        return X_tuple
+    
+    def unpack(self, X):
+        return (X[:-1], X[-1])
     
     def pack(self, X_tuple):
         X = np.r_[X_tuple[0].reshape(self.cfg.mesh.N_Z * self.cfg.mesh.N_R), X_tuple[1]]
         return X
-    
-    def unpack(self, X):
-        X_tuple = (X[:-1].reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R), X[-1])
-        return X_tuple
 
     def _initialize_discretization(self):     
         R         = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)
@@ -640,34 +643,37 @@ class HeatpipeDiscretised(Component):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import json
+    from typing import Sequence
     from utils.solver import Solver
 
-    with open("./project_data/vapour_data.json", "r") as f:
+    with open("./data/vapour_data.json", "r") as f:
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
     
-    N_R, N_Z = 30, 100
     geom = HeatpipeGeometry(**data["geometry"])
     geom.delta_wick = 0.00025
     geom.delta_gap = 0.00025
     mesh = HeatpipeMesh(**data["mesh"])
-    mesh.N_R = N_R
+    mesh.N_R = 30
+    mesh.N_Z = 30
     mat = HeatpipeMaterial(**data["material"])
     wick = HeatpipeWick(**data["wick"])
     bc = HeatpipeBC(**data["bc"])
     cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
-    cfg = cfg.resolve()
-
-    heatpipe = HeatpipeDiscretised(cfg)
-
-    solver = Solver([heatpipe])
+    cfgs: Sequence[HeatpipeConfigResolved] = make_mesh_sequence(cfg, 1)
+    
+    heatpipes = [HeatpipeDiscretised(cfg) for cfg in cfgs]
+    for heatpipe in heatpipes:
+        print(f"N_Z = {heatpipe.cfg.mesh.N_Z}, N_R = {heatpipe.cfg.mesh.N_R}")
+    solver = Solver(heatpipes)
     solver.newton_krylov()
 
     T_solid, T_vap = solver.solution
 
-    N_Z = cfg.mesh.N_Z
-    N_R = cfg.mesh.N_R
+    N_Z = cfgs[-1].mesh.N_Z
+    N_R = cfgs[-1].mesh.N_R
 
+    heatpipe = heatpipes[-1]
     T_linear = heatpipe.linear_solve()
 
     plt.rcParams["font.size"] = 22

@@ -397,7 +397,7 @@ if __name__ == "__main__":
     import json
     from project_data.heatpipe_dataclasses import *
 
-    with open("./project_data/vapour_data.json", "r") as f:
+    with open("./data/vapour_data.json", "r") as f:
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
 
