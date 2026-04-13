@@ -7,7 +7,7 @@ from models.heatpipe.vapour_discretised_model import VapourDiscretised
 from models.heatpipe.liquid_discretised_model import LiquidDiscretised
 from utils.solver import Solver
 
-from project_data.heatpipe_dataclasses import *
+from data.dataclass import *
 
 class Heatpipe:
 
