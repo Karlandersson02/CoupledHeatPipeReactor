@@ -8,4 +8,6 @@ NuclearData/
 walkthrough_gmsh_tutorials
 openMC/test
 profile.pyspy
+
+models/moderator/hex_mesh.msh
 profile.pyspy
