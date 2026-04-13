@@ -134,7 +134,7 @@ if __name__ == "__main__":
         data = json.load(f)
     
     # Mesh dimensions
-    N_R_HP, N_R_FP, N_Z = 15, 15, 50
+    N_R_HP, N_R_FP, N_Z = 15, 15, 60
 
     # Heat pipe
     geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
