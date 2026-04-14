@@ -36,9 +36,9 @@
 
     "FuelPin": {
         "geometry": {
-            "delta_gap": 2e-3, 
-            "delta_wall": 2e-3,
-            "r": 0.008,
+            "delta_gap": 1e-4, 
+            "delta_wall": 6e-4,
+            "r": 0.0065,
             "l": 1.8
         },
         "energy": {
