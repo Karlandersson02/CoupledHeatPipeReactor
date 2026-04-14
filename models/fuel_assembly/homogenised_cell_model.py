@@ -3,10 +3,12 @@ import numpy as np
 import openmc
 import openmc.mgxs
 import os
+import glob
 
 from utils.sodium_properties import calculate_Na_rho_l
 from coupled_systems.heatpipe import Heatpipe
 
+import matplotlib.pyplot as plt
 
 # =============================================================================
 # User parameters
@@ -42,16 +44,16 @@ def make_energy_group_edges(num_groups, e_min=E_MIN_eV, e_max=E_MAX_eV):
 # Geometry / materials
 # =============================================================================
 
-def create_heat_pipe_universe(HP, temperature):
+def create_heat_pipe_universe(cfg_HP, temperature):
     density_Na = 1e-3 * calculate_Na_rho_l(temperature)
-    density_fecral = 7.15
-    density_graphite = 2.0
+    density_fecral = 7.16                            
+    density_graphite = 1.85   # https://www.osti.gov/servlets/purl/1330693, Average between the two samples at 600 deg C.
 
-    porosity   = HP.cfg.wick.porosity
-    r_outer    = 1e2 * HP.cfg.geometry.r_outer
-    delta_wall = 1e2 * HP.cfg.geometry.delta_wall
-    delta_gap  = 1e2 * HP.cfg.geometry.delta_gap
-    delta_wick = 1e2 * HP.cfg.geometry.delta_wick
+    porosity   = cfg_HP.wick.porosity
+    r_outer    = 1e2 * cfg_HP.geometry.r_outer
+    delta_wall = 1e2 * cfg_HP.geometry.delta_wall
+    delta_gap  = 1e2 * cfg_HP.geometry.delta_gap
+    delta_wick = 1e2 * cfg_HP.geometry.delta_wick
 
     r_gap    = r_outer - delta_wall
     r_wick   = r_gap   - delta_gap
@@ -93,17 +95,17 @@ def create_heat_pipe_universe(HP, temperature):
 
     return openmc.Universe(cells=(vapour_cell, wick_cell, gap_cell, wall_cell, mod_cell))
 
-def create_fuel_pin_universe(temperature):
-    density_uo2       = 10.0
+def create_fuel_pin_universe(cfg_FP, temperature):
+    density_uo2       = 10.6       # https://www.researchgate.net/publication/341370951_PROCESSES_of_UO_2_fuel_cycle
     density_zirconium = 6.6
-    density_graphite  = 2.0
-    r_fuel       = 1.2
-    r_clad_inner = 1.3
-    r_clad_outer = 1.4
+    density_graphite  = 1.85
+    r_clad_outer = 1.0e2 * (cfg_FP.geometry.r)
+    r_clad_inner = 1.0e2 * (cfg_FP.geometry.r - cfg_FP.geometry.delta_wall)
+    r_fuel       = 1.0e2 * (cfg_FP.geometry.r - cfg_FP.geometry.delta_wall - cfg_FP.geometry.delta_gap)
 
     uo2 = openmc.Material(11, 'uo2')
-    uo2.add_nuclide('U235', 0.06)
-    uo2.add_nuclide('U238', 0.94)
+    uo2.add_nuclide('U235', 0.10)
+    uo2.add_nuclide('U238', 0.90)
     uo2.add_nuclide('O16',  2.0)
     uo2.set_density('g/cm3', density_uo2)
     uo2.temperature = temperature
@@ -132,7 +134,7 @@ def create_fuel_pin_universe(temperature):
 
 
 def create_moderator_universe(temperature):
-    density_graphite = 2.0
+    density_graphite = 1.85
 
     graphite = openmc.Material(21, name='graphite')
     graphite.add_nuclide('C0', 1.0)
@@ -208,7 +210,7 @@ def collect_tallies_from_mgxs(mgxs_objects):
 # =============================================================================
 
 def create_openmc_model(
-    HP,
+    cfg_R,
     num_groups=NUM_ENERGY_GROUPS,
     T_heat_pipe=T_HEAT_PIPE,
     T_moderator=T_MODERATOR,
@@ -216,8 +218,8 @@ def create_openmc_model(
 ):
     # openmc.Materials.cross_sections = '/home/felixpersson/MasterThesisProject/NuclearData/endfb71/endfb-vii.1-hdf5/cross_sections.xml'
 
-    heat_pipe_universe = create_heat_pipe_universe(HP, T_heat_pipe)
-    fuel_pin_universe  = create_fuel_pin_universe(T_fuel_pin)
+    heat_pipe_universe = create_heat_pipe_universe(cfg_R.HP, T_heat_pipe)
+    fuel_pin_universe  = create_fuel_pin_universe(cfg_R.FP, T_fuel_pin)
     moderator_universe = create_moderator_universe(T_moderator)
 
     all_materials = {}
@@ -229,9 +231,10 @@ def create_openmc_model(
     materials = openmc.Materials(list(all_materials.values()))
     materials.export_to_xml()
 
+    lattice_pitch = 2.86
     lattice = openmc.HexLattice()
     lattice.center = (0., 0.)
-    lattice.pitch  = (10.,)
+    lattice.pitch  = (lattice_pitch, )
     lattice.outer  = moderator_universe
     lattice.universes = [
         6 * [moderator_universe, fuel_pin_universe, fuel_pin_universe],
@@ -240,13 +243,14 @@ def create_openmc_model(
         [heat_pipe_universe],
     ]
 
+    flake_diameter = 20
     outer_surface = openmc.model.HexagonalPrism(
-        edge_length=4.0 * lattice.pitch[0],
+        edge_length = flake_diameter / (2. * np.sin(np.pi/3)),
         boundary_type='reflective',
         orientation='x'
     )
-    top    = openmc.ZPlane( 100., boundary_type='vacuum')
-    bottom = openmc.ZPlane(-100., boundary_type='vacuum')
+    top    = openmc.ZPlane( 1e2*cfg_FP.geometry.l/2, boundary_type='vacuum')
+    bottom = openmc.ZPlane(-1e2*cfg_FP.geometry.l/2, boundary_type='vacuum')
 
     # This is the spatial domain over which we homogenize
     main_cell = openmc.Cell(
@@ -267,17 +271,19 @@ def create_openmc_model(
     tallies = collect_tallies_from_mgxs(mgxs_objects)
     tallies.export_to_xml()
 
+    z_half = 1e2 * cfg_R.FP.geometry.l / 2
+
     source = openmc.IndependentSource(
         space=openmc.stats.Box(
-            lower_left=(-2 * lattice.pitch[0], -100., -2 * lattice.pitch[0]),
-            upper_right=( 2 * lattice.pitch[0],  100.,  2 * lattice.pitch[0]),
-            only_fissionable=False
-        )
+            lower_left=(-11.0, -11.0, -z_half),
+            upper_right=(11.0, 11.0, z_half),
+        ),
+        constraints={'fissionable': True}
     )
 
     settings = openmc.Settings()
     settings.batches = 150
-    settings.inactive = 75
+    settings.inactive = 20
     settings.particles = 2000
     settings.source = source
     settings.verbosity = 4
@@ -285,9 +291,16 @@ def create_openmc_model(
     settings.temperature = {
         # 'default': 850.0,              # fallback temperature [K]
         'method': 'interpolation',     # use interpolation between tabulated temps
-        'range': (300.0, 1400.0),      # preload all XS temperatures in this range
+        'range': (700.0, 1200.0),      # preload all XS temperatures in this range
         'tolerance': 100.0             # outside range of available data, snap to bound if close enough
     }
+
+    entropy_mesh = openmc.RegularMesh()
+    entropy_mesh.lower_left  = (-11, -11, -90)
+    entropy_mesh.upper_right = ( 11,  11,  90)
+    entropy_mesh.dimension   = ( 15,  15,  15)
+
+    settings.entropy_mesh = entropy_mesh
 
     settings.export_to_xml()
 
@@ -390,33 +403,97 @@ def print_homogenized_xs(results, energy_group_edges):
 
 
 # =============================================================================
+# Geometry and Shannon entropy plotting
+# =============================================================================
+
+def plot_geometry_and_entropy(model, statepoint_path=None, z0=0.0):
+    if statepoint_path is None:
+        sps = sorted(glob.glob("statepoint.*.h5"))
+        if not sps:
+            raise FileNotFoundError("No statepoint file found in current directory.")
+        statepoint_path = sps[-1]
+
+    with openmc.StatePoint(statepoint_path) as sp:
+        entropy = np.asarray(sp.entropy)
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+    # Left: geometry
+    model.geometry.plot(
+        basis='xy',
+        origin=(0.0, 0.0, z0),
+        width=(22.5, 22.5),
+        pixels=(800, 800),
+        color_by='material',
+        axes=axes[0],          # <- important fix
+        axis_units='cm'        # optional, but nice if your model is in cm
+    )
+    axes[0].set_title(f'Geometry in x-y plane at z={z0}')
+    axes[0].set_xlabel('x [cm]')
+    axes[0].set_ylabel('y [cm]')
+    axes[0].set_aspect('equal')
+
+    # Right: entropy history
+    axes[1].plot(np.arange(1, len(entropy) + 1), entropy, marker='o', markersize=3)
+    axes[1].set_title('Shannon entropy vs batch')
+    axes[1].set_xlabel('Batch')
+    axes[1].set_ylabel('Entropy')
+    axes[1].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+
+
+# =============================================================================
 # Entry point
 # =============================================================================
 
 if __name__ == "__main__":
     import json
-    from project_data.heatpipe_dataclasses import *
+    from data.dataclass import *
 
-    with open("./data/vapour_data.json", "r") as f:
-        data_guoju = json.load(f)
-        data = data_guoju["data_guoju_560"]
+    with open("./data/reactor_data.json", "r") as f:
+        data = json.load(f)
+    
+    # Mesh dimensions
+    N_R_HP, N_R_FP, N_Z = 15, 15, 50
 
-    geom = HeatpipeGeometry(**data["geometry"])
-    mesh = HeatpipeMesh(**data["mesh"])
-    mat  = HeatpipeMaterial(**data["material"])
-    wick = HeatpipeWick(**data["wick"])
-    bc   = HeatpipeBC(**data["bc"])
-    cfg  = HeatpipeConfig(geom, mesh, mat, wick, bc)
-    cfg  = cfg.resolve()
+    # Heat pipe config
+    geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
+    mesh   = HeatpipeMesh(N_R=N_R_HP, N_Z=N_Z)
+    mat    = HeatpipeMaterial(**data["HeatPipe"]["material"])
+    wick   = HeatpipeWick(**data["HeatPipe"]["wick"])
+    bc     = HeatpipeBC(**data["HeatPipe"]["bc"])
+    cfg_HP = HeatpipeConfig(geom, mesh, mat, wick, bc)
 
-    heatpipe = Heatpipe(cfg)
+    # Fuel pin config
+    geom_FP   = FuelPinGeometry(**data["FuelPin"]["geometry"])
+    mesh_FP   = FuelPinMesh(N_R=N_R_FP, N_Z=30)
+    energy_FP = FuelPinEnergy(**data["FuelPin"]["energy"])
+    mat_FP    = FuelPinMaterial(**data["FuelPin"]["material"])
+    cfg_FP    = FuelPinConfig(geom_FP, mesh_FP, energy_FP, mat_FP)
+
+    # Neutronics config
+    mesh_N = NeutronicsMesh(
+        N_R = N_R_FP,
+        N_Z = 50,
+        l   = data["FuelPin"]["geometry"]["l"]
+    )
+    energy = NeutronicsEnergy(
+        N_G   = cfg_FP.energy.N_G,
+        power = data["Reactor"]["power"]["thermal"] / data["Reactor"]["components"]["N_FP"]
+    )
+    cfg_N = NeutronicsConfig(mesh_N, energy)
+
+    # Reactor config
+    cfg_R = ReactorConfig(cfg_HP, cfg_FP, cfg_N)
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     os.chdir(OUTPUT_DIR)
     os.system("rm -f summary.h5 statepoint.*.h5 tallies.xml geometry.xml materials.xml settings.xml")
 
     model, mgxs_objects, energy_group_edges = create_openmc_model(
-        heatpipe,
+        cfg_R,
         num_groups=NUM_ENERGY_GROUPS,
         T_heat_pipe=T_HEAT_PIPE,
         T_moderator=T_MODERATOR,
@@ -425,8 +502,9 @@ if __name__ == "__main__":
 
     statepoint_path = model.run()
 
+    plot_geometry_and_entropy(model, statepoint_path)
     results = load_homogenized_xs_from_statepoint(statepoint_path, mgxs_objects)
-    print_homogenized_xs(results, energy_group_edges)
+    #print_homogenized_xs(results, energy_group_edges)
 
     # statepoint = openmc.StatePoint("/home/karlandersson/MasterThesisProject/outputs/homogenised_cell_model/statepoint.150.h5")
     # print(statepoint.keff)
