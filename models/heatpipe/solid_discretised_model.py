@@ -196,7 +196,7 @@ class HeatpipeDiscretised(Component):
         Z         = np.zeros(2 * self.cfg.mesh.N_Z, dtype=float)
         delta_Z   = np.zeros(self.cfg.mesh.N_Z, dtype=float)
 
-        self.R = R
+        self.R = R[0::2]
         self.delta_R = delta_R
         
         # Calculating the radii of the half-elements
@@ -225,6 +225,8 @@ class HeatpipeDiscretised(Component):
 
         for i in range(self.cfg.mesh.N_Z):
             delta_Z[i] = Z[2*i + 1] - Z[2*i]
+
+        self.Z = Z[0::2]
 
         # Generate surface tensors
         surface_areas = self._generate_surfaces(delta_R_p, delta_R_m, delta_Z)

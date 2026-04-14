@@ -1,0 +1,74 @@
+{
+    "HeatPipe": {
+        "geometry": {
+            "r_vapour": 0.004,
+            "delta_wick": 0.0003,
+            "delta_gap": 0.0003,
+            "delta_wall": 0.0003,
+            "l_evap": 0.4,
+            "l_adiabatic": 0.4,
+            "l_cond": 0.4
+        },
+        "bc": {
+            "Temperature_BC": true,
+            "T_cond": 300,
+            "T_op": 850,
+            "Q": 1000
+        },
+        "material": {
+            "k_wick": 66.2,
+            "k_gap": 84,
+            "k_wall": 19.0,
+            "h_vap": 1000000.0,
+            "h_cond": 62.6
+        },
+        "wick": {
+            "Is_annular": false,
+            "K":1e-10,
+            "r_pore": 0.00002,
+            "porosity": 0.7
+        },
+        "other": {
+            "P_C": 2476,
+            "T_C": 856
+        }
+  },
+
+    "FuelPin": {
+        "geometry": {
+            "delta_gap": 0.003, 
+            "delta_wall": 0.003,
+            "r": 0.009,
+            "l": 0.4
+        },
+        "energy": {
+            "N_G": 8
+        },
+        "material": { 
+            "k_fuel": 15.0,
+            "k_clad": 16.5,
+            "h_gap": 1e5,
+            "h_mod": 1e4
+        },
+        "other": {
+            "packing_fraction": 0.4,
+            "enrichment": 19.75
+        }
+    },
+
+    "Reactor": {
+        "geometry": {
+            "core_diameter": 2.8,
+            "flake_diamter": 0.18,
+            "pin_cell_pitch": 0.0286
+        },
+        "components": {
+            "N_HP": 876,
+            "N_FP": 2970
+        },
+        "power": {
+            "thermal": 15e6,
+            "electric": 5e6
+        }
+    }
+}

@@ -302,6 +302,7 @@ if __name__ == "__main__":
     mat = HeatpipeMaterial(**data["material"])
     wick = HeatpipeWick(**data["wick"])
     pipe_bc = HeatpipeBC(**data["bc"])
+    pipe_bc.Q = 1000
     cfg = HeatpipeConfig(geom, mesh, mat, wick, pipe_bc)
     cfg = cfg.resolve_geometry()
 

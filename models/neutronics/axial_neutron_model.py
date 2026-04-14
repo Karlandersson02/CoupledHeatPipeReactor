@@ -81,7 +81,7 @@ class NeutronicsModel(Component):
         self.Z = np.linspace(0, self.cfg.mesh.l, self.cfg.mesh.N_Z)
 
     def initial_guess(self):
-        phi_ng_initial = np.full((self.cfg.mesh.N_Z*self.cfg.energy.N_G), 1e12)
+        phi_ng_initial = np.full((self.cfg.mesh.N_Z*self.cfg.energy.N_G), 1)
         k_initial = np.array([1])
         X_initial = np.concatenate([phi_ng_initial, k_initial])
         return X_initial
@@ -106,7 +106,7 @@ class NeutronicsModel(Component):
         )
         res_transport = np.ravel(res_transport)
 
-        res_anchor = self.cfg.mesh.N_Z * self.cfg.mesh.N_R - np.dot(phi_ng, phi_ng)
+        res_anchor = self.cfg.mesh.N_Z * self.cfg.energy.N_G - np.dot(phi_ng, phi_ng)
 
         return np.r_[res_transport, res_anchor]
 
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     mesh = NeutronicsMesh(
         N_R = 50,
         N_Z = 100,
-        l = 1
+        l = 1.8
     )
     energy = NeutronicsEnergy(
         N_G = 8,
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     neutronics_model = NeutronicsModel(cfg)
 
     solver = Solver([neutronics_model])
-    solver.fsolve()
+    solver.newton_krylov()
 
     phi_n_g, k = solver.solution
 

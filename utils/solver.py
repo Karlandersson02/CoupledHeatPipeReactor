@@ -207,6 +207,12 @@ class Solver:
             if not self.iterate and i > 0:
                 x_initial = component.initial_guess()
 
+            if len(self.components) > 1:
+                if self.iterate:
+                    print(f"Running iteration {i} ...")
+                else:
+                    print(f"Running case {i} ...")
+
             x_sol = self._solve_component(
                 component,
                 x_initial,
