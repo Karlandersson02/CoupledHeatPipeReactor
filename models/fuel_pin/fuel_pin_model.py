@@ -171,10 +171,11 @@ class FuelPin(Component):
         # Fuel heat production
         res[:, :N_fuel] += qr[:, None]
 
-        res_norm_denom = (
-            (np.sum(qr) * self.Delta_Z / self.cfg.geometry.l)
-            / (np.pi * self.cfg.geometry.r**2)
-        )
+        # res_norm_denom = (
+        #     (np.sum(qr) * self.Delta_Z / self.cfg.geometry.l)
+        #     / (np.pi * self.cfg.geometry.r**2)
+        # )
+        res_norm_denom = 1
 
         return res.reshape(-1) / res_norm_denom
 
@@ -461,33 +462,38 @@ class FuelPin(Component):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from utils.solver import Solver
+    import json
+
+    with open("./data/test_data.json", "r") as f:
+        data = json.load(f)["FuelPin"]
 
     N_Z = 100
-    N_R = 30
-    data = {
-        "geometry": {
-            "delta_gap": 2.5e-3,     # random
-            "delta_wall": 2.5e-3,
-            "r": 1e-2,
-            "l": 2.,
-        },
+    N_R = 100
 
-        "mesh": {
-            "N_R": N_R,
-            "N_Z": N_Z,
-        },
+    # data = {
+    #     "geometry": {
+    #         "delta_gap": 2.5e-3,     # random
+    #         "delta_wall": 2.5e-3,
+    #         "r": 1e-2,
+    #         "l": 2.,
+    #     },
 
-        "energy": {
-            "N_G": 2,
-        },
+    #     "mesh": {
+    #         "N_R": N_R,
+    #         "N_Z": N_Z,
+    #     },
 
-        "material": {
-            "k_fuel": 15.0,
-            "k_clad": 16.5,
-            "h_gap": 1e5,
-            "h_mod": 1e4,
-        },
-    }
+    #     "energy": {
+    #         "N_G": 2,
+    #     },
+
+    #     "material": {
+    #         "k_fuel": 15.0,
+    #         "k_clad": 16.5,
+    #         "h_gap": 1e5,
+    #         "h_mod": 1e4,
+    #     },
+    # }
 
     phi_ng  = np.tile(np.array([4.16e18, 5.47e17], dtype=float), (N_Z, 1))
     Sigma_f = np.array([9.4e-2, 5.48e1], dtype=float)
@@ -495,7 +501,7 @@ if __name__ == "__main__":
     T_mod   = np.ones(N_Z) * 1000.0
 
     geom   = FuelPinGeometry(**data["geometry"])
-    mesh   = FuelPinMesh(**data["mesh"])
+    mesh   = FuelPinMesh(N_Z=N_Z, N_R=N_R)
     energy = FuelPinEnergy(**data["energy"])
     mat    = FuelPinMaterial(**data["material"])
     cfg    = FuelPinConfig(geom, mesh, energy, mat)
