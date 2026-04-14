@@ -504,7 +504,7 @@ if __name__ == "__main__":
 
     plot_geometry_and_entropy(model, statepoint_path)
     results = load_homogenized_xs_from_statepoint(statepoint_path, mgxs_objects)
-    #print_homogenized_xs(results, energy_group_edges)
+    print_homogenized_xs(results, energy_group_edges)
 
     # statepoint = openmc.StatePoint("/home/karlandersson/MasterThesisProject/outputs/homogenised_cell_model/statepoint.150.h5")
     # print(statepoint.keff)

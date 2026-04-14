@@ -201,7 +201,7 @@ if __name__ == "__main__":
     from utils.solver import Solver
 
     solver = Solver([reactor1, reactor2], iterate=False)
-    solver.newton_krylov()
+    solver.fsolve()
 
     ((T_solid1, T_vap1), T_FP1, (phi_ng_hat1, k1)), ((T_solid2, T_vap2), T_FP2, (phi_ng_hat2, k2)) = solver.solutions
 
