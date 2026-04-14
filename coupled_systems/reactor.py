@@ -469,11 +469,11 @@ def plot_reactor_schematic(cfg: ReactorConfigResolved):
 
 if __name__ == "__main__":
 
-    with open("./data/reactor_data.json", "r") as f:
+    with open("./data/test_data.json", "r") as f:
         data = json.load(f)
     
     # Mesh dimensions
-    N_R_HP, N_R_FP, N_Z = 15, 15, 50
+    N_R_HP, N_R_FP, N_Z = 21, 21, 51
 
     # Heat pipe config
     geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
@@ -485,7 +485,7 @@ if __name__ == "__main__":
 
     # Fuel pin config
     geom_FP   = FuelPinGeometry(**data["FuelPin"]["geometry"])
-    mesh_FP   = FuelPinMesh(N_R=N_R_FP, N_Z=30)
+    mesh_FP   = FuelPinMesh(N_R=N_R_FP, N_Z=17)
     energy_FP = FuelPinEnergy(**data["FuelPin"]["energy"])
     mat_FP    = FuelPinMaterial(**data["FuelPin"]["material"])
     cfg_FP    = FuelPinConfig(geom_FP, mesh_FP, energy_FP, mat_FP)
@@ -493,7 +493,7 @@ if __name__ == "__main__":
     # Neutronics config
     mesh_N = NeutronicsMesh(
         N_R = N_R_FP,
-        N_Z = 50,
+        N_Z = 17,
         l   = data["FuelPin"]["geometry"]["l"]
     )
     energy = NeutronicsEnergy(
@@ -502,15 +502,13 @@ if __name__ == "__main__":
     )
     cfg_N = NeutronicsConfig(mesh_N, energy)
 
-    # Reactor config
     cfg_R1 = ReactorConfig(cfg_HP, cfg_FP, cfg_N)
     cfg_R1 = cfg_R1.resolve_geometry()
 
 
 
-
     # Mesh dimensions
-    N_R_HP, N_R_FP, N_Z = 30, 30, 100
+    N_R_HP, N_R_FP, N_Z = 21, 21, 51
 
     # Heat pipe config
     geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
@@ -522,7 +520,7 @@ if __name__ == "__main__":
 
     # Fuel pin config
     geom_FP   = FuelPinGeometry(**data["FuelPin"]["geometry"])
-    mesh_FP   = FuelPinMesh(N_R=N_R_FP, N_Z=30)
+    mesh_FP   = FuelPinMesh(N_R=N_R_FP, N_Z=17)
     energy_FP = FuelPinEnergy(**data["FuelPin"]["energy"])
     mat_FP    = FuelPinMaterial(**data["FuelPin"]["material"])
     cfg_FP    = FuelPinConfig(geom_FP, mesh_FP, energy_FP, mat_FP)
@@ -530,7 +528,7 @@ if __name__ == "__main__":
     # Neutronics config
     mesh_N = NeutronicsMesh(
         N_R = N_R_FP,
-        N_Z = 50,
+        N_Z = 17,
         l   = data["FuelPin"]["geometry"]["l"]
     )
     energy = NeutronicsEnergy(
@@ -538,7 +536,6 @@ if __name__ == "__main__":
         power = data["Reactor"]["power"]["thermal"] / data["Reactor"]["components"]["N_FP"]
     )
     cfg_N = NeutronicsConfig(mesh_N, energy)
-
 
 
 
@@ -546,7 +543,7 @@ if __name__ == "__main__":
     cfg_R2 = ReactorConfig(cfg_HP, cfg_FP, cfg_N)
     cfg_R2 = cfg_R2.resolve_geometry()
 
-    # plot_reactor_schematic(cfg_R1)
+    # plot_reactor_schematic(cfg_R2)
 
     # Reactor ------------------
     reactor1 = Reactor(cfg_R1)
@@ -554,61 +551,87 @@ if __name__ == "__main__":
 
     from utils.solver import Solver
 
-    solver = Solver([reactor1, reactor2])
+    solver = Solver([reactor1, reactor2], iterate=False)
     solver.fsolve()
 
-    ((T_solid, T_vap), T_FP, (phi_ng_hat, k)) = solver.solution
+    ((T_solid1, T_vap1), T_FP1, (phi_ng_hat1, k1)), ((T_solid2, T_vap2), T_FP2, (phi_ng_hat2, k2)) = solver.solutions
 
-    # Calculating Q_out
-
+    # Calculating Q_out for both solutions
     cfg_HP = cfg_R2.HP
     cfg_FP = cfg_R2.FP
     cfg_N  = cfg_R2.N
 
-    T_edge_cond_HP = T_solid[(cfg_HP.mesh.N_evap + cfg_HP.mesh.N_adiabatic):, -1]
-    Q_out = np.sum((T_edge_cond_HP - 300.) * cfg_HP.material.h_cond * cfg_HP.geometry.r_outer * 2 * np.pi * cfg_HP.geometry.l_cond / cfg_HP.mesh.N_cond)
+    T_edge_cond_HP1 = T_solid1[(cfg_HP.mesh.N_evap + cfg_HP.mesh.N_adiabatic):, -1]
+    Q_out1 = np.sum(
+        (T_edge_cond_HP1 - 300.0)
+        * cfg_HP.material.h_cond
+        * cfg_HP.geometry.r_outer
+        * 2 * np.pi
+        * cfg_HP.geometry.l_cond
+        / cfg_HP.mesh.N_cond
+    )
 
-    r_fp = reactor2.fuel_pin_thermal_model.R[1::2]
+    T_edge_cond_HP2 = T_solid2[(cfg_HP.mesh.N_evap + cfg_HP.mesh.N_adiabatic):, -1]
+    Q_out2 = np.sum(
+        (T_edge_cond_HP2 - 300.0)
+        * cfg_HP.material.h_cond
+        * cfg_HP.geometry.r_outer
+        * 2 * np.pi
+        * cfg_HP.geometry.l_cond
+        / cfg_HP.mesh.N_cond
+    )
 
-    r_hp = reactor2.heat_pipe_thermal_model.R[1::2]
+    r_hp2 = reactor2.heat_pipe_thermal_model.R[1::2]
+    r_fp2 = reactor2.fuel_pin_thermal_model.R[1::2]
+    z_flux2 = reactor2.neutron_flux_model.Z
 
-    z_flux = reactor2.neutron_flux_model.Z
+    r_fp1 = reactor1.fuel_pin_thermal_model.R[1::2]
+    z_flux1 = reactor1.neutron_flux_model.Z
+    r_hp1 = reactor1.heat_pipe_thermal_model.R[1::2]
 
     fig, axs = plt.subplots(2, 2, figsize=(10, 8))
     fig.suptitle(
-        f"Reactor Profiles | $k_{{eff}} = ${k:.4f} | "
-        f"$Q_{{in}} = ${cfg_N.energy.power:.0f} W | "
-        f"$Q_{{out}} = ${Q_out:.0f} W",
+        f"Reactor Profiles\n"
+        f"Solution 1: $k_{{eff}}={k1:.4f}$, $Q_{{in}}={cfg_N.energy.power:.0f}$ W, $Q_{{out}}={Q_out1:.0f}$ W\n"
+        f"Solution 2: $k_{{eff}}={k2:.4f}$, $Q_{{in}}={cfg_N.energy.power:.0f}$ W, $Q_{{out}}={Q_out2:.0f}$ W",
         fontsize=14
     )
 
     # --- Top left: Neutronics ---
-    axs[0, 0].plot(z_flux, phi_ng_hat[:, 0], linewidth=2)
+    axs[0, 0].plot(z_flux1, phi_ng_hat1[:, 0], linewidth=2, label="Solution 1")
+    axs[0, 0].plot(z_flux2, phi_ng_hat2[:, 0], linewidth=2, label="Solution 2")
     axs[0, 0].set_title("Axial Neutron Flux Profile")
     axs[0, 0].set_xlabel("Length [m]")
     axs[0, 0].set_ylabel("Flux")
     axs[0, 0].grid(True)
+    axs[0, 0].legend()
 
     # --- Top right: Heat pipe evaporator ---
-    axs[0, 1].plot(r_hp, T_solid[0], linewidth=2)
+    axs[0, 1].plot(r_hp1, T_solid1[0], linewidth=2, label="Solution 1")
+    axs[0, 1].plot(r_hp2, T_solid2[0], linewidth=2, label="Solution 2")
     axs[0, 1].set_title("Heat Pipe Evaporator Radial Temperature")
     axs[0, 1].set_xlabel("Radius [m]")
     axs[0, 1].set_ylabel("Temperature [K]")
     axs[0, 1].grid(True)
+    axs[0, 1].legend()
 
     # --- Bottom left: Fuel pin ---
-    axs[1, 0].plot(r_fp, T_FP[0], linewidth=2)
+    axs[1, 0].plot(r_fp1, T_FP1[0], linewidth=2, label="Solution 1")
+    axs[1, 0].plot(r_fp2, T_FP2[0], linewidth=2, label="Solution 2")
     axs[1, 0].set_title("Fuel Pin Radial Temperature Profile")
     axs[1, 0].set_xlabel("Radius [m]")
     axs[1, 0].set_ylabel("Temperature [K]")
     axs[1, 0].grid(True)
+    axs[1, 0].legend()
 
     # --- Bottom right: Heat pipe condenser ---
-    axs[1, 1].plot(r_hp, T_solid[-1], linewidth=2)
+    axs[1, 1].plot(r_hp1, T_solid1[-1], linewidth=2, label="Solution 1")
+    axs[1, 1].plot(r_hp2, T_solid2[-1], linewidth=2, label="Solution 2")
     axs[1, 1].set_title("Heat Pipe Condenser Radial Temperature")
     axs[1, 1].set_xlabel("Radius [m]")
     axs[1, 1].set_ylabel("Temperature [K]")
     axs[1, 1].grid(True)
+    axs[1, 1].legend()
 
-    plt.tight_layout(rect=(0, 0, 1, 0.95))
+    plt.tight_layout(rect=(0, 0, 1, 0.92))
     plt.show()
