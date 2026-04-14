@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import meshio # type: ignore
-import pyvista as pv # type: ignore
+# import pyvista as pv # type: ignore
 
 from models.moderator.triangle_mesh import UnstructuredMesh, Surface
 
