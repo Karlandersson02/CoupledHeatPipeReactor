@@ -4,9 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import meshio # type: ignore
-# import pyvista as pv # type: ignore
+import pyvista as pv # type: ignore
+
+from scipy.optimize import fsolve
 
 from models.moderator.triangle_mesh import UnstructuredMesh, Surface
+
+from utils.material_variables import moderator_k
 
 class ModeratorDiscretisedMesh:
     def __init__(self, data, mesh):
@@ -44,7 +48,7 @@ class ModeratorDiscretisedMesh:
             raise ValueError("cell_T must have shape (n_triangles,)")
         
 
-    def solve(self, iterations: int):
+    def solve_linearly(self, iterations: int):
         
         self.calculate_von_Neumann_boundary_conditions()
         self.calculate_Dirichlet_boundary_conditions()
@@ -103,9 +107,162 @@ class ModeratorDiscretisedMesh:
 
             T = np.linalg.solve(M, C)
             self.cell_T = T
-            print(T - np.min(T))
 
         return T
+    
+
+    def solve_nonlinear(
+        self,
+        T0: np.ndarray | None = None,
+        xtol: float = 1e-8,
+        maxfev: int = 0,
+        verbose: bool = True,
+        use_linear_guess: bool = True,
+    ):
+        """
+        Solve the nonlinear system get_residuals(T) = 0 using scipy.optimize.fsolve.
+
+        Parameters
+        ----------
+        T0 : np.ndarray | None
+            Initial guess for the temperature field.
+        xtol : float
+            Relative error tolerance between iterates for fsolve.
+        maxfev : int
+            Maximum number of residual evaluations. If 0, SciPy uses its default.
+        verbose : bool
+            Print convergence information.
+        use_linear_guess : bool
+            If True and T0 is None, use solve_linearly(iterations=1) as initial guess.
+
+        Returns
+        -------
+        np.ndarray
+            Converged temperature field.
+        """
+        n_triangles = self.mesh.triangles.shape[0]
+
+        # Needed because get_residuals() uses self.vN_boundary_conditions
+        self.calculate_von_Neumann_boundary_conditions()
+
+        # Initial guess
+        if T0 is None:
+            if use_linear_guess:
+                try:
+                    T0 = self.solve_linearly(iterations=1).copy()
+                except Exception:
+                    T0 = self.cell_T.copy()
+            else:
+                T0 = self.cell_T.copy()
+
+        T0 = np.asarray(T0, dtype=float).reshape(-1)
+
+        if T0.shape != (n_triangles,):
+            raise ValueError(f"T0 must have shape ({n_triangles},), got {T0.shape}")
+
+        call_count = {"n": 0}
+
+        def residual_wrapper(T):
+            call_count["n"] += 1
+            R = self.get_residuals(T)
+
+            if verbose:
+                res_norm = np.linalg.norm(R, ord=2)
+                print(f"fsolve call {call_count['n']:3d}: ||R||_2 = {res_norm:.6e}")
+
+            return R
+
+        T_sol, infodict, ier, mesg = fsolve(
+            residual_wrapper,
+            T0,
+            xtol=xtol,
+            full_output=True,
+        )
+
+        # Store final consistent state
+        self.cell_T = np.asarray(T_sol, dtype=float).copy()
+        self.cell_k = moderator_k(self.cell_T)
+        self.calculate_Dirichlet_boundary_conditions()
+        self.calculate_cross_diffusion_correction()
+
+        final_residual = self.get_residuals(self.cell_T)
+        final_norm = np.linalg.norm(final_residual, ord=2)
+
+        if verbose:
+            print(f"fsolve ier   = {ier}")
+            print(f"fsolve mesg  = {mesg}")
+            print(f"Final ||R||_2 = {final_norm:.6e}")
+
+        if ier != 1:
+            raise RuntimeError(f"Nonlinear solve did not converge: {mesg}")
+
+        return self.cell_T
+
+
+    def get_residuals(self, T: np.ndarray) -> np.ndarray:
+
+        n_triangles = self.mesh.triangles.shape[0]
+        # T = np.asarray(X, dtype=float).reshape(-1)
+
+        # Current nonlinear iterate
+        self.cell_T = T.copy()
+
+        # Update conductivity from the current temperature iterate.
+        self.cell_k = moderator_k(T)
+
+        # Only Dirichlet BC needs to be recomputed
+        self.calculate_Dirichlet_boundary_conditions()
+
+        # Keep this if cross diffusion depends on the current iterate
+        self.calculate_cross_diffusion_correction()
+
+        res = np.zeros(n_triangles, dtype=float)
+
+        for triangle_idx in range(n_triangles):
+            triangle_center = self.mesh.get_center_point(triangle_idx)
+            neighbours, surfaces = self.mesh.get_faces_and_neighbours(triangle_idx)
+
+            T_C = T[triangle_idx]
+
+            for neighbour_idx, surface in zip(neighbours, surfaces):
+                if neighbour_idx == -1:
+                    # Boundary face
+                    FluxV_f_BC_vN = self.vN_boundary_conditions[triangle_idx]
+                    FluxC_f_BC_Di = self.di_boundary_conditions[triangle_idx][0]
+                    FluxV_f_BC_Di = self.di_boundary_conditions[triangle_idx][1]
+
+                    # Residual = M(T) @ T - C(T)
+                    res[triangle_idx] += FluxC_f_BC_Di * T_C
+                    res[triangle_idx] += FluxV_f_BC_vN + FluxV_f_BC_Di
+
+                else:
+                    # Internal face
+                    neighbour_center = self.mesh.get_center_point(neighbour_idx)
+                    surface_center = surface.center
+
+                    d_CF = np.linalg.norm(triangle_center - neighbour_center)
+                    d_Cs = np.linalg.norm(triangle_center - surface_center)
+                    d_sF = np.linalg.norm(surface_center - neighbour_center)
+
+                    gDiff_f = surface.length / d_CF
+                    g_f = d_Cs / (d_Cs + d_sF)
+
+                    k_C = self.cell_k[triangle_idx]
+                    k_F = self.cell_k[neighbour_idx]
+
+                    k_s = k_C * k_F / ((1.0 - g_f) * k_C + g_f * k_F)
+
+                    FluxF_f = -k_s * gDiff_f
+                    FluxC_f =  k_s * gDiff_f
+
+                    T_F = T[neighbour_idx]
+                    res[triangle_idx] += FluxC_f * T_C + FluxF_f * T_F
+
+            # Cross-diffusion correction
+            FluxV_f_CD = self.cross_diffusion_correction[triangle_idx]
+            res[triangle_idx] += FluxV_f_CD
+
+        return res
 
 
     def calculate_von_Neumann_boundary_conditions(self):
@@ -230,10 +387,10 @@ class ModeratorDiscretisedMesh:
 
                         T_surface = T_C - q_surface * d_Cf / k_C
                         
-                        n = self.mesh.get_surface_normal(triangle_idx, surface)
-                        S_surface = surface.length * n
+                    n = self.mesh.get_surface_normal(triangle_idx, surface)
+                    S_surface = surface.length * n
 
-                        flux_gradient_C += S_surface * T_surface
+                    flux_gradient_C += S_surface * T_surface
 
                 else:
                     F_center = self.mesh._centers[neighbour_idx]
@@ -883,14 +1040,19 @@ if __name__ == "__main__":
         "T_HP": 850,
         "T_FP": 885,
 
-        "HP_BC": "vonNeumann", #"Dirichlet"
-        "FP_BC": "Dirichlet"   #"vonNeumann"
+        "HP_BC": "Dirichlet", #"Dirichlet"
+        "FP_BC": "vonNeumann"   #"vonNeumann"
     }
 
     mod_mesh = ModeratorDiscretisedMesh(mesh=mesh, data=data)
-    #rect_mesh = RectangularTestDiscretisedMesh(mesh=mesh, data=data)
-    T = np.array(mod_mesh.solve(iterations=1))
-    T = T - np.min(T)
+    rect_mesh = RectangularTestDiscretisedMesh(mesh=mesh, data=data)
+    T = mod_mesh.solve_nonlinear(
+        xtol=1e-8,
+        maxfev=500,
+        verbose=True,
+        use_linear_guess=True,)
+
+    # T = mod_mesh.solve_linearly(4)
 
     R_eff = mod_mesh.calculate_effective_thermal_resistance()
 

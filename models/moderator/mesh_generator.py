@@ -196,7 +196,7 @@ if __name__ == "__main__":
         "l_pitch": 10.,
         "r_HP": 3.,
         "r_fuel_pin": 1.5,
-        "l_mesh_size": 0.5
+        "l_mesh_size": 2.,
     }
 
     create_hexagonal_reactor_mesh(data)
