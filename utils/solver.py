@@ -33,11 +33,12 @@ def interpolate_2d(
 
 
 class Solver:
-    def __init__(self, components: Sequence[Component], iterate: bool = True):
+    def __init__(self, components: Sequence[Component], iterate: bool = True, save_iterates: bool = False):
         self.components = list(components)
         self.iterate = iterate
         self.solutions: list[Any] = []
         self.solution: Any | None = None
+        self.save_iterates = save_iterates
 
     def _solve_component(
         self,
@@ -200,18 +201,15 @@ class Solver:
 
         x_initial = self.components[0].initial_guess()
 
-        if not self.iterate:
-            self.solutions = []
-
         for i, component in enumerate(self.components):
             if not self.iterate and i > 0:
                 x_initial = component.initial_guess()
 
             if len(self.components) > 1:
                 if self.iterate:
-                    print(f"Running iteration {i} ...")
+                    print(f"Running iteration {i+1} ...")
                 else:
-                    print(f"Running case {i} ...")
+                    print(f"Running case {i+1} ...")
 
             x_sol = self._solve_component(
                 component,
@@ -220,6 +218,8 @@ class Solver:
                 kwargs_list[i],
             )
 
+            self.solutions.append(component.post_process(x_sol))
+
             is_last = i == len(self.components) - 1
 
             if self.iterate and not is_last:
@@ -227,11 +227,7 @@ class Solver:
                 x_initial = self._get_next_initial_guess(component, next_component, x_sol)
             else:
                 x_out = component.post_process(np.asarray(x_sol))
-
-                if not self.iterate:
-                    self.solutions.append(x_out)
-                else:
-                    self.solution = x_out
+                self.solution = x_out
 
     def newton_krylov(self, verbose: bool = True, **kwargs) -> None:
         self.run(newton_krylov, solver_kwargs={"verbose": verbose, **kwargs})

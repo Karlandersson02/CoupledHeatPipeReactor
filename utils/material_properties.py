@@ -14,7 +14,7 @@ def HP_wall_k(T):
     return A1 * T**2 + A2 * T + A3  
 
 
-def HP_gap_k(T, porosity):
+def HP_gap_k(T):
     # Assuming that the gap is filled with sodium.
 
     k_l = calculate_Na_thermal_conductivity_l(T)
@@ -65,7 +65,7 @@ def FP_fuel_k(T, porosity=0):
     c = 4.715e9
     d = 16361.0
 
-    term = 1.0 / (a + b*T + (c / (T**2.05)) * np.exp(-d / T))
+    term = 1.0 / (a + b*T) + (c / (T**2.05)) * np.exp(-d / T)
     return ((1 - porosity) / (1 + 2*porosity)) * term
 
 

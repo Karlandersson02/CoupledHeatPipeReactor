@@ -3,6 +3,8 @@ import numpy as np
 from models.component import Component
 from data.dataclass import *
 
+import utils.material_properties as m_props
+
 class FuelPin(Component):
     def __init__(self, config: FuelPinConfigResolved):
 
@@ -38,18 +40,16 @@ class FuelPin(Component):
     def get_residuals(self, X):
         T = X.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
 
-        # self.initialize_discretization()
-
-        k = self.generate_k_matrix(T)
-        h = self.generate_h_matrix()
-        alpha = self.calculate_alpha(k)
-
         qr = self.qr
         T_mod = self.T_mod
 
         N_Z = self.cfg.mesh.N_Z
         N_R = self.cfg.mesh.N_R
         N_fuel = self.cfg.mesh.N_fuel
+
+        k = self.generate_k_matrix()
+        h = self.generate_h_matrix()
+        alpha = self.calculate_alpha(k)
 
         res = np.zeros((N_Z, N_R), dtype=float)
 
@@ -171,11 +171,11 @@ class FuelPin(Component):
         # Fuel heat production
         res[:, :N_fuel] += qr[:, None]
 
-        # res_norm_denom = (
-        #     (np.sum(qr) * self.Delta_Z / self.cfg.geometry.l)
-        #     / (np.pi * self.cfg.geometry.r**2)
-        # )
-        res_norm_denom = 1
+        res_norm_denom = (
+            (np.sum(qr) * self.Delta_Z / self.cfg.geometry.l)
+            / (np.pi * self.cfg.geometry.r**2)
+        )
+        # res_norm_denom = 1
 
         return res.reshape(-1) / res_norm_denom
 
@@ -242,7 +242,7 @@ class FuelPin(Component):
     
     def generate_k_matrix(self, T=None):
         if T is None:
-            T = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
+            T = np.full((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), 1400)
 
         k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
 
@@ -255,12 +255,20 @@ class FuelPin(Component):
         clad_slice = slice(self.cfg.mesh.N_fuel + self.cfg.mesh.N_gap, self.cfg.mesh.N_R)
 
         T_fuel = T[:, fuel_slice]
-        T_gap  = T[:, gap_slice]
+        T_gap  = T[:, gap_slice ]
         T_clad = T[:, clad_slice]
 
+        qp_gap = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_gap))
+        qp_gap[:, -1:] = self.qr[:, None] * self.surface_tensor[:, -1:, 1]
+        gap_h = lambda T: m_props.FP_gap_h(T, qp_gap)
+
         k_matrix[:, fuel_slice] = eval_material_prop(self.cfg.material.k_fuel, T_fuel)
-        k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.h_gap, T_gap, scale=self.cfg.geometry.delta_gap)
+        k_matrix[:, gap_slice ] = eval_material_prop(self.cfg.material.h_gap, T_gap, scale=self.cfg.geometry.delta_gap)
         k_matrix[:, clad_slice] = eval_material_prop(self.cfg.material.k_clad, T_clad)
+    
+        # k_matrix[:, fuel_slice] = eval_material_prop(m_props.FP_fuel_k, T_fuel)
+        # k_matrix[:, gap_slice ] = eval_material_prop(gap_h            , T_gap )
+        # k_matrix[:, clad_slice] = eval_material_prop(m_props.FP_clad_k, T_clad)
 
         return k_matrix
 
@@ -467,8 +475,8 @@ if __name__ == "__main__":
     with open("./data/test_data.json", "r") as f:
         data = json.load(f)["FuelPin"]
 
-    N_Z = 100
-    N_R = 100
+    N_Z = 30
+    N_R = 30
 
     # data = {
     #     "geometry": {

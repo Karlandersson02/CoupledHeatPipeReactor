@@ -6,6 +6,8 @@ from scipy.sparse.linalg import spsolve
 from data.dataclass import *
 from models.component import Component
 
+import utils.material_properties as m_props
+
 class HeatpipeDiscretised(Component):
     def __init__(self, config: HeatpipeConfigResolved):
 
@@ -33,7 +35,7 @@ class HeatpipeDiscretised(Component):
         T = T.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
 
         surface_areas, delta_Rp, delta_Rm, delta_Z = self._initialize_discretization()
-        k = self._generate_k_matrix(T)
+        k = self._generate_k_matrix()
         h = self._generate_h_matrix()
         alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k)
 
@@ -250,25 +252,30 @@ class HeatpipeDiscretised(Component):
 
     def _generate_k_matrix(self, T=None):
         if T is None:
-            T = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
-
-        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
+            T = np.full(((self.cfg.mesh.N_Z, self.cfg.mesh.N_R)), 800)
 
         def eval_material_prop(prop, T_slice, scale=1.0):
             value = prop(T_slice) if callable(prop) else prop
             return value * scale    # type: ignore
-
+        wick_k = lambda T: m_props.HP_wick_k(T, self.cfg.wick.porosity)
+        
         wick_slice = slice(0, self.cfg.mesh.N_wick)
         gap_slice  = slice(self.cfg.mesh.N_wick, self.cfg.mesh.N_wick + self.cfg.mesh.N_gap)
         wall_slice = slice(self.cfg.mesh.N_R - self.cfg.mesh.N_wall, self.cfg.mesh.N_R)
-
+        
         T_wick = T[:, wick_slice]
         T_gap  = T[:, gap_slice]
         T_wall = T[:, wall_slice]
 
+        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
+
         k_matrix[:, wick_slice] = eval_material_prop(self.cfg.material.k_wick, T_wick)
-        k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.k_gap, T_gap)
+        k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.k_gap , T_gap)
         k_matrix[:, wall_slice] = eval_material_prop(self.cfg.material.k_wall, T_wall)
+
+        # k_matrix[:, wick_slice] = eval_material_prop(wick_k, T_wick)
+        # k_matrix[:, gap_slice]  = eval_material_prop(m_props.HP_gap_k, T_gap)
+        # k_matrix[:, wall_slice] = eval_material_prop(m_props.HP_wall_k, T_wall)
 
         return k_matrix
     
@@ -655,27 +662,22 @@ if __name__ == "__main__":
     geom = HeatpipeGeometry(**data["geometry"])
     geom.delta_wick = 0.00025
     geom.delta_gap = 0.00025
-    mesh = HeatpipeMesh(**data["mesh"])
-    mesh.N_R = 30
-    mesh.N_Z = 30
+    mesh = HeatpipeMesh(N_Z=30, N_R=30)
     mat = HeatpipeMaterial(**data["material"])
     wick = HeatpipeWick(**data["wick"])
     bc = HeatpipeBC(**data["bc"])
     cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
-    cfgs: Sequence[HeatpipeConfigResolved] = make_mesh_sequence(cfg, 1)
+    cfg = cfg.resolve_geometry()
     
-    heatpipes = [HeatpipeDiscretised(cfg) for cfg in cfgs]
-    for heatpipe in heatpipes:
-        print(f"N_Z = {heatpipe.cfg.mesh.N_Z}, N_R = {heatpipe.cfg.mesh.N_R}")
-    solver = Solver(heatpipes)
+    heatpipe = HeatpipeDiscretised(cfg)
+    solver = Solver([heatpipe])
     solver.newton_krylov()
 
     T_solid, T_vap = solver.solution
 
-    N_Z = cfgs[-1].mesh.N_Z
-    N_R = cfgs[-1].mesh.N_R
+    N_Z = cfg.mesh.N_Z
+    N_R = cfg.mesh.N_R
 
-    heatpipe = heatpipes[-1]
     T_linear = heatpipe.linear_solve()
 
     plt.rcParams["font.size"] = 22
@@ -685,7 +687,7 @@ if __name__ == "__main__":
     fig = plt.figure(figsize = (16, 9))
 
     ax = fig.add_subplot(111)
-    r_centers = heatpipe.R[0::2]
+    r_centers = heatpipe.R
 
     delta_R = heatpipe.delta_R[0::2] + heatpipe.delta_R[1::2]
     r_faces = np.r_[heatpipe.cfg.geometry.r_vapour, heatpipe.cfg.geometry.r_vapour + np.cumsum(delta_R)]
