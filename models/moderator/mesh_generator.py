@@ -193,10 +193,10 @@ def create_rectangular_mesh(show_mesh=True):
 
 if __name__ == "__main__":
     data = {
-        "l_pitch": 10.,
-        "r_HP": 3.,
-        "r_fuel_pin": 1.5,
-        "l_mesh_size": 2.,
+        "l_pitch": 0.0286,
+        "r_HP": 0.0065,
+        "r_fuel_pin": 0.008,
+        "l_mesh_size": 0.0286 / 20,
     }
 
     create_hexagonal_reactor_mesh(data)

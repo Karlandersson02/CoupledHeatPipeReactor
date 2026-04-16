@@ -10,7 +10,7 @@ from scipy.optimize import fsolve
 
 from models.moderator.triangle_mesh import UnstructuredMesh, Surface
 
-from utils.material_variables import moderator_k
+from utils.material_properties import moderator_k
 
 class ModeratorDiscretisedMesh:
     def __init__(self, data, mesh):
@@ -1021,9 +1021,9 @@ if __name__ == "__main__":
 
     cell_k = np.ones(triangles.shape[0])
     cell_T = np.ones(triangles.shape[0])
-    l_pitch = 10.
-    r_HP = 3.
-    r_f = 1.5
+    l_pitch = 0.0286
+    r_HP = 0.008
+    r_f = 0.0065
     theta_hex = (np.pi / 6)
 
     data = {
@@ -1040,19 +1040,14 @@ if __name__ == "__main__":
         "T_HP": 850,
         "T_FP": 885,
 
-        "HP_BC": "Dirichlet", #"Dirichlet"
+        "HP_BC": "Dirichlet",   #"Dirichlet"
         "FP_BC": "vonNeumann"   #"vonNeumann"
     }
 
     mod_mesh = ModeratorDiscretisedMesh(mesh=mesh, data=data)
     rect_mesh = RectangularTestDiscretisedMesh(mesh=mesh, data=data)
-    T = mod_mesh.solve_nonlinear(
-        xtol=1e-8,
-        maxfev=500,
-        verbose=True,
-        use_linear_guess=True,)
 
-    # T = mod_mesh.solve_linearly(4)
+    T = mod_mesh.solve_linearly(4)
 
     R_eff = mod_mesh.calculate_effective_thermal_resistance()
 
