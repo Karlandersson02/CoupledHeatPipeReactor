@@ -48,7 +48,7 @@
             "k_fuel": 15.0,
             "k_clad": 16.5,
             "h_gap": 1e5,
-            "h_mod": 1e4
+            "h_mod": 1e8
         },
         "other": {
             "packing_fraction": 0.4,

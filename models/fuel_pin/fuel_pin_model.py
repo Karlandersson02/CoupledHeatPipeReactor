@@ -19,6 +19,8 @@ class FuelPin(Component):
         
         self.calculate_qr()
 
+        self.variable_k = False
+
     def initial_guess(self):
         X_initial = np.ones((self.cfg.mesh.N_Z * self.cfg.mesh.N_R, ))
         return X_initial
@@ -47,7 +49,10 @@ class FuelPin(Component):
         N_R = self.cfg.mesh.N_R
         N_fuel = self.cfg.mesh.N_fuel
 
-        k = self.generate_k_matrix()
+        if self.variable_k:
+            k = self.generate_k_matrix(T)
+        else:
+            k = self.generate_k_matrix()
         h = self.generate_h_matrix()
         alpha = self.calculate_alpha(k)
 
@@ -217,7 +222,7 @@ class FuelPin(Component):
 
         surface_tensor = self.calculate_surfaces(delta_Rp, delta_Rm)
 
-        self.R = R
+        self.R = R[0::2]
         self.delta_Rm = delta_Rm
         self.delta_Rp = delta_Rp
         self.Delta_V = np.pi * (delta_Rp[0] + delta_Rm[0])**2 * self.Delta_Z 
@@ -262,13 +267,13 @@ class FuelPin(Component):
         qp_gap[:, -1:] = self.qr[:, None] * self.surface_tensor[:, -1:, 1]
         gap_h = lambda T: m_props.FP_gap_h(T, qp_gap)
 
-        k_matrix[:, fuel_slice] = eval_material_prop(self.cfg.material.k_fuel, T_fuel)
-        k_matrix[:, gap_slice ] = eval_material_prop(self.cfg.material.h_gap, T_gap, scale=self.cfg.geometry.delta_gap)
-        k_matrix[:, clad_slice] = eval_material_prop(self.cfg.material.k_clad, T_clad)
+        # k_matrix[:, fuel_slice] = eval_material_prop(self.cfg.material.k_fuel, T_fuel)
+        # k_matrix[:, gap_slice ] = eval_material_prop(self.cfg.material.h_gap, T_gap, scale=self.cfg.geometry.delta_gap)
+        # k_matrix[:, clad_slice] = eval_material_prop(self.cfg.material.k_clad, T_clad)
     
-        # k_matrix[:, fuel_slice] = eval_material_prop(m_props.FP_fuel_k, T_fuel)
-        # k_matrix[:, gap_slice ] = eval_material_prop(gap_h            , T_gap )
-        # k_matrix[:, clad_slice] = eval_material_prop(m_props.FP_clad_k, T_clad)
+        k_matrix[:, fuel_slice] = eval_material_prop(m_props.FP_fuel_k, T_fuel)
+        k_matrix[:, gap_slice ] = eval_material_prop(gap_h            , T_gap, scale=self.cfg.geometry.delta_gap)
+        k_matrix[:, clad_slice] = eval_material_prop(m_props.FP_clad_k, T_clad)
 
         return k_matrix
 

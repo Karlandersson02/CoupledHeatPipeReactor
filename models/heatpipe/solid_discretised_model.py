@@ -15,6 +15,8 @@ class HeatpipeDiscretised(Component):
 
         self._initialize_discretization()
 
+        self.variable_k = False
+
     def initial_guess(self):
         X_initial = np.full(self.cfg.mesh.N_Z * self.cfg.mesh.N_R + 1, 800)
         if not self.cfg.bc.Temperature_BC:
@@ -35,7 +37,10 @@ class HeatpipeDiscretised(Component):
         T = T.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
 
         surface_areas, delta_Rp, delta_Rm, delta_Z = self._initialize_discretization()
-        k = self._generate_k_matrix()
+        if self.variable_k:
+            k = self._generate_k_matrix(T)
+        else:
+            k = self._generate_k_matrix()
         h = self._generate_h_matrix()
         alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k)
 
@@ -269,13 +274,13 @@ class HeatpipeDiscretised(Component):
 
         k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
 
-        k_matrix[:, wick_slice] = eval_material_prop(self.cfg.material.k_wick, T_wick)
-        k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.k_gap , T_gap)
-        k_matrix[:, wall_slice] = eval_material_prop(self.cfg.material.k_wall, T_wall)
+        # k_matrix[:, wick_slice] = eval_material_prop(self.cfg.material.k_wick, T_wick)
+        # k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.k_gap , T_gap)
+        # k_matrix[:, wall_slice] = eval_material_prop(self.cfg.material.k_wall, T_wall)
 
-        # k_matrix[:, wick_slice] = eval_material_prop(wick_k, T_wick)
-        # k_matrix[:, gap_slice]  = eval_material_prop(m_props.HP_gap_k, T_gap)
-        # k_matrix[:, wall_slice] = eval_material_prop(m_props.HP_wall_k, T_wall)
+        k_matrix[:, wick_slice] = eval_material_prop(wick_k, T_wick)
+        k_matrix[:, gap_slice]  = eval_material_prop(m_props.HP_gap_k, T_gap)
+        k_matrix[:, wall_slice] = eval_material_prop(m_props.HP_wall_k, T_wall)
 
         return k_matrix
     
