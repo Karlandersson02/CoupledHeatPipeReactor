@@ -27,17 +27,17 @@ T_MAX = 1200.0
 import json
 from data.dataclass import *
 
-with open("./data/vapour_data.json", "r") as f:
-    data_guoju = json.load(f)
-    data = data_guoju["data_guoju_560"]
+# with open("./data/vapour_data.json", "r") as f:
+#     data_guoju = json.load(f)
+#     data = data_guoju["data_guoju_560"]
 
-geom = HeatpipeGeometry(**data["geometry"])
-mesh = HeatpipeMesh(**data["mesh"])
-mat = HeatpipeMaterial(**data["material"])
-wick = HeatpipeWick(**data["wick"])
-bc = HeatpipeBC(**data["bc"])
-cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
-cfg = cfg.resolve_geometry()
+# geom = HeatpipeGeometry(**data["geometry"])
+# mesh = HeatpipeMesh(**data["mesh"])
+# mat = HeatpipeMaterial(**data["material"])
+# wick = HeatpipeWick(**data["wick"])
+# bc = HeatpipeBC(**data["bc"])
+# cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
+# cfg = cfg.resolve_geometry()
 
 # Number of grid points per dimension.
 # Total OpenMC runs = N_T_HEAT_PIPE * N_T_FUEL_PIN * N_T_MODERATOR
@@ -226,7 +226,7 @@ def run_openmc_case(
     """
     Run one OpenMC case and return homogenized MGXS outputs.
     """
-    from coupled_systems.heatpipe import Heatpipe
+    from coupled_systems.heatpipe_decoupled import Heatpipe
     from models.fuel_assembly.homogenised_cell_model import (
         create_openmc_model,
         load_homogenized_xs_from_statepoint,

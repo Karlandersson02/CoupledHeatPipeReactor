@@ -6,7 +6,7 @@ import os
 import glob
 
 from utils.sodium_properties import calculate_Na_rho_l
-from coupled_systems.heatpipe import Heatpipe
+from coupled_systems.heatpipe_decoupled import Heatpipe
 
 import matplotlib.pyplot as plt
 

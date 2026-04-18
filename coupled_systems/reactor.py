@@ -430,12 +430,4 @@ if __name__ == "__main__":
 
     # plot_reactor_temperature_schematic(solver)
 
-    # ((T_solid, T_vap), T_FP, (phi_n_g, k)) = solver.solutions[-1]
-    # T_HP = np.r_[T_solid.reshape(-1), T_vap]
-    # T_FP = T_FP.reshape(-1)
-    # Q_mod = reactors[-1].calculate_HP_FP_boundary_cond(T_FP, T_HP)[1]
-
-    # plt.plot(Q_mod)
-    # plt.show()
-
     plot_reactor_solutions(solver)
