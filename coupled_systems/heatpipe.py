@@ -55,8 +55,10 @@ class Heatpipe(Component):
         T_HP = T_HP.reshape((self.cfg.mesh.N_Z, self.cfg.mesh.N_R))
 
         u_bar = self._interpolate_u(u)
+        c_s = self._calculate_c_s(T_v)
+        mach = u_bar / c_s
 
-        return T_HP, u_bar, T_v
+        return T_HP, mach, T_v
 
     def unpack(self, X):
         T_HP = X[:self.N_HP]
@@ -215,15 +217,16 @@ if __name__ == "__main__":
 
     with open("./data/vapour_data.json", "r") as f:
         data_guoju = json.load(f)
-        data = data_guoju["data_guoju_560"]
+        data = data_guoju["data_guoju_1000"]
 
-    Qs = [560]
-    Ns = [[30, 40] for i in range(len(Qs))]
+    Qs = [0.97e3]
+    Ns = [[28, 50] for i in range(len(Qs))]
     cfgs = generate_cfgs_seq(data, Ns, Qs)
 
     heatpipes = [Heatpipe(cfg) for cfg in cfgs]
 
     solver = Solver([heatpipes[-1]])
     solver.fsolve()
+
 
     plot_heatpipe_solutions(solver)

@@ -409,10 +409,6 @@ if __name__ == "__main__":
 
     with open("./data/reactor_data.json", "r") as f:
         data = json.load(f)
-    
-    delta_wick = data["HeatPipe"]["geometry"]["delta_wick"]
-    delta_gap  = data["HeatPipe"]["geometry"]["delta_gap"]
-    delta_wall = data["HeatPipe"]["geometry"]["delta_wall"]
 
     Ns = [[15, 65, 20]]
     # Ns = [[30, 65, 40]]
@@ -428,6 +424,6 @@ if __name__ == "__main__":
     solver = Solver(reactors, iterate=True, save_iterates=True)
     solver.fsolve()
 
-    # plot_reactor_temperature_schematic(solver)
+    plot_reactor_temperature_schematic(solver)
 
-    plot_reactor_solutions(solver)
+    # plot_reactor_solutions(solver)
