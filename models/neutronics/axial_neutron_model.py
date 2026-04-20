@@ -8,10 +8,10 @@ from scipy.optimize import fsolve, newton_krylov
 from data.dataclass import *
 from models.component import Component
 
-MODEL_PATH = Path("./utils/rgi_surrogate.joblib")
-from utils.interpolator import OpenMCTallyGridSurrogate
-interpolator_model = OpenMCTallyGridSurrogate()
-interpolator_model = interpolator_model.load(MODEL_PATH)
+# MODEL_PATH = Path("./utils/rgi_surrogate.joblib")
+# from utils.interpolator import OpenMCTallyGridSurrogate
+# interpolator_model = OpenMCTallyGridSurrogate()
+# interpolator_model = interpolator_model.load(MODEL_PATH)
 
 N_G = 8
 

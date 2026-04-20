@@ -19,8 +19,8 @@
             "k_wick": 66.2,
             "k_gap": 84,
             "k_wall": 19.0,
-            "h_vap": 1000000.0,
-            "h_cond": 62.6
+            "h_vap": 1e6,
+            "h_cond": 65
         },
         "wick": {
             "Is_annular": false,
@@ -48,7 +48,7 @@
             "k_fuel": 15.0,
             "k_clad": 16.5,
             "h_gap": 1e5,
-            "h_mod": 1e8
+            "h_mod": 1e4
         },
         "other": {
             "packing_fraction": 0.4,

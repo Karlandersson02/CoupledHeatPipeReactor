@@ -7,8 +7,8 @@ import json
 from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
 from models.neutronics.axial_neutron_model import NeutronicsModel
 from models.fuel_pin.fuel_pin_model import FuelPin
-from models.moderator.mesh_conduction_model import ModeratorDiscretisedMesh
-from models.moderator.triangle_mesh import UnstructuredMesh
+# from models.moderator.mesh_conduction_model import ModeratorDiscretisedMesh
+# from models.moderator.triangle_mesh import UnstructuredMesh
 
 from models.component import Component
 from data.dataclass import *
@@ -82,14 +82,14 @@ class Reactor(Component):
         T_FP = self.T_cond * X[(self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1):((self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1) + self.cfg_FP.mesh.N_R * self.cfg_FP.mesh.N_Z)]
         phi_ng_hat = X[((self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1) + self.cfg_N.mesh.N_R * self.cfg_N.mesh.N_Z):]
 
-        # self.fuel_pin_thermal_model.initialize_discretization()
-
-        T_FP_ave = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=1)
+        Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
         qr = self.calculate_qr(T_FP, phi_ng_hat[:-1]) 
-        Q_HP, T_mod, T_edge_FP = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
+        
+        T_HP_ave  = np.mean(T_HP[:self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap], dtype=float)
+        T_FP_ave  = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=1)
+        T_mod_ave = np.mean(T_mod)
 
         self.heat_pipe_thermal_model.cfg.bc.Q = Q_HP
-        # self.heat_pipe_thermal_model.assemble()
         res_cond_HP = self.heat_pipe_thermal_model.get_residuals(T_HP)
         
         self.fuel_pin_thermal_model.qr = qr
@@ -98,17 +98,16 @@ class Reactor(Component):
         
         self.neutron_flux_model.T_FP = T_FP
         self.neutron_flux_model.T_M  = np.mean(T_mod)
-        self.neutron_flux_model.T_HP = np.mean(T_HP[:self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap], dtype=float)
+        self.neutron_flux_model.T_HP = T_HP_ave
         res_flux = self.neutron_flux_model.get_residuals(phi_ng_hat)
 
         return np.r_[res_cond_HP, res_cond_FP, res_flux]
     
 
-    def calculate_qr(self, T_FP_ave, phi_ng_hat):
-        _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP_ave)
+    def calculate_qr(self, T_FP, phi_ng_hat):
+        _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
 
-        qr_rel = np.sum(phi_ng_hat.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G) * Sigma_f * kappa * self.fuel_pin_thermal_model.Delta_V, axis=1) # W / m
-
+        qr_rel = np.sum(phi_ng_hat.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G) * Sigma_f * kappa * self.fuel_pin_thermal_model.Delta_V, axis=1) # W
         power_rel = np.sum(qr_rel)
 
         return qr_rel * self.cfg_N.energy.power / (power_rel * self.cfg_FP.mesh.N_fuel)
@@ -178,12 +177,12 @@ def plot_reactor_solutions(solver):
     # plt.rcParams["font.family"] = "Computer Modern"
     # plt.rcParams["text.usetex"] = True
 
-    fig, axs = plt.subplots(3, 2, figsize=(11, 11), dpi=300)
+    fig, axs = plt.subplots(3, 2, figsize=(11, 11))
 
     k_effs = []
     Q_fracs = []
 
-    colors = plt.cm.viridis(np.linspace(0, 1, len(reactors)))[::-1]  # type: ignore
+    colors = plt.cm.viridis(np.linspace(0, 1, len(reactors))) # type: ignore
 
     for i, reactor in enumerate(reactors):
         ((T_solid, T_vap), T_FP, (phi_ng_hat, k)) = solver.solutions[i]
@@ -195,6 +194,10 @@ def plot_reactor_solutions(solver):
 
         k_cond = reactor.heat_pipe_thermal_model.variable_k
         k_cond_string = "variable" if k_cond else "fixed"
+
+        N_R_FP = cfg_R.FP.mesh.N_R
+        N_R_HP = cfg_R.HP.mesh.N_R
+        N_Z    = cfg_R.HP.mesh.N_Z
 
         # Condenser heat rejection
         T_edge_cond_HP = T_solid[N_cond_start:, -1]
@@ -219,59 +222,23 @@ def plot_reactor_solutions(solver):
         r_fp = reactor.fuel_pin_thermal_model.R
 
         # Choose one axial location in evaporator for radial plots
-        evap_idx = 0
+        evap_idx = cfg_R.HP.mesh.N_evap // 2
 
         # Top row: neutron flux
-        axs[0, 0].plot(
-            z_flux,
-            phi_ng_hat[:, 0],
-            linewidth=2,
-            color=colors[i],
-            label=f"k {k_cond_string}",
-        )
+        axs[0, 0].plot(z_flux, phi_ng_hat[:, 0], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
 
         # Keep top-right empty or use it for another group if desired
-        axs[0, 1].plot(
-            z_flux,
-            phi_ng_hat[:, -1],
-            linewidth=2,
-            color=colors[i],
-            label=f"k {k_cond_string}",
-        )
+        axs[0, 1].plot(z_flux, phi_ng_hat[:, -1], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
 
         # Middle row: axial temperature distributions
-        axs[1, 0].plot(
-            z_hp,
-            T_solid[:N_evap, -1],
-            linewidth=2,
-            color=colors[i],
-            label=f"k {k_cond_string}",
-        )
+        axs[1, 0].plot(z_hp, T_solid[:N_evap, -1], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
 
-        axs[1, 1].plot(
-            z_fp,
-            T_FP[:, -1],
-            linewidth=2,
-            color=colors[i],
-            label=f"k {k_cond_string}",
-        )
+        axs[1, 1].plot(z_fp, T_FP[:, -1], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
 
         # Bottom row: radial temperature distributions
-        axs[2, 0].plot(
-            r_hp,
-            T_solid[evap_idx, :],
-            linewidth=2,
-            color=colors[i],
-            label=f"k {k_cond_string}",
-        )
+        axs[2, 0].plot(r_hp, T_solid[evap_idx], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
 
-        axs[2, 1].plot(
-            r_fp,
-            T_FP[evap_idx, :],
-            linewidth=2,
-            color=colors[i],
-            label=f"k {k_cond_string}",
-        )
+        axs[2, 1].plot(r_fp, T_FP[evap_idx], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
 
     k_eff_string = ", ".join(f"{k_eff:.3f}" for k_eff in k_effs)
     Q_string = ", ".join(f"{100 * Q_frac:.2f}\\%" for Q_frac in Q_fracs)
@@ -323,22 +290,128 @@ def plot_reactor_solutions(solver):
     axs[2, 1].legend()
 
     plt.tight_layout(rect=(0, 0, 1, 0.94))
-    # plt.savefig("./outputs/reactor_figures/reactor_data_variable_k_comparison_2.png", bbox_inches="tight")
+    # plt.savefig("./outputs/reactor_figures/reactor_data_k_comparison.png", bbox_inches="tight")
     plt.show()
 
+def plot_reactor_temperature_schematic(solver, solution_idx: int = -1):
+    reactor = solver.components[solution_idx]
+    ((T_solid, T_vap), T_FP, (phi_n_g, k)) = solver.solutions[solution_idx]
+
+    cfg = reactor.cfg_R
+    hp_geom, fp_geom = cfg.HP.geometry, cfg.FP.geometry
+    hp_mesh, fp_mesh = cfg.HP.mesh, cfg.FP.mesh
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    # -----------------------------
+    # Layout positions
+    # -----------------------------
+    x_fp, x_hp = 2.0, 6.0
+    y_hp = -1.0
+
+    # -----------------------------
+    # Scaling
+    # -----------------------------
+    hp_total_plot_height = 4.2
+    axial_scale = hp_total_plot_height / hp_geom.l_tot
+
+    radial_exaggeration = 250.0 * 2
+    radial_scale = axial_scale * radial_exaggeration
+
+    # Sizes
+    h_hp = hp_geom.l_tot * axial_scale
+    h_fp = fp_geom.l * axial_scale
+
+    w_fp = fp_geom.r * radial_scale
+    w_hp = (hp_geom.r_outer - hp_geom.r_vapour) * radial_scale
+
+    # HP regions
+    h_cond = hp_geom.l_cond * axial_scale
+    h_adi  = hp_geom.l_adiabatic * axial_scale
+
+    y_fp = y_hp + h_cond + h_adi
+
+    # -----------------------------
+    # Mesh edges
+    # -----------------------------
+    x_fp_edges = np.linspace(x_fp, x_fp + w_fp, fp_mesh.N_R + 1)
+    y_fp_edges = np.linspace(y_fp, y_fp + h_fp, fp_mesh.N_Z + 1)
+
+    x_hp_edges = np.linspace(x_hp, x_hp + w_hp, hp_mesh.N_R + 1)
+    y_hp_edges = np.linspace(y_hp, y_hp + h_hp, hp_mesh.N_Z + 1)
+
+    # -----------------------------
+    # Plot fields
+    # -----------------------------
+    pcm_fp = ax.pcolormesh(
+        x_fp_edges, y_fp_edges, T_FP,
+        cmap="hot",
+        shading="flat",
+    )
+
+    pcm_hp = ax.pcolormesh(
+        x_hp_edges,
+        y_hp_edges,
+        T_solid[::-1, ::-1],   # <-- FIX
+        cmap="viridis",
+        shading="flat",
+    )
+
+    # -----------------------------
+    # Boundaries
+    # -----------------------------
+    for (x0, y0, w, h) in [(x_fp, y_fp, w_fp, h_fp), (x_hp, y_hp, w_hp, h_hp)]:
+        ax.plot(
+            [x0, x0 + w, x0 + w, x0, x0],
+            [y0, y0, y0 + h, y0 + h, y0],
+            color="black",
+            linewidth=1.5,
+        )
+
+    # Heat pipe region separators
+    ax.plot([x_hp, x_hp + w_hp], [y_hp + h_cond, y_hp + h_cond], color="black", linewidth=1.0)
+    ax.plot([x_hp, x_hp + w_hp], [y_hp + h_cond + h_adi, y_hp + h_cond + h_adi], color="black", linewidth=1.0)
+
+    # -----------------------------
+    # Titles
+    # -----------------------------
+    ax.text(x_fp + w_fp / 2, y_fp + h_fp + 0.08, "Fuel Pin", ha="center", fontsize=12)
+    ax.text(x_hp + w_hp / 2, y_hp + h_hp + 0.08, "Heat Pipe", ha="center", fontsize=12)
+
+    # -----------------------------
+    # Colorbars (clean placement)
+    # -----------------------------
+
+    cbar_hp = fig.colorbar(pcm_hp, ax=ax, fraction=0.035, pad=0.08)
+    cbar_hp.set_label("Heat Pipe [K]")
+
+    cbar_fp = fig.colorbar(pcm_fp, ax=ax, fraction=0.035, pad=0.08)
+    cbar_fp.set_label("Fuel Pin [K]")
+
+    # -----------------------------
+    # Final styling
+    # -----------------------------
+    ax.set_xlim(1.0, 8.0)
+    ax.set_ylim(-1.4, y_hp + h_hp + 0.4)
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    fig.suptitle(
+        rf"2D Temperature Fields | $k_{{eff}} = {k:.4f}$",
+        fontsize=14
+    )
+
+    plt.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     from utils.solver import Solver
 
     with open("./data/reactor_data.json", "r") as f:
         data = json.load(f)
-    
-    delta_wick = data["HeatPipe"]["geometry"]["delta_wick"]
-    delta_gap  = data["HeatPipe"]["geometry"]["delta_gap"]
-    delta_wall = data["HeatPipe"]["geometry"]["delta_wall"]
 
-    # Ns = [[15, 65, 20], [15, 65, 40], [30, 65, 20], [30, 65, 40], [60, 65, 20]]
-    Ns = [[30, 65, 40], [30, 65, 40]]
+    Ns = [[15, 65, 20]]
+    # Ns = [[30, 65, 40]]
     cfgs = generate_config_seq(data, Ns)
 
     # from visualisation.visualise_mesh import plot_reactor_schematic
@@ -346,17 +419,11 @@ if __name__ == "__main__":
 
     # Reactor ------------------
     reactors = [Reactor(cfg) for cfg in cfgs]
-    reactors[-1].set_variable_k(True)
+    # reactors[-1].set_variable_k(True)
 
     solver = Solver(reactors, iterate=True, save_iterates=True)
     solver.fsolve()
 
-    ((T_solid, T_vap), T_FP, (phi_n_g, k)) = solver.solutions[-1]
-    T_HP = np.r_[T_solid.reshape(-1), T_vap]
-    T_FP = T_FP.reshape(-1)
-    Q_mod = reactors[-1].calculate_HP_FP_boundary_cond(T_FP, T_HP)[2]
+    plot_reactor_temperature_schematic(solver)
 
-    plt.plot(Q_mod)
-    plt.show()
-
-    plot_reactor_solutions(solver)
+    # plot_reactor_solutions(solver)
