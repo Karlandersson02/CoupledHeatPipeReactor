@@ -26,7 +26,7 @@ class Reactor(Component):
         self.fuel_pin_thermal_model = FuelPin(self.cfg_FP)
         self.neutron_flux_model = NeutronicsModel(self.cfg_N)
         
-        self.moderator_eff_res = 0.0807
+        self.moderator_eff_res = 0.00807 * 2
         self.T_cond = 300.
 
         # heat transfer HP variables: N_R * N_Z + 1, heat transfer FP variables: N_R * N_Z + 1, neutron flux variables: N_Z + 1
@@ -86,7 +86,7 @@ class Reactor(Component):
 
         T_FP_ave = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=1)
         qr = self.calculate_qr(T_FP, phi_ng_hat[:-1]) 
-        Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
+        Q_HP, T_mod, T_edge_FP = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
 
         self.heat_pipe_thermal_model.cfg.bc.Q = Q_HP
         # self.heat_pipe_thermal_model.assemble()
@@ -125,7 +125,7 @@ class Reactor(Component):
 
         T_mod = T_edge_FP - Q_HP / (self.cfg_FP.material.h_mod * 2 * self.cfg_FP.geometry.r * np.pi * self.cfg_FP.geometry.l / self.cfg_FP.mesh.N_Z)
 
-        return Q_HP, T_mod
+        return Q_HP, T_mod, T_edge_FP
 
 def generate_config(data, N_R_HP: int, N_R_FP: int, N_Z: int):
     # Heat pipe config
@@ -175,8 +175,8 @@ def plot_reactor_solutions(solver):
     reactors = solver.components
 
     plt.rcParams["font.size"] = 12
-    plt.rcParams["font.family"] = "Computer Modern"
-    plt.rcParams["text.usetex"] = True
+    # plt.rcParams["font.family"] = "Computer Modern"
+    # plt.rcParams["text.usetex"] = True
 
     fig, axs = plt.subplots(3, 2, figsize=(11, 11), dpi=300)
 
@@ -323,7 +323,7 @@ def plot_reactor_solutions(solver):
     axs[2, 1].legend()
 
     plt.tight_layout(rect=(0, 0, 1, 0.94))
-    plt.savefig("./outputs/reactor_figures/reactor_data_variable_k_comparison_2.png", bbox_inches="tight")
+    # plt.savefig("./outputs/reactor_figures/reactor_data_variable_k_comparison_2.png", bbox_inches="tight")
     plt.show()
 
 
@@ -354,7 +354,7 @@ if __name__ == "__main__":
     ((T_solid, T_vap), T_FP, (phi_n_g, k)) = solver.solutions[-1]
     T_HP = np.r_[T_solid.reshape(-1), T_vap]
     T_FP = T_FP.reshape(-1)
-    Q_mod = reactors[-1].calculate_HP_FP_boundary_cond(T_FP, T_HP)[1]
+    Q_mod = reactors[-1].calculate_HP_FP_boundary_cond(T_FP, T_HP)[2]
 
     plt.plot(Q_mod)
     plt.show()

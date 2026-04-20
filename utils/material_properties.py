@@ -53,6 +53,20 @@ def moderator_k(T):
     return k_graphite
 
 
+def moderator_R_eff(T_mod):
+    T_mod_data = np.array([
+        682.55077538, 784.31323975, 885.81336684, 986.95822547,
+        1087.67036323, 1187.90029983, 1287.63485522, 1386.89878892
+    ])
+
+    R_eff_data = np.array([
+        0.01468726, 0.01547968, 0.0161522, 0.016663,
+        0.01697755, 0.0170742, 0.01694783, 0.01661032
+    ])
+
+    return np.interp(T_mod, T_mod_data, R_eff_data)
+
+
 def FP_fuel_k(T, porosity=0):
     # "Modelling of UO2 thermal conductivity: Improvement of the irradiation
     # defects contribution and uncertainty quantification" by Antoine Boulore,
