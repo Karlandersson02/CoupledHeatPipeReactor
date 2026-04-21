@@ -2,6 +2,8 @@ import numpy as np
 
 from models.component import Component
 
+from scipy.optimize import fsolve
+
 from coupled_systems.heatpipe import Heatpipe
 from models.neutronics.axial_neutron_model import NeutronicsModel
 from models.fuel_pin.fuel_pin_model import FuelPin
@@ -139,6 +141,280 @@ class VapourReactor(Component):
         T_mod = T_edge_FP - Q_HP / (self.cfg_FP.material.h_mod * 2 * self.cfg_FP.geometry.r * np.pi * self.cfg_FP.geometry.l / self.cfg_FP.mesh.N_Z)
 
         return Q_HP, T_mod
+    
+    # -------------------------------------------------------------------------
+    # Scaling helpers
+    # -------------------------------------------------------------------------
+    def unpack_HP_scaled(self, X_HP_scaled):
+        X_HP_scaled = np.asarray(X_HP_scaled, dtype=float).copy()
+
+        T_HP = X_HP_scaled[:self.N_T_HP] * self.T_cond
+
+        u_v = (
+            X_HP_scaled[self.N_T_HP:(self.N_T_HP + self.N_u_v)]
+            * self.u_v_ref
+        )
+
+        T_v = (
+            X_HP_scaled[(self.N_T_HP + self.N_u_v):self.N_HP]
+            * self.T_vap_ref
+        )
+
+        return T_HP, u_v, T_v
+
+    def unpack_FP_N_scaled(self, X_FP_N_scaled):
+        X_FP_N_scaled = np.asarray(X_FP_N_scaled, dtype=float).copy()
+
+        T_FP = X_FP_N_scaled[:self.N_FP] * self.T_cond
+        phi_ng_hat_and_k = X_FP_N_scaled[self.N_FP:]
+
+        return T_FP, phi_ng_hat_and_k
+
+    # -------------------------------------------------------------------------
+    # Block 1: Heat pipe + vapour, with fuel pin temperature fixed
+    # -------------------------------------------------------------------------
+    def get_residuals_HP_vapour_block(self, X_HP_scaled, T_FP_scaled):
+        T_HP, u_v, T_v = self.unpack_HP_scaled(X_HP_scaled)
+
+        T_FP = np.asarray(T_FP_scaled, dtype=float).copy() * self.T_cond
+
+        Q_HP, _ = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
+
+        self.heatpipe.cfg.bc.Q = Q_HP
+
+        X_HP_physical = np.r_[T_HP, u_v, T_v]
+
+        return self.heatpipe.get_residuals(X_HP_physical)
+
+    # -------------------------------------------------------------------------
+    # Block 2: Fuel pin + neutronics, with heat pipe state fixed
+        # -------------------------------------------------------------------------
+    def get_residuals_neutronics_block(self, phi_ng_hat_and_k, X_HP_scaled, T_FP_scaled):
+        """
+        Neutronics-only block.
+
+        Unknowns:
+            phi_ng_hat_and_k
+
+        Fixed:
+            X_HP_scaled
+            T_FP_scaled
+        """
+        T_HP, _, _ = self.unpack_HP_scaled(X_HP_scaled)
+        T_FP = np.asarray(T_FP_scaled, dtype=float).copy() * self.T_cond
+
+        _, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
+
+        T_HP_ave = np.mean(
+            T_HP[:self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap],
+            dtype=float,
+        )
+
+        self.neutron_flux_model.T_FP = T_FP
+        self.neutron_flux_model.T_M  = np.mean(T_mod)
+        self.neutron_flux_model.T_HP = T_HP_ave
+
+        return self.neutron_flux_model.get_residuals(phi_ng_hat_and_k)
+    
+    def get_residuals_fuel_pin_block(self, T_FP_scaled, X_HP_scaled, phi_ng_hat_and_k):
+        """
+        Fuel-pin-temperature-only block.
+
+        Unknowns:
+            T_FP_scaled
+
+        Fixed:
+            X_HP_scaled
+            phi_ng_hat_and_k
+        """
+        T_HP, _, _ = self.unpack_HP_scaled(X_HP_scaled)
+
+        T_FP = np.asarray(T_FP_scaled, dtype=float).copy() * self.T_cond
+        phi_ng_hat = phi_ng_hat_and_k[:-1]
+
+        _, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
+        qr = self.calculate_qr(T_FP, phi_ng_hat)
+
+        self.fuel_pin_thermal_model.qr = qr
+        self.fuel_pin_thermal_model.T_mod = T_mod
+
+        return self.fuel_pin_thermal_model.get_residuals(T_FP)
+    # -------------------------------------------------------------------------
+    # Picard solve
+    # -------------------------------------------------------------------------
+    def solve_picard(self, X0=None, max_iter=30, picard_tol=1e-6, full_res_tol=None, block_tol=1e-8, relaxation_HP=1., relaxation_N=1., relaxation_FP=1., maxfev_HP=10000, maxfev_N=10000, maxfev_FP=10000, verbose=True, raise_on_block_fail=False):
+        """
+        Three-block Picard iteration using fsolve:
+
+            1. Solve heat pipe + vapour with T_FP fixed.
+            2. Solve neutronics with T_FP and HP fixed.
+            3. Solve fuel pin temperature with phi and HP fixed.
+            4. Under-relax all block updates.
+        """
+
+        if X0 is None:
+            X0 = self.initial_guess()
+
+        X_HP, T_FP_scaled, phi_ng_hat_and_k = self.unpack(X0)
+
+        history = []
+
+        for it in range(max_iter):
+            X_old = np.r_[X_HP, T_FP_scaled, phi_ng_hat_and_k]
+
+            # ================================================================
+            # Block 3: Fuel pin temperature only
+            # ================================================================
+            T_FP_scaled_new, info_FP, ier_FP, msg_FP = fsolve(
+                func=lambda x: self.get_residuals_fuel_pin_block(
+                    x,
+                    X_HP,
+                    phi_ng_hat_and_k,
+                ),
+                x0=T_FP_scaled,
+                xtol=block_tol,
+                maxfev=maxfev_FP,
+                full_output=True,
+            )
+
+            FP_success = ier_FP == 1
+
+            if (not FP_success) and verbose:
+                print(f"[Picard {it:03d}] Fuel pin block did not fully converge:")
+                print(f"    ier = {ier_FP}")
+                print(f"    {msg_FP}")
+
+            if (not FP_success) and raise_on_block_fail:
+                raise RuntimeError(
+                    f"Fuel pin block failed at Picard iteration {it}: {msg_FP}"
+                )
+
+            T_FP_scaled = (
+                (1.0 - relaxation_FP) * T_FP_scaled
+                + relaxation_FP * T_FP_scaled_new
+            )
+
+
+            # ================================================================
+            # Block 1: Heat pipe + vapour
+            # ================================================================
+            X_HP_new, info_HP, ier_HP, msg_HP = fsolve(
+                func=lambda x: self.get_residuals_HP_vapour_block(
+                    x,
+                    T_FP_scaled,
+                ),
+                x0=X_HP,
+                xtol=block_tol,
+                maxfev=maxfev_HP,
+                full_output=True,
+            )
+
+            HP_success = ier_HP == 1
+
+            if (not HP_success) and verbose:
+                print(f"[Picard {it:03d}] HP block did not fully converge:")
+                print(f"    ier = {ier_HP}")
+                print(f"    {msg_HP}")
+
+            if (not HP_success) and raise_on_block_fail:
+                raise RuntimeError(
+                    f"HP block failed at Picard iteration {it}: {msg_HP}"
+                )
+
+            X_HP = (
+                (1.0 - relaxation_HP) * X_HP
+                + relaxation_HP * X_HP_new
+            )
+
+            # ================================================================
+            # Block 2: Neutronics only
+            # ================================================================
+            phi_ng_hat_and_k_new, info_N, ier_N, msg_N = fsolve(
+                func=lambda x: self.get_residuals_neutronics_block(
+                    x,
+                    X_HP,
+                    T_FP_scaled,
+                ),
+                x0=phi_ng_hat_and_k,
+                xtol=block_tol,
+                maxfev=maxfev_N,
+                full_output=True,
+            )
+
+            N_success = ier_N == 1
+
+            if (not N_success) and verbose:
+                print(f"[Picard {it:03d}] Neutronics block did not fully converge:")
+                print(f"    ier = {ier_N}")
+                print(f"    {msg_N}")
+
+            if (not N_success) and raise_on_block_fail:
+                raise RuntimeError(
+                    f"Neutronics block failed at Picard iteration {it}: {msg_N}"
+                )
+
+            phi_ng_hat_and_k = (
+                (1.0 - relaxation_N) * phi_ng_hat_and_k
+                + relaxation_N * phi_ng_hat_and_k_new
+            )
+
+            # ================================================================
+            # Diagnostics
+            # ================================================================
+            X = np.r_[X_HP, T_FP_scaled, phi_ng_hat_and_k]
+
+            step_abs = np.linalg.norm(X - X_old)
+            step_rel = step_abs / (np.linalg.norm(X_old) + 1e-14)
+
+            full_res = self.get_residuals(X)
+            full_res_rms = np.linalg.norm(full_res) / np.sqrt(full_res.size)
+
+            history.append(
+                {
+                    "iteration": it,
+                    "step_abs": step_abs,
+                    "step_rel": step_rel,
+                    "full_res_rms": full_res_rms,
+
+                    "HP_success": HP_success,
+                    "N_success": N_success,
+                    "FP_success": FP_success,
+
+                    "HP_nfev": info_HP["nfev"],
+                    "N_nfev": info_N["nfev"],
+                    "FP_nfev": info_FP["nfev"],
+
+                    "HP_ier": ier_HP,
+                    "N_ier": ier_N,
+                    "FP_ier": ier_FP,
+                }
+            )
+
+            if verbose:
+                print(
+                    f"[Picard {it:03d}] "
+                    f"step_rel={step_rel:.3e}, "
+                    f"full_res_rms={full_res_rms:.3e}, "
+                    f"HP_nfev={info_HP['nfev']}, "
+                    f"N_nfev={info_N['nfev']}, "
+                    f"FP_nfev={info_FP['nfev']}"
+                )
+
+            if full_res_tol is None:
+                converged = step_rel < picard_tol
+            else:
+                converged = step_rel < picard_tol and full_res_rms < full_res_tol
+
+            if converged:
+                if verbose:
+                    print(f"Picard converged after {it + 1} iterations.")
+                break
+
+        X = np.r_[X_HP, T_FP_scaled, phi_ng_hat_and_k]
+        solution = self.post_process(X)
+
+        return X, solution, history
+
     
 import matplotlib as mpl
 
