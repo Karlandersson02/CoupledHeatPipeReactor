@@ -20,7 +20,7 @@ MODEL_FILE = Path("utils/rgi_surrogate.joblib")
 # User settings
 # ---------------------------------------------------------------------
 QUANTITY = "fission_xs"               # e.g. "total_xs", "absorption_xs", ...
-GROUP_INDEX = 0                # zero-based energy group index
+GROUP_INDEX = 7                # zero-based energy group index
 
 VARY_AXIS = "T_hp"             # one of: "T_hp", "T_fp", "T_mod"
 FIXED_SELECTION = "middle"     # "middle", "min", "max", or explicit value

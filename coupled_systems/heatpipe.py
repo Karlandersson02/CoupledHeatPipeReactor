@@ -219,13 +219,14 @@ if __name__ == "__main__":
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_1000"]
 
-    Qs = [0.97e3]
+    ncfgs = 5
+    Qs = [1e3 for i in range(ncfgs)]
     Ns = [[28, 50] for i in range(len(Qs))]
     cfgs = generate_cfgs_seq(data, Ns, Qs)
 
     heatpipes = [Heatpipe(cfg) for cfg in cfgs]
 
-    solver = Solver([heatpipes[-1]])
+    solver = Solver(heatpipes, iterate=False)
     solver.fsolve()
 
 

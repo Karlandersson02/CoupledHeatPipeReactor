@@ -3,15 +3,8 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from pathlib import Path
 
-from scipy.optimize import fsolve, newton_krylov
-
 from data.dataclass import *
 from models.component import Component
-
-# MODEL_PATH = Path("./utils/rgi_surrogate.joblib")
-# from utils.interpolator import OpenMCTallyGridSurrogate
-# interpolator_model = OpenMCTallyGridSurrogate()
-# interpolator_model = interpolator_model.load(MODEL_PATH)
 
 N_G = 8
 
@@ -125,6 +118,12 @@ class NeutronicsModel(Component):
 
         self.Z = np.linspace(0, self.cfg.mesh.l, self.cfg.mesh.N_Z)
 
+        MODEL_PATH = Path("./utils/rgi_surrogate.joblib")
+        from utils.interpolator import OpenMCTallyGridSurrogate
+        self.interpolator_model = OpenMCTallyGridSurrogate()
+        self.interpolator_model = self.interpolator_model.load(MODEL_PATH)
+
+
     def initial_guess(self):
         phi_ng_initial = np.full((self.cfg.mesh.N_Z*self.cfg.energy.N_G), 1)
         k_initial = np.array([1])
@@ -230,7 +229,7 @@ class NeutronicsModel(Component):
     #     T_center_axial = self.get_axial_temperature(T)
 
     #     X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_center_axial])
-    #     params = interpolator_model.predict_dict(X)
+    #     params = self.interpolator_model.predict_dict(X)
 
     #     Diffusivity = np.zeros((len(params), self.cfg.energy.N_G))
     #     Sigma_t = np.zeros((len(params), self.cfg.energy.N_G))
@@ -270,7 +269,7 @@ if __name__ == "__main__":
     neutronics_model = NeutronicsModel(cfg)
 
     solver = Solver([neutronics_model])
-    solver.newton_krylov()
+    solver.fsolve(maxfev=1)
 
     phi_n_g, k = solver.solution
 

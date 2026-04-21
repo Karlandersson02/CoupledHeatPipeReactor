@@ -25,6 +25,7 @@ class VapourReactor(Component):
         self.moderator_eff_res = 0.00807
         self.T_cond = 300.
         self.T_vap_ref = 2000
+        self.u_v_ref = 50
 
         # heat transfer HP variables: N_R * N_Z + 2 * N_Z - 1, heat transfer FP variables: N_R * N_Z + 1, neutron flux variables: N_Z + 1
 
@@ -43,8 +44,32 @@ class VapourReactor(Component):
         self.fuel_pin_thermal_model.variable_k  = cond
 
     def initial_guess(self):
+        i = np.arange(self.cfg_HP.mesh.N_evap, dtype=float)
+        cosine_weights = 0.2 + 0.8 * np.cos(np.pi * (i - (self.cfg_HP.mesh.N_evap - 1) / 2) / (self.cfg_HP.mesh.N_evap - 1))
+        cosine_weights /= cosine_weights.sum()
+        Q = cosine_weights * self.cfg_N.energy.power
+
+        print("Solving Heat pipe initial values")
+        self.heatpipe.HP.cfg.bc.Q = Q
+        solver_HP = Solver([self.heatpipe])
+        solver_HP.fsolve()
+        (T_HP_guess, u_guess, T_v_guess) = solver_HP.solutions[0]
+
+
         X_initial = np.ones(self.N_var)
+
+        X_initial[:self.N_T_HP] = T_HP_guess.reshape(-1) / self.T_cond 
+        X_initial[self.N_T_HP:(self.N_T_HP + self.N_u_v)] = u_guess[:-1] / self.u_v_ref 
+        X_initial[(self.N_T_HP + self.N_u_v):self.N_HP] = T_v_guess / self.T_vap_ref
+
+        # neutronics weightings
+        X_initial[-self.N_N:-1] = np.repeat(cosine_weights, self.cfg_N.energy.N_G)
+
         return X_initial
+
+    # def initial_guess(self):
+    #     X_initial = np.ones(self.N_var)
+    #     return X_initial
 
     def assemble(self):
         return
@@ -61,6 +86,7 @@ class VapourReactor(Component):
         k          = phi_ng_hat_and_k[-1]
 
         T_HP *= self.T_cond
+        u_v  *= self.u_v_ref
         T_v  *= self.T_vap_ref
         T_FP *= self.T_cond
         
@@ -92,7 +118,7 @@ class VapourReactor(Component):
         phi_ng_hat  = phi_ng_hat_and_k[:-1]
 
         T_HP *= self.T_cond # modifies X_HP as well
-        u_v  *= 10
+        u_v  *= self.u_v_ref
         T_v  *= self.T_vap_ref
         T_FP *= self.T_cond
 
@@ -340,7 +366,7 @@ if __name__ == "__main__":
     with open("./data/reactor_data.json", "r") as f:
         data = json.load(f)
 
-    N_R_HP, N_R_FP, N_Z = 15, 65, 20
+    N_R_HP, N_R_FP, N_Z = 15, 65, 40
 
     # Heat pipe config
     geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
@@ -371,9 +397,10 @@ if __name__ == "__main__":
 
     # Reactor config
     cfg_R = ReactorConfig(cfg_HP, cfg_FP, cfg_N)
-    cfg_R = cfg_R.resolve_geometry()
+    cfg_R = cfg_R.resolve_mesh()
 
     vapour_reactor = VapourReactor(cfg_R)
+    vapour_reactor.set_variable_k(True)
 
     solver = Solver([vapour_reactor])
     solver.fsolve()
