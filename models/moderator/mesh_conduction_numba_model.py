@@ -943,6 +943,7 @@ def plot_mesh_with_temp_profile(points, triangles, T):
         cmap="viridis"
     )
 
+
 def calculate_effective_thermal_resistance(mesh, T):
     """
     Compute effective thermal resistance based on boundary temperatures on
@@ -1068,9 +1069,49 @@ def calculate_effective_thermal_resistance(mesh, T):
     T_HP_avg = np.average(HP_boundary_temps, weights=HP_boundary_lengths)
     T_FP_avg = np.average(FP_boundary_temps, weights=FP_boundary_lengths)
 
-    R_eff = abs(T_FP_avg - T_HP_avg) / abs(mesh.Q_in)
+    # Divide by 2 to get Q_in per fuel pin.
+    R_eff = abs(T_FP_avg - T_HP_avg) / (abs(mesh.Q_in) / 2)
 
     return R_eff, T_HP_avg, T_FP_avg, HP_boundary_temps, FP_boundary_temps
+
+
+def compute_moderator_resistance_vs_hp_temperature(mod_mesh_di, T_HPs):
+    T_mod_avg = np.zeros_like(T_HPs)
+    R_eff = np.zeros_like(T_HPs)
+
+    (
+        areas,
+        centers,
+        neighbours,
+        edge_lengths,
+        edge_centers,
+        edge_normals,
+        is_boundary,
+        boundary_kind,
+    ) = mod_mesh_di.assemble_mesh_data(
+        mesh=mod_mesh_di.mesh,
+        HP_centers=mod_mesh_di.HP_centers,
+        fuel_pin_centers=mod_mesh_di.fuel_pin_centers,
+        HP_radius=mod_mesh_di.HP_radius,
+        fuel_pin_radius=mod_mesh_di.fuel_pin_radius,
+    )
+
+    for i in range(T_mod_avg.shape[0]):
+        mod_mesh_di.T_HP = T_HPs[i]
+
+        T = mod_mesh_di.solve_nonlinear_picard(
+            xtol=1e-10,
+            maxfev=10000,
+            verbose=True,
+            use_linear_guess=True,
+            omega=0.5,
+            max_outer_iter=200)
+
+        T_mod_avg[i] = np.sum(T * areas) / np.sum(areas)
+
+        R_eff[i], _, _, _, _  = calculate_effective_thermal_resistance(mod_mesh_di, T)
+
+    return R_eff, T_mod_avg
 
 
 def plot_temperature_profiles(T, areas, R_eff, r_HP, r_FP, Q_in):
@@ -1260,47 +1301,36 @@ if __name__ == "__main__":
     mod_mesh_di = ModeratorDiscretisedMeshFast(mesh=mesh, data=data_di)
     mod_mesh_vn = ModeratorDiscretisedMeshFast(mesh=mesh, data=data_vn)
 
-    (
-    areas,
-    centers,
-    neighbours,
-    edge_lengths,
-    edge_centers,
-    edge_normals,
-    is_boundary,
-    boundary_kind,
-) = mod_mesh_di.assemble_mesh_data(
-    mesh=mod_mesh_di.mesh,
-    HP_centers=mod_mesh_di.HP_centers,
-    fuel_pin_centers=mod_mesh_di.fuel_pin_centers,
-    HP_radius=mod_mesh_di.HP_radius,
-    fuel_pin_radius=mod_mesh_di.fuel_pin_radius,
-)
+    T_HP = np.linspace(650, 1350, 8)
+    print(compute_moderator_resistance_vs_hp_temperature(mod_mesh_di, T_HPs=T_HP))
 
-    T_NKp_di = mod_mesh_di.solve_nonlinear_picard(
-        xtol=1e-10,
-        maxfev=10000,
-        verbose=True,
-        use_linear_guess=True,
-        omega=0.5,
-        max_outer_iter=200)
-    
-    T_NKp_di -= np.min(T_NKp_di) - 850
+    # (
+    # areas,
+    # centers,
+    # neighbours,
+    # edge_lengths,
+    # edge_centers,
+    # edge_normals,
+    # is_boundary,
+    # boundary_kind,
+    # ) = mod_mesh_di.assemble_mesh_data(
+    # mesh=mod_mesh_di.mesh,
+    # HP_centers=mod_mesh_di.HP_centers,
+    # fuel_pin_centers=mod_mesh_di.fuel_pin_centers,
+    # HP_radius=mod_mesh_di.HP_radius,
+    # fuel_pin_radius=mod_mesh_di.fuel_pin_radius,
+    # )
 
-    plot_mesh_with_temp_profile(mod_mesh_di.mesh.points, mod_mesh_di.mesh.triangles, T_NKp_di)
-    R_eff_di, T_HP_avg_di, T_FP_avg_di, HP_boundary_temps_di, FP_boundary_temps_di = calculate_effective_thermal_resistance(mod_mesh_di, T_NKp_di)
-    plot_temperature_profiles(T_NKp_di, areas, R_eff_di, r_HP, r_f, data_di["Q_in"])
-
-
-    # T_NKp_vn = mod_mesh_vn.solve_nonlinear_picard(
+    # T_NKp_di = mod_mesh_di.solve_nonlinear_picard(
     #     xtol=1e-10,
     #     maxfev=10000,
     #     verbose=True,
     #     use_linear_guess=True,
     #     omega=0.5,
     #     max_outer_iter=200)
-    # T_NKp_vn -= np.min(T_NKp_vn) - 850
+    
+    # T_NKp_di -= np.min(T_NKp_di) - 850
 
-    # plot_mesh_with_temp_profile(mod_mesh_vn.mesh.points, mod_mesh_vn.mesh.triangles, T_NKp_vn)
-    # R_eff_vn, T_HP_avg_vn, T_FP_avg_vn, HP_boundary_temps_vn, FP_boundary_temps_vn = calculate_effective_thermal_resistance(mod_mesh_vn, T_NKp_vn)
-    # plot_temperature_profiles(T_NKp_vn, areas, R_eff_vn, r_HP, r_f, 15e6 / 2970)
+    # plot_mesh_with_temp_profile(mod_mesh_di.mesh.points, mod_mesh_di.mesh.triangles, T_NKp_di)
+    # R_eff_di, T_HP_avg_di, T_FP_avg_di, HP_boundary_temps_di, FP_boundary_temps_di = calculate_effective_thermal_resistance(mod_mesh_di, T_NKp_di)
+    # plot_temperature_profiles(T_NKp_di, areas, R_eff_di, r_HP, r_f, data_di["Q_in"])

@@ -480,8 +480,8 @@ if __name__ == "__main__":
     with open("./data/test_data.json", "r") as f:
         data = json.load(f)["FuelPin"]
 
-    N_Z = 30
-    N_R = 30
+    N_Z = 100
+    N_R = 100
 
     # data = {
     #     "geometry": {
@@ -528,8 +528,8 @@ if __name__ == "__main__":
 
     fuel_pin.linear_solve()
 
-    plt.plot(fuel_pin.R[::2], T[0], label="non-linear")
-    plt.plot(fuel_pin.R[::2], fuel_pin.T.reshape(cfg.mesh.N_Z, cfg.mesh.N_R)[0], ls="--", label="linear")
+    plt.plot(fuel_pin.R, T[0], label="non-linear")
+    plt.plot(fuel_pin.R, fuel_pin.T.reshape(cfg.mesh.N_Z, cfg.mesh.N_R)[0], ls="--", label="linear")
     
     plt.legend()
     plt.show()

@@ -26,7 +26,7 @@ class Reactor(Component):
         self.fuel_pin_thermal_model = FuelPin(self.cfg_FP)
         self.neutron_flux_model = NeutronicsModel(self.cfg_N)
         
-        self.moderator_eff_res = 0.00807
+        self.moderator_eff_res = 0.00807 * 2
         self.T_cond = 300.
 
         # heat transfer HP variables: N_R * N_Z + 1, heat transfer FP variables: N_R * N_Z + 1, neutron flux variables: N_Z + 1
@@ -125,7 +125,7 @@ class Reactor(Component):
 
         T_mod = T_edge_FP - Q_HP / (self.cfg_FP.material.h_mod * 2 * self.cfg_FP.geometry.r * np.pi * self.cfg_FP.geometry.l / self.cfg_FP.mesh.N_Z)
 
-        return Q_HP, T_mod
+        return Q_HP, T_mod, T_edge_FP
 
 def generate_config(data, N_R_HP: int, N_R_FP: int, N_Z: int):
     # Heat pipe config
@@ -174,7 +174,7 @@ def generate_config_seq(data, Ns: Sequence[Sequence[int]]):
 def plot_reactor_solutions(solver):
     reactors = solver.components
 
-    # plt.rcParams["font.size"] = 12
+    plt.rcParams["font.size"] = 12
     # plt.rcParams["font.family"] = "Computer Modern"
     # plt.rcParams["text.usetex"] = True
 

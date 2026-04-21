@@ -978,7 +978,7 @@ def plot_temperature_profiles(R_eff, mesh, r_i=1.0, r_o=2.0, n_points=500):
     plt.ylabel("Temperature [K]", fontsize=13)
     plt.title(
         f"Temperature profiles from effective thermal resistance\n"
-        f"$R_{{eff}}$ = {R_eff:.3g} K/W, $Q_{{in}}$ = {Q_in:.3g} W, "
+        f"$R_{{eff}}$ = {R_eff:.3g} K/W/m, $Q_{{in}}$ = {Q_in/2:.3g} W/m/per FP, "
         f"$\\Delta T$ = {delta_T:.3g} K",
         fontsize=15
     )
@@ -1025,12 +1025,13 @@ if __name__ == "__main__":
     r_HP = 0.008
     r_f = 0.0065
     theta_hex = (np.pi / 6)
+    l_f = 1.8
 
     data = {
-        "cell_k": 20 * np.ones(triangles.shape[0]),
+        "cell_k": 62 * np.ones(triangles.shape[0]),
         "cell_T": np.ones(triangles.shape[0]),
 
-        "Q_in": 1000,
+        "Q_in": 15e6 / 2970 / l_f * 2,
 
         "HP_centers":       [[0., 0.], [np.tan(theta_hex) * 2. * l_pitch, 2. * l_pitch]],
         "fuel_pin_centers": [[0, l_pitch * 3./2.], [0, l_pitch * 5./2.], [np.tan(theta_hex) * 2 * l_pitch, l_pitch * 7./2.]],
@@ -1040,7 +1041,7 @@ if __name__ == "__main__":
         "T_HP": 850,
         "T_FP": 885,
 
-        "HP_BC": "Dirichlet",   #"Dirichlet"
+        "HP_BC": "vonNeumann",   #"Dirichlet"
         "FP_BC": "vonNeumann"   #"vonNeumann"
     }
 
@@ -1048,6 +1049,7 @@ if __name__ == "__main__":
     rect_mesh = RectangularTestDiscretisedMesh(mesh=mesh, data=data)
 
     T = mod_mesh.solve_linearly(4)
+    T -= np.min(T) - 850
 
     R_eff = mod_mesh.calculate_effective_thermal_resistance()
 
