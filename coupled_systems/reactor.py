@@ -80,26 +80,27 @@ class Reactor(Component):
     def get_residuals(self, X):
         T_HP = self.T_cond * X[:(self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1)]
         T_FP = self.T_cond * X[(self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1):((self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1) + self.cfg_FP.mesh.N_R * self.cfg_FP.mesh.N_Z)]
-        phi_ng_hat = X[((self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1) + self.cfg_N.mesh.N_R * self.cfg_N.mesh.N_Z):]
+        phi_ng_hat_and_k = X[((self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1) + self.cfg_N.mesh.N_R * self.cfg_N.mesh.N_Z):]
 
         Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
-        qr = self.calculate_qr(T_FP, phi_ng_hat[:-1]) 
         
         T_HP_ave  = np.mean(T_HP[:self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap], dtype=float)
         T_FP_ave  = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=1)
         T_mod_ave = np.mean(T_mod)
+        
+        self.neutron_flux_model.T_FP = T_FP
+        self.neutron_flux_model.T_M  = T_mod_ave
+        self.neutron_flux_model.T_HP = T_HP_ave
+        res_flux = self.neutron_flux_model.get_residuals(phi_ng_hat_and_k)
 
         self.heat_pipe_thermal_model.cfg.bc.Q = Q_HP
         res_cond_HP = self.heat_pipe_thermal_model.get_residuals(T_HP)
+
+        qr = self.calculate_qr(T_FP, phi_ng_hat_and_k[:-1]) 
         
         self.fuel_pin_thermal_model.qr = qr
         self.fuel_pin_thermal_model.T_mod = T_mod
         res_cond_FP = self.fuel_pin_thermal_model.get_residuals(T_FP)
-        
-        self.neutron_flux_model.T_FP = T_FP
-        self.neutron_flux_model.T_M  = np.mean(T_mod)
-        self.neutron_flux_model.T_HP = T_HP_ave
-        res_flux = self.neutron_flux_model.get_residuals(phi_ng_hat)
 
         return np.r_[res_cond_HP, res_cond_FP, res_flux]
     
@@ -410,7 +411,7 @@ if __name__ == "__main__":
     with open("./data/reactor_data.json", "r") as f:
         data = json.load(f)
 
-    Ns = [[15, 65, 20]]
+    Ns = [[15, 65, 40]]
     # Ns = [[30, 65, 40]]
     cfgs = generate_config_seq(data, Ns)
 

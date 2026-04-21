@@ -14,11 +14,13 @@ from scipy.interpolate import RegularGridInterpolator
 # User settings
 # =============================================================================
 
+SAVE_DATASET_EVERY = 10
+
 # -------------------------------------------------------------------------
 # Temperature grid
 # -------------------------------------------------------------------------
-T_MIN = 500.0
-T_MAX = 1200.0
+T_MIN = 300
+T_MAX = 1800
 
 # -------------------------------------------------------------------------
 # Data / Config
@@ -27,23 +29,47 @@ T_MAX = 1200.0
 import json
 from data.dataclass import *
 
-# with open("./data/vapour_data.json", "r") as f:
-#     data_guoju = json.load(f)
-#     data = data_guoju["data_guoju_560"]
+with open("./data/reactor_data.json", "r") as f:
+    data = json.load(f)
 
-# geom = HeatpipeGeometry(**data["geometry"])
-# mesh = HeatpipeMesh(**data["mesh"])
-# mat = HeatpipeMaterial(**data["material"])
-# wick = HeatpipeWick(**data["wick"])
-# bc = HeatpipeBC(**data["bc"])
-# cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
-# cfg = cfg.resolve_geometry()
+# Mesh dimensions
+# N_R_HP, N_R_FP, N_Z = 15, 15, 50
+
+# # Heat pipe config
+# geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
+# mesh   = HeatpipeMesh(N_R=N_R_HP, N_Z=N_Z)
+# mat    = HeatpipeMaterial(**data["HeatPipe"]["material"])
+# wick   = HeatpipeWick(**data["HeatPipe"]["wick"])
+# bc     = HeatpipeBC(**data["HeatPipe"]["bc"])
+# cfg_HP = HeatpipeConfig(geom, mesh, mat, wick, bc)
+
+# # Fuel pin config
+# geom_FP   = FuelPinGeometry(**data["FuelPin"]["geometry"])
+# mesh_FP   = FuelPinMesh(N_R=N_R_FP, N_Z=30)
+# energy_FP = FuelPinEnergy(**data["FuelPin"]["energy"])
+# mat_FP    = FuelPinMaterial(**data["FuelPin"]["material"])
+# cfg_FP    = FuelPinConfig(geom_FP, mesh_FP, energy_FP, mat_FP)
+
+# # Neutronics config
+# mesh_N = NeutronicsMesh(
+#     N_R = N_R_FP,
+#     N_Z = 50,
+#     l   = data["FuelPin"]["geometry"]["l"]
+# )
+# energy = NeutronicsEnergy(
+#     N_G   = cfg_FP.energy.N_G,
+#     power = data["Reactor"]["power"]["thermal"] / data["Reactor"]["components"]["N_FP"]
+# )
+# cfg_N = NeutronicsConfig(mesh_N, energy)
+
+# # Reactor config
+# cfg_R = ReactorConfig(cfg_HP, cfg_FP, cfg_N)
 
 # Number of grid points per dimension.
 # Total OpenMC runs = N_T_HEAT_PIPE * N_T_FUEL_PIN * N_T_MODERATOR
-N_T_HEAT_PIPE = 10
-N_T_FUEL_PIN = 10
-N_T_MODERATOR = 10
+N_T_HEAT_PIPE = 5
+N_T_FUEL_PIN = 5
+N_T_MODERATOR = 5
 
 # -------------------------------------------------------------------------
 # Output / storage
@@ -234,14 +260,12 @@ def run_openmc_case(
 
     ensure_dir(case_dir)
 
-    HP = Heatpipe(cfg)
-
     old_cwd = Path.cwd()
     try:
         os.chdir(case_dir)
 
         model, mgxs_objects, _ = create_openmc_model(
-            HP,
+            cfg_R,
             num_groups=num_energy_groups,
             T_heat_pipe=T_heat_pipe,
             T_moderator=T_moderator,
@@ -266,9 +290,14 @@ def generate_training_data(
     X: np.ndarray,
     num_energy_groups: int,
     run_root: Path,
+    save_every: int = SAVE_DATASET_EVERY,
+    data_file: Path = TRAINING_DATA_FILE,
+    metadata_file: Path = METADATA_FILE,
 ) -> Tuple[np.ndarray, List[TargetSpec]]:
     """
     Run OpenMC on all temperature points in X and build training targets.
+
+    Saves the accumulated dataset every `save_every` iterations.
     """
     ensure_dir(run_root)
 
@@ -329,9 +358,25 @@ def generate_training_data(
                         except OSError:
                             pass
 
+        # Save accumulated dataset every `save_every` iterations
+        n_done = len(Y_rows)
+        if n_done % save_every == 0 or n_done == n_samples:
+            X_partial = X[:n_done]
+            Y_partial = np.vstack(Y_rows)
+
+            save_training_dataset(
+                X=X_partial,
+                Y=Y_partial,
+                specs=specs_ref,
+                num_energy_groups=num_energy_groups,
+                data_file=data_file,
+                metadata_file=metadata_file,
+            )
+
+            print(f"Saved accumulated dataset with {n_done} / {n_samples} samples.")
+
     Y = np.vstack(Y_rows)
     return Y, specs_ref
-
 
 def save_training_dataset(
     X: np.ndarray,
@@ -534,6 +579,9 @@ def build_or_load_training_data(force_recompute: bool = False) -> Tuple[np.ndarr
         X=X,
         num_energy_groups=NUM_ENERGY_GROUPS,
         run_root=run_root,
+        save_every=SAVE_DATASET_EVERY,
+        data_file=TRAINING_DATA_FILE,
+        metadata_file=METADATA_FILE,
     )
 
     metadata = {
