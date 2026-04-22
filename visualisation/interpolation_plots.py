@@ -22,8 +22,8 @@ MODEL_FILE = Path("utils/rgi_surrogate.joblib")
 QUANTITY = "fission_xs"               # e.g. "total_xs", "absorption_xs", ...
 GROUP_INDEX = 7                # zero-based energy group index
 
-VARY_AXIS = "T_hp"             # one of: "T_hp", "T_fp", "T_mod"
-FIXED_SELECTION = "middle"     # "middle", "min", "max", or explicit value
+VARY_AXIS = "T_fp"             # one of: "T_hp", "T_fp", "T_mod"
+FIXED_SELECTION = "max"     # "middle", "min", "max", or explicit value
 
 N_PLOT = 300                   # number of points for smooth interpolation line
 

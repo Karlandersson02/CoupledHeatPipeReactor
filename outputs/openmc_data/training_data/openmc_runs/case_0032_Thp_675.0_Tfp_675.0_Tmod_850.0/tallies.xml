@@ -1,0 +1,57 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tallies>
+  <filter id="705" type="cell">
+    <bins>363</bins>
+  </filter>
+  <filter id="706" type="energy">
+    <bins>1e-05 0.0003448488241248216 0.011892071150027212 0.41009667524955984 14.142135623730951 487.68988404573685 16817.928305074292 579964.2800220423 20000000.000000004</bins>
+  </filter>
+  <filter id="709" type="energyout">
+    <bins>1e-05 0.0003448488241248216 0.011892071150027212 0.41009667524955984 14.142135623730951 487.68988404573685 16817.928305074292 579964.2800220423 20000000.000000004</bins>
+  </filter>
+  <filter id="710" type="legendre">
+    <order>0</order>
+  </filter>
+  <filter id="711" type="legendre">
+    <order>1</order>
+  </filter>
+  <filter id="718" type="energy">
+    <bins>1e-05 20000000.000000004</bins>
+  </filter>
+  <tally id="2302">
+    <filters>705 706</filters>
+    <nuclides>total</nuclides>
+    <scores>flux total scatter fission nu-fission kappa-fission</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="2278">
+    <filters>705 706 709 710</filters>
+    <nuclides>total</nuclides>
+    <scores>scatter</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="2304">
+    <filters>705 709 711</filters>
+    <nuclides>total</nuclides>
+    <scores>scatter</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="2303">
+    <filters>705 706</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="2291">
+    <filters>705 718</filters>
+    <nuclides>total</nuclides>
+    <scores>nu-fission</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="2292">
+    <filters>705 709</filters>
+    <nuclides>total</nuclides>
+    <scores>nu-fission</scores>
+    <estimator>analog</estimator>
+  </tally>
+</tallies>

@@ -19,8 +19,8 @@ SAVE_DATASET_EVERY = 10
 # -------------------------------------------------------------------------
 # Temperature grid
 # -------------------------------------------------------------------------
-T_MIN = 300
-T_MAX = 1800
+T_MIN = 500
+T_MAX = 1700
 
 # -------------------------------------------------------------------------
 # Data / Config
@@ -32,44 +32,45 @@ from data.dataclass import *
 with open("./data/reactor_data.json", "r") as f:
     data = json.load(f)
 
-# Mesh dimensions
-# N_R_HP, N_R_FP, N_Z = 15, 15, 50
+#Mesh dimensions
+N_R_HP, N_R_FP, N_Z = 15, 15, 50
 
-# # Heat pipe config
-# geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
-# mesh   = HeatpipeMesh(N_R=N_R_HP, N_Z=N_Z)
-# mat    = HeatpipeMaterial(**data["HeatPipe"]["material"])
-# wick   = HeatpipeWick(**data["HeatPipe"]["wick"])
-# bc     = HeatpipeBC(**data["HeatPipe"]["bc"])
-# cfg_HP = HeatpipeConfig(geom, mesh, mat, wick, bc)
+# Heat pipe config
+geom   = HeatpipeGeometry(**data["HeatPipe"]["geometry"])
+mesh   = HeatpipeMesh(N_R=N_R_HP, N_Z=N_Z)
+mat    = HeatpipeMaterial(**data["HeatPipe"]["material"])
+wick   = HeatpipeWick(**data["HeatPipe"]["wick"])
+bc     = HeatpipeBC(**data["HeatPipe"]["bc"])
+cfg_HP = HeatpipeConfig(geom, mesh, mat, wick, bc)
 
-# # Fuel pin config
-# geom_FP   = FuelPinGeometry(**data["FuelPin"]["geometry"])
-# mesh_FP   = FuelPinMesh(N_R=N_R_FP, N_Z=30)
-# energy_FP = FuelPinEnergy(**data["FuelPin"]["energy"])
-# mat_FP    = FuelPinMaterial(**data["FuelPin"]["material"])
-# cfg_FP    = FuelPinConfig(geom_FP, mesh_FP, energy_FP, mat_FP)
+# Fuel pin config
+geom_FP   = FuelPinGeometry(**data["FuelPin"]["geometry"])
+mesh_FP   = FuelPinMesh(N_R=N_R_FP, N_Z=30)
+energy_FP = FuelPinEnergy(**data["FuelPin"]["energy"])
+mat_FP    = FuelPinMaterial(**data["FuelPin"]["material"])
+cfg_FP    = FuelPinConfig(geom_FP, mesh_FP, energy_FP, mat_FP)
 
-# # Neutronics config
-# mesh_N = NeutronicsMesh(
-#     N_R = N_R_FP,
-#     N_Z = 50,
-#     l   = data["FuelPin"]["geometry"]["l"]
-# )
-# energy = NeutronicsEnergy(
-#     N_G   = cfg_FP.energy.N_G,
-#     power = data["Reactor"]["power"]["thermal"] / data["Reactor"]["components"]["N_FP"]
-# )
-# cfg_N = NeutronicsConfig(mesh_N, energy)
+# Neutronics config
+mesh_N = NeutronicsMesh(
+    N_R = N_R_FP,
+    N_Z = 50,
+    l   = data["FuelPin"]["geometry"]["l"]
+)
+energy = NeutronicsEnergy(
+    N_G   = cfg_FP.energy.N_G,
+    power = data["Reactor"]["power"]["thermal"] / data["Reactor"]["components"]["N_FP"]
+)
+cfg_N = NeutronicsConfig(mesh_N, energy)
 
-# # Reactor config
-# cfg_R = ReactorConfig(cfg_HP, cfg_FP, cfg_N)
+# Reactor config
+cfg_R = ReactorConfig(cfg_HP, cfg_FP, cfg_N)
+cfg_R = cfg_R.resolve_mesh()
 
 # Number of grid points per dimension.
 # Total OpenMC runs = N_T_HEAT_PIPE * N_T_FUEL_PIN * N_T_MODERATOR
-N_T_HEAT_PIPE = 5
-N_T_FUEL_PIN = 5
-N_T_MODERATOR = 5
+N_T_HEAT_PIPE = 10
+N_T_FUEL_PIN = 10
+N_T_MODERATOR = 10
 
 # -------------------------------------------------------------------------
 # Output / storage

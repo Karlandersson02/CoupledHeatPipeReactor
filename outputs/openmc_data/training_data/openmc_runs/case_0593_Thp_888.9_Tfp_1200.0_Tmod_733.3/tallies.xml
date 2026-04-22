@@ -1,0 +1,147 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tallies>
+  <filter id="14233" type="cell">
+    <bins>6534</bins>
+  </filter>
+  <filter id="14234" type="energy">
+    <bins>1e-05 0.0003448488241248216 0.011892071150027212 0.41009667524955984 14.142135623730951 487.68988404573685 16817.928305074292 579964.2800220423 20000000.000000004</bins>
+  </filter>
+  <filter id="14241" type="energyout">
+    <bins>1e-05 0.0003448488241248216 0.011892071150027212 0.41009667524955984 14.142135623730951 487.68988404573685 16817.928305074292 579964.2800220423 20000000.000000004</bins>
+  </filter>
+  <filter id="14242" type="legendre">
+    <order>0</order>
+  </filter>
+  <filter id="14249" type="energy">
+    <bins>1e-05 20000000.000000004</bins>
+  </filter>
+  <filter id="14255" type="legendre">
+    <order>1</order>
+  </filter>
+  <tally id="35581">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35582">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>total</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35583">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35584">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>absorption</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35585">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35586">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>scatter</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35587">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35588">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>scatter</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35589">
+    <filters>14233 14234 14241 14242</filters>
+    <nuclides>total</nuclides>
+    <scores>scatter</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="35590">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35591">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>fission</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35592">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35593">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>nu-fission</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35594">
+    <filters>14233 14249</filters>
+    <nuclides>total</nuclides>
+    <scores>nu-fission</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="35595">
+    <filters>14233 14241</filters>
+    <nuclides>total</nuclides>
+    <scores>nu-fission</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="35596">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35597">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>kappa-fission</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35598">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35599">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>total</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="35600">
+    <filters>14233 14234</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="35601">
+    <filters>14233 14241 14255</filters>
+    <nuclides>total</nuclides>
+    <scores>scatter</scores>
+    <estimator>analog</estimator>
+  </tally>
+</tallies>

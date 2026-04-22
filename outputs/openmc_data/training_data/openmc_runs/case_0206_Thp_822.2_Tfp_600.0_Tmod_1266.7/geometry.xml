@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<geometry>
+  <cell id="2267" name="vapour" material="void" region="-3091" universe="1031"/>
+  <cell id="2268" name="wick" material="213" region="3091 -3092" universe="1031"/>
+  <cell id="2269" name="gap" material="2" region="3092 -3093" universe="1031"/>
+  <cell id="2270" name="wall" material="1" region="3093 -3094" universe="1031"/>
+  <cell id="2271" name="graphite" material="3" region="3094" universe="1031"/>
+  <cell id="2272" name="fuel" material="11" region="-3095" universe="1032"/>
+  <cell id="2273" name="air gap" material="void" region="3095 -3096" universe="1032"/>
+  <cell id="2274" name="clad" material="12" region="3096 -3097" universe="1032"/>
+  <cell id="2275" name="graphite" material="13" region="3097" universe="1032"/>
+  <cell id="2276" name="moderator" material="21" universe="1033"/>
+  <cell id="2277" name="homogenized_assembly" fill="1034" region="-3098 3099 -3100 -3103 3101 3102 3105 -3104" universe="1035"/>
+  <hex_lattice id="1034" n_rings="4">
+    <pitch>2.86</pitch>
+    <outer>1033</outer>
+    <center>0.0 0.0</center>
+    <universes>
+            1033
+        1032    1032
+    1032    1032    1032
+1033    1031    1031    1033
+    1032    1032    1032
+1032    1032    1032    1032
+    1031    1031    1031
+1032    1032    1032    1032
+    1032    1032    1032
+1033    1031    1031    1033
+    1032    1032    1032
+        1032    1032
+            1033</universes>
+  </hex_lattice>
+  <surface id="3091" type="z-cylinder" coeffs="0.0 0.0 0.6539999999999999"/>
+  <surface id="3092" type="z-cylinder" coeffs="0.0 0.0 0.6929333333333333"/>
+  <surface id="3093" type="z-cylinder" coeffs="0.0 0.0 0.7610666666666667"/>
+  <surface id="3094" type="z-cylinder" coeffs="0.0 0.0 0.8"/>
+  <surface id="3095" type="z-cylinder" coeffs="0.0 0.0 0.58"/>
+  <surface id="3096" type="z-cylinder" coeffs="0.0 0.0 0.59"/>
+  <surface id="3097" type="z-cylinder" coeffs="0.0 0.0 0.65"/>
+  <surface id="3098" type="y-plane" boundary="reflective" coeffs="10.0"/>
+  <surface id="3099" type="y-plane" boundary="reflective" coeffs="-10.0"/>
+  <surface id="3100" type="plane" boundary="reflective" coeffs="1.7320508075688772 1.0 0.0 20.0"/>
+  <surface id="3101" type="plane" boundary="reflective" coeffs="-1.7320508075688772 1.0 0.0 -20.0"/>
+  <surface id="3102" type="plane" boundary="reflective" coeffs="1.7320508075688772 1.0 0.0 -20.0"/>
+  <surface id="3103" type="plane" boundary="reflective" coeffs="-1.7320508075688772 1.0 0.0 20.0"/>
+  <surface id="3104" type="z-plane" boundary="vacuum" coeffs="90.0"/>
+  <surface id="3105" type="z-plane" boundary="vacuum" coeffs="-90.0"/>
+</geometry>

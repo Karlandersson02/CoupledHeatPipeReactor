@@ -1,0 +1,91 @@
+{
+  "input_order": [
+    "T_heat_pipe",
+    "T_fuel_pin",
+    "T_moderator"
+  ],
+  "target_keys": [
+    "diffusion_coefficient",
+    "total_xs",
+    "scatter_matrix_xs",
+    "fission_xs",
+    "nu",
+    "chi",
+    "kappa"
+  ],
+  "num_energy_groups": 8,
+  "target_specs": [
+    {
+      "name": "diffusion_coefficient",
+      "shape": [
+        8
+      ],
+      "size": 8,
+      "start": 0,
+      "stop": 8
+    },
+    {
+      "name": "total_xs",
+      "shape": [
+        8
+      ],
+      "size": 8,
+      "start": 8,
+      "stop": 16
+    },
+    {
+      "name": "scatter_matrix_xs",
+      "shape": [
+        8,
+        8
+      ],
+      "size": 64,
+      "start": 16,
+      "stop": 80
+    },
+    {
+      "name": "fission_xs",
+      "shape": [
+        8
+      ],
+      "size": 8,
+      "start": 80,
+      "stop": 88
+    },
+    {
+      "name": "nu",
+      "shape": [
+        8
+      ],
+      "size": 8,
+      "start": 88,
+      "stop": 96
+    },
+    {
+      "name": "chi",
+      "shape": [
+        8
+      ],
+      "size": 8,
+      "start": 96,
+      "stop": 104
+    },
+    {
+      "name": "kappa",
+      "shape": [
+        8
+      ],
+      "size": 8,
+      "start": 104,
+      "stop": 112
+    }
+  ],
+  "X_shape": [
+    1000,
+    3
+  ],
+  "Y_shape": [
+    1000,
+    112
+  ]
+}

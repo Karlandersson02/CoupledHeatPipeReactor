@@ -1,0 +1,61 @@
+<?xml version='1.0' encoding='utf-8'?>
+<materials>
+  <material id="1" name="fecral" temperature="888.8888888888889">
+    <density value="7.15" units="g/cm3"/>
+    <nuclide name="Fe54" ao="0.0426685"/>
+    <nuclide name="Fe56" ao="0.6698042"/>
+    <nuclide name="Fe57" ao="0.0154687"/>
+    <nuclide name="Fe58" ao="0.0020586"/>
+    <nuclide name="Cr50" ao="0.009559"/>
+    <nuclide name="Cr52" ao="0.1843358"/>
+    <nuclide name="Cr53" ao="0.0209022"/>
+    <nuclide name="Cr54" ao="0.005203"/>
+    <nuclide name="Al27" ao="0.05"/>
+  </material>
+  <material id="2" name="sodium" temperature="888.8888888888889">
+    <density value="0.8074230967070641" units="g/cm3"/>
+    <nuclide name="Na23" ao="1.0"/>
+  </material>
+  <material id="3" name="graphite" temperature="888.8888888888889">
+    <density value="2.0" units="g/cm3"/>
+    <nuclide name="C0" ao="2.0"/>
+    <sab name="c_Graphite"/>
+  </material>
+  <material id="11" name="uo2" depletable="true" temperature="1200.0">
+    <density value="10.0" units="g/cm3"/>
+    <nuclide name="U235" ao="0.06"/>
+    <nuclide name="U238" ao="0.94"/>
+    <nuclide name="O16" ao="2.0"/>
+  </material>
+  <material id="12" name="zirconium" temperature="1200.0">
+    <density value="6.6" units="g/cm3"/>
+    <nuclide name="Zr90" ao="0.5145"/>
+    <nuclide name="Zr91" ao="0.1122"/>
+    <nuclide name="Zr92" ao="0.1715"/>
+    <nuclide name="Zr94" ao="0.1738"/>
+    <nuclide name="Zr96" ao="0.028"/>
+  </material>
+  <material id="13" name="graphite" temperature="1200.0">
+    <density value="2.0" units="g/cm3"/>
+    <nuclide name="C0" ao="1.0"/>
+    <sab name="c_Graphite"/>
+  </material>
+  <material id="21" name="graphite" temperature="733.3333333333333">
+    <density value="2.0" units="g/cm3"/>
+    <nuclide name="C0" ao="1.0"/>
+    <sab name="c_Graphite"/>
+  </material>
+  <material id="600" name="sodium(0.7)-fecral(0.30000000000000004)" temperature="888.8888888888889">
+    <density value="2.7101961676949444" units="g/cm3"/>
+    <nuclide name="Na23" ao="0.38035098736109857"/>
+    <nuclide name="Fe54" ao="0.02643949389578297"/>
+    <nuclide name="Fe56" ao="0.41504351119138927"/>
+    <nuclide name="Fe57" ao="0.009585164681807378"/>
+    <nuclide name="Fe58" ao="0.0012756094574184426"/>
+    <nuclide name="Cr50" ao="0.005923224911815259"/>
+    <nuclide name="Cr52" ao="0.11422349646400203"/>
+    <nuclide name="Cr53" ao="0.012952027591980846"/>
+    <nuclide name="Cr54" ao="0.003224033812760205"/>
+    <nuclide name="Al27" ao="0.030982450631945078"/>
+  </material>
+</materials>

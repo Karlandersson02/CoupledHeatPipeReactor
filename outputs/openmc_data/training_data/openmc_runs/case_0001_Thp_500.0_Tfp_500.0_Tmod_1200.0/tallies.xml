@@ -1,0 +1,147 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tallies>
+  <filter id="25" type="cell">
+    <bins>22</bins>
+  </filter>
+  <filter id="26" type="energy">
+    <bins>1e-05 0.0003448488241248216 0.011892071150027212 0.41009667524955984 14.142135623730951 487.68988404573685 16817.928305074292 579964.2800220423 20000000.000000004</bins>
+  </filter>
+  <filter id="33" type="energyout">
+    <bins>1e-05 0.0003448488241248216 0.011892071150027212 0.41009667524955984 14.142135623730951 487.68988404573685 16817.928305074292 579964.2800220423 20000000.000000004</bins>
+  </filter>
+  <filter id="34" type="legendre">
+    <order>0</order>
+  </filter>
+  <filter id="41" type="energy">
+    <bins>1e-05 20000000.000000004</bins>
+  </filter>
+  <filter id="47" type="legendre">
+    <order>1</order>
+  </filter>
+  <tally id="61">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="62">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>total</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="63">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="64">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>absorption</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="65">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="66">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>scatter</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="67">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="68">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>scatter</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="69">
+    <filters>25 26 33 34</filters>
+    <nuclides>total</nuclides>
+    <scores>scatter</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="70">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="71">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>fission</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="72">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="73">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>nu-fission</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="74">
+    <filters>25 41</filters>
+    <nuclides>total</nuclides>
+    <scores>nu-fission</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="75">
+    <filters>25 33</filters>
+    <nuclides>total</nuclides>
+    <scores>nu-fission</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="76">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="77">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>kappa-fission</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="78">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="79">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>total</scores>
+    <estimator>tracklength</estimator>
+  </tally>
+  <tally id="80">
+    <filters>25 26</filters>
+    <nuclides>total</nuclides>
+    <scores>flux</scores>
+    <estimator>analog</estimator>
+  </tally>
+  <tally id="81">
+    <filters>25 33 47</filters>
+    <nuclides>total</nuclides>
+    <scores>scatter</scores>
+    <estimator>analog</estimator>
+  </tally>
+</tallies>
