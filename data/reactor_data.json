@@ -20,7 +20,7 @@
             "k_gap": 84,
             "k_wall": 19.0,
             "h_vap": 1e6,
-            "h_cond": 260
+            "h_cond": 200
         },
         "wick": {
             "Is_annular": false,
@@ -39,7 +39,7 @@
             "delta_gap": 1e-4, 
             "delta_wall": 6e-4,
             "r": 0.0065,
-            "l": 1
+            "l": 1.8
         },
         "energy": {
             "N_G": 8
