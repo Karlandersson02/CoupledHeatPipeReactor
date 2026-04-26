@@ -1,3 +1,5 @@
+from asyncio import threads
+
 from matplotlib.pyplot import scatter
 import numpy as np
 import openmc
@@ -27,9 +29,9 @@ E_MAX_eV = 20.0e6
 # Replace make_energy_group_edges() if you want a custom structure.
 USE_LOG_GROUPS = True
 
-T_HEAT_PIPE = 900
-T_MODERATOR = 900
-T_FUEL_PIN  = 900
+T_HEAT_PIPE = 1166.7
+T_MODERATOR = 1166.7
+T_FUEL_PIN  = 1433.3333
 
 
 def make_energy_group_edges(num_groups, e_min=E_MIN_eV, e_max=E_MAX_eV):
@@ -59,14 +61,14 @@ def create_heat_pipe_universe(cfg_HP, temperature):
     r_wick   = r_gap   - delta_gap
     r_vapour = r_wick  - delta_wick
 
-    fecral_alloy = openmc.Material(1, name='fecral')
+    fecral_alloy = openmc.Material(material_id=1, name='fecral')
     fecral_alloy.add_element('Fe', 0.73)
     fecral_alloy.add_element('Cr', 0.22)
     fecral_alloy.add_element('Al', 0.05)
     fecral_alloy.set_density('g/cm3', density_fecral)
     fecral_alloy.temperature = temperature
 
-    sodium = openmc.Material(2, name='sodium')
+    sodium = openmc.Material(material_id=2, name='sodium')
     sodium.add_element('Na', 1.0)
     sodium.set_density('g/cm3', density_Na)
     sodium.temperature = temperature
@@ -75,8 +77,10 @@ def create_heat_pipe_universe(cfg_HP, temperature):
         [sodium, fecral_alloy], [porosity, 1 - porosity], 'vo'
     )
     wick_material.temperature = temperature
+    wick_material.name = 'wick_material'
+    wick_material.id = 7
 
-    graphite = openmc.Material(3, name='graphite')
+    graphite = openmc.Material(material_id=5, name='graphite_hp')
     graphite.add_nuclide('C0', 2.0)
     graphite.set_density('g/cm3', density_graphite)
     graphite.add_s_alpha_beta('c_Graphite')
@@ -103,19 +107,19 @@ def create_fuel_pin_universe(cfg_FP, temperature):
     r_clad_inner = 1.0e2 * (cfg_FP.geometry.r - cfg_FP.geometry.delta_wall)
     r_fuel       = 1.0e2 * (cfg_FP.geometry.r - cfg_FP.geometry.delta_wall - cfg_FP.geometry.delta_gap)
 
-    uo2 = openmc.Material(11, 'uo2')
+    uo2 = openmc.Material(material_id=11, name='uo2')
     uo2.add_nuclide('U235', 0.10)
     uo2.add_nuclide('U238', 0.90)
     uo2.add_nuclide('O16',  2.0)
     uo2.set_density('g/cm3', density_uo2)
     uo2.temperature = temperature
 
-    zirconium = openmc.Material(12, name='zirconium')
+    zirconium = openmc.Material(material_id=12, name='zirconium')
     zirconium.add_element('Zr', 1.0)
     zirconium.set_density('g/cm3', density_zirconium)
     zirconium.temperature = temperature
 
-    graphite = openmc.Material(13, name='graphite')
+    graphite = openmc.Material(material_id=13, name='graphite_fp')
     graphite.add_nuclide('C0', 1.0)
     graphite.set_density('g/cm3', density_graphite)
     graphite.add_s_alpha_beta('c_Graphite')
@@ -136,7 +140,7 @@ def create_fuel_pin_universe(cfg_FP, temperature):
 def create_moderator_universe(temperature):
     density_graphite = 1.85
 
-    graphite = openmc.Material(21, name='graphite')
+    graphite = openmc.Material(material_id=21, name='graphite_mod')
     graphite.add_nuclide('C0', 1.0)
     graphite.set_density('g/cm3', density_graphite)
     graphite.add_s_alpha_beta('c_Graphite')
@@ -216,7 +220,9 @@ def create_openmc_model(
     T_moderator=T_MODERATOR,
     T_fuel_pin=T_FUEL_PIN
 ):
-    # openmc.Materials.cross_sections = '/home/felixpersson/MasterThesisProject/NuclearData/endfb71/endfb-vii.1-hdf5/cross_sections.xml'
+    openmc.Materials.cross_sections = '/home/felixpersson/MasterThesisProject/NuclearData/endfb71/endfb-vii.1-hdf5/cross_sections.xml'
+
+    openmc.reset_auto_ids()
 
     heat_pipe_universe = create_heat_pipe_universe(cfg_R.HP, T_heat_pipe)
     fuel_pin_universe  = create_fuel_pin_universe(cfg_R.FP, T_fuel_pin)
@@ -282,9 +288,9 @@ def create_openmc_model(
     )
 
     settings = openmc.Settings()
-    settings.batches = 150
+    settings.batches = 500
     settings.inactive = 20
-    settings.particles = 2000
+    settings.particles = 50000
     settings.source = source
     settings.verbosity = 4
 
@@ -330,35 +336,67 @@ def load_homogenized_xs_from_statepoint(sp_filename, mgxs_objects):
         for mgxs in mgxs_objects.values():
             mgxs.load_from_statepoint(sp)
 
-        # OpenMC typically returns groups in its MGXS ordering.
-        # We flatten to simple numpy arrays here.
+        # Mean values
         total_xs = np.squeeze(mgxs_objects["total"].get_xs())
         absorption_xs = np.squeeze(mgxs_objects["absorption"].get_xs())
         scattering_xs = np.squeeze(mgxs_objects["scattering"].get_xs())
-        scatter_matrix = np.squeeze(mgxs_objects["scatter_matrix"].get_xs(row_column="inout"))
+        scatter_matrix = np.squeeze(
+            mgxs_objects["scatter_matrix"].get_xs(row_column="inout")
+        )
         fission_xs = np.squeeze(mgxs_objects["fission"].get_xs())
         nu_fission_xs = np.squeeze(mgxs_objects["nu_fission"].get_xs())
         chi = np.squeeze(mgxs_objects["chi"].get_xs())
         kappa_fission_xs = np.squeeze(mgxs_objects["kappa_fission"].get_xs())
-        diffusion_coefficient = np.squeeze(mgxs_objects["diffusion_coefficient"].get_xs())
+        diffusion_coefficient = np.squeeze(
+            mgxs_objects["diffusion_coefficient"].get_xs()
+        )
+
+        # Standard deviations
+        total_xs_std = np.squeeze(mgxs_objects["total"].get_xs(value='std_dev'))
+        absorption_xs_std = np.squeeze(mgxs_objects["absorption"].get_xs(value='std_dev'))
+        scattering_xs_std = np.squeeze(mgxs_objects["scattering"].get_xs(value='std_dev'))
+        scatter_matrix_std = np.squeeze(
+            mgxs_objects["scatter_matrix"].get_xs(value='std_dev', row_column="inout")
+        )
+        fission_xs_std = np.squeeze(mgxs_objects["fission"].get_xs(value='std_dev'))
+        nu_fission_xs_std = np.squeeze(mgxs_objects["nu_fission"].get_xs(value='std_dev'))
+        chi_std = np.squeeze(mgxs_objects["chi"].get_xs(value='std_dev'))
+        kappa_fission_xs_std = np.squeeze(
+            mgxs_objects["kappa_fission"].get_xs(value='std_dev')
+        )
+        diffusion_coefficient_std = np.squeeze(
+            mgxs_objects["diffusion_coefficient"].get_xs(value='std_dev')
+        )
 
         # Derived quantities
         nu = _safe_divide(nu_fission_xs, fission_xs)
         kappa = _safe_divide(kappa_fission_xs, fission_xs)
 
         return {
-            "total_xs": total_xs,                      
-            "absorption_xs": absorption_xs,                      
-            "scattering_xs": scattering_xs,                      
+            # Means
+            "total_xs": total_xs,
+            "absorption_xs": absorption_xs,
+            "scattering_xs": scattering_xs,
             "scatter_matrix_xs": scatter_matrix,
-            "fission_xs": fission_xs,                  
-            "nu": nu,                                  
-            "chi": chi,                                
-            "kappa_fission_xs": kappa_fission_xs,      
-            "kappa": kappa,                            
+            "fission_xs": fission_xs,
+            "nu": nu,
+            "chi": chi,
+            "kappa_fission_xs": kappa_fission_xs,
+            "kappa": kappa,
             "nu_fission_xs": nu_fission_xs,
             "diffusion_coefficient": diffusion_coefficient,
             "difference": total_xs - absorption_xs - scattering_xs,
+
+            # Standard deviations
+            "total_xs_std": total_xs_std,
+            "absorption_xs_std": absorption_xs_std,
+            "scattering_xs_std": scattering_xs_std,
+            "scatter_matrix_xs_std": scatter_matrix_std,
+            "fission_xs_std": fission_xs_std,
+            "nu_fission_xs_std": nu_fission_xs_std,
+            "chi_std": chi_std,
+            "kappa_fission_xs_std": kappa_fission_xs_std,
+            "diffusion_coefficient_std": diffusion_coefficient_std,
         }
 
 
@@ -373,30 +411,45 @@ def print_homogenized_xs(results, energy_group_edges):
     print()
 
     print(_array_to_code(results["total_xs"], "total_xs"))
+    print(_array_to_code(results["total_xs_std"], "total_xs_std"))
+    print()
+
+    print(_array_to_code(results["absorption_xs"], "absorption_xs"))
+    print(_array_to_code(results["absorption_xs_std"], "absorption_xs_std"))
+    print()
+
+    print(_array_to_code(results["scattering_xs"], "scattering_xs"))
+    print(_array_to_code(results["scattering_xs_std"], "scattering_xs_std"))
     print()
 
     print(_array_to_code(results["scatter_matrix_xs"], "scatter_matrix_xs"))
+    print(_array_to_code(results["scatter_matrix_xs_std"], "scatter_matrix_xs_std"))
     print()
 
     print(_array_to_code(results["fission_xs"], "fission_xs"))
+    print(_array_to_code(results["fission_xs_std"], "fission_xs_std"))
     print()
 
     print(_array_to_code(results["nu_fission_xs"], "nu_fission_xs"))
+    print(_array_to_code(results["nu_fission_xs_std"], "nu_fission_xs_std"))
     print()
 
     print(_array_to_code(results["nu"], "nu"))
     print()
 
     print(_array_to_code(results["chi"], "chi"))
+    print(_array_to_code(results["chi_std"], "chi_std"))
     print()
 
     print(_array_to_code(results["kappa_fission_xs"], "kappa_fission_xs"))
+    print(_array_to_code(results["kappa_fission_xs_std"], "kappa_fission_xs_std"))
     print()
 
     print(_array_to_code(results["kappa"], "kappa"))
     print()
 
     print(_array_to_code(results["diffusion_coefficient"], "diffusion_coefficient"))
+    print(_array_to_code(results["diffusion_coefficient_std"], "diffusion_coefficient_std"))
     print()
 
     print("# =====================================================")
@@ -500,7 +553,7 @@ if __name__ == "__main__":
         T_fuel_pin=T_FUEL_PIN
     )
 
-    statepoint_path = model.run()
+    statepoint_path = model.run(threads=16)
 
     plot_geometry_and_entropy(model, statepoint_path)
     results = load_homogenized_xs_from_statepoint(statepoint_path, mgxs_objects)

@@ -19,8 +19,8 @@ SAVE_DATASET_EVERY = 10
 # -------------------------------------------------------------------------
 # Temperature grid
 # -------------------------------------------------------------------------
-T_MIN = 500
-T_MAX = 1700
+T_MIN = 600
+T_MAX = 1400
 
 # -------------------------------------------------------------------------
 # Data / Config
@@ -68,9 +68,9 @@ cfg_R = cfg_R.resolve_mesh()
 
 # Number of grid points per dimension.
 # Total OpenMC runs = N_T_HEAT_PIPE * N_T_FUEL_PIN * N_T_MODERATOR
-N_T_HEAT_PIPE = 10
-N_T_FUEL_PIN = 10
-N_T_MODERATOR = 10
+N_T_HEAT_PIPE = 4
+N_T_FUEL_PIN = 4
+N_T_MODERATOR = 4
 
 # -------------------------------------------------------------------------
 # Output / storage
@@ -79,8 +79,8 @@ BASE_OUTPUT_DIR = Path("outputs/openmc_data")
 TRAINING_DATA_DIR =  BASE_OUTPUT_DIR / "training_data"
 MODEL_DIR = Path("utils")
 
-TRAINING_DATA_FILE = TRAINING_DATA_DIR / "training_dataset.npz"
-METADATA_FILE = TRAINING_DATA_DIR / "training_metadata.json"
+TRAINING_DATA_FILE = TRAINING_DATA_DIR / "training_dataset_4_500_50000.npz"
+METADATA_FILE = TRAINING_DATA_DIR / "training_metadata_4_500_50000.json"
 MODEL_FILE = MODEL_DIR / "rgi_surrogate.joblib"
 
 # -------------------------------------------------------------------------
@@ -96,6 +96,16 @@ TARGET_KEYS = [
     "nu",                  # shape (G,)
     "chi",                 # shape (G,)
     "kappa",               # shape (G,)
+]
+
+STD_KEYS = [
+    "diffusion_coefficient_std",
+    "total_xs_std",
+    "scatter_matrix_xs_std",
+    "fission_xs_std",
+    "nu_fission_xs_std",
+    "chi_std",
+    "kappa_fission_xs_std",
 ]
 
 CLEAN_RUN_DIRECTORIES = True
@@ -166,21 +176,21 @@ def make_temperature_grid(
     return X
 
 
-def flatten_targets(result_dict: Dict[str, np.ndarray]) -> Tuple[np.ndarray, List[TargetSpec]]:
+def flatten_selected_targets(
+    result_dict: Dict[str, np.ndarray],
+    keys: List[str],
+) -> Tuple[np.ndarray, List[TargetSpec]]:
     """
-    Flatten a dictionary of tally arrays into one 1D vector.
-
-    Returns
-    -------
-    y_flat : ndarray, shape (n_targets_total,)
-    specs : list[TargetSpec]
-        Metadata needed to reconstruct the dictionary later.
+    Flatten selected arrays from a dictionary into one 1D vector.
     """
     pieces = []
     specs = []
 
     cursor = 0
-    for key in TARGET_KEYS:
+    for key in keys:
+        if key not in result_dict:
+            raise KeyError(f"Missing key '{key}' in result_dict.")
+
         arr = np.asarray(result_dict[key], dtype=float)
         flat = arr.ravel()
         start = cursor
@@ -200,6 +210,13 @@ def flatten_targets(result_dict: Dict[str, np.ndarray]) -> Tuple[np.ndarray, Lis
 
     y_flat = np.concatenate(pieces)
     return y_flat, specs
+
+
+def flatten_targets(result_dict: Dict[str, np.ndarray]) -> Tuple[np.ndarray, List[TargetSpec]]:
+    """
+    Flatten only the interpolated target arrays.
+    """
+    return flatten_selected_targets(result_dict, TARGET_KEYS)
 
 
 def reconstruct_targets(y_flat: np.ndarray, specs: List[TargetSpec]) -> Dict[str, np.ndarray]:
@@ -273,10 +290,10 @@ def run_openmc_case(
             T_fuel_pin=T_fuel_pin,
         )
 
-        statepoint_path = model.run(output=False)
+        statepoint_path = model.run(output=True)
         result_dict = load_homogenized_xs_from_statepoint(statepoint_path, mgxs_objects)
 
-        result_dict = {k: np.asarray(result_dict[k], dtype=float) for k in TARGET_KEYS}
+        result_dict = {k: np.asarray(v, dtype=float) for k, v in result_dict.items()}
         return result_dict
 
     finally:
@@ -294,16 +311,30 @@ def generate_training_data(
     save_every: int = SAVE_DATASET_EVERY,
     data_file: Path = TRAINING_DATA_FILE,
     metadata_file: Path = METADATA_FILE,
-) -> Tuple[np.ndarray, List[TargetSpec]]:
+) -> Tuple[np.ndarray, List[TargetSpec], np.ndarray | None, List[TargetSpec] | None]:
     """
     Run OpenMC on all temperature points in X and build training targets.
 
     Saves the accumulated dataset every `save_every` iterations.
+
+    Returns
+    -------
+    Y : ndarray
+        Flattened interpolated targets only.
+    specs_ref : list[TargetSpec]
+        Specs for interpolated targets.
+    Y_std : ndarray or None
+        Flattened standard deviation targets, saved but not interpolated.
+    std_specs_ref : list[TargetSpec] or None
+        Specs for std targets.
     """
     ensure_dir(run_root)
 
     Y_rows = []
+    Y_std_rows = []
+
     specs_ref = None
+    std_specs_ref = None
 
     n_samples = len(X)
 
@@ -326,7 +357,9 @@ def generate_training_data(
             case_dir=case_dir,
         )
 
-        y_flat, specs = flatten_targets(result_dict)
+        # Interpolated targets only
+        interp_result_dict = {k: result_dict[k] for k in TARGET_KEYS}
+        y_flat, specs = flatten_targets(interp_result_dict)
 
         if specs_ref is None:
             specs_ref = specs
@@ -340,6 +373,38 @@ def generate_training_data(
 
         Y_rows.append(y_flat)
 
+        # Std targets: saved, but not used by interpolator
+        present_std_keys = [k for k in STD_KEYS if k in result_dict]
+        missing_std_keys = [k for k in STD_KEYS if k not in result_dict]
+
+        if present_std_keys and missing_std_keys:
+            raise KeyError(
+                "Partial std dataset returned from OpenMC. "
+                f"Present std keys: {present_std_keys}. "
+                f"Missing std keys: {missing_std_keys}."
+            )
+
+        if present_std_keys:
+            y_std_flat, std_specs = flatten_selected_targets(result_dict, STD_KEYS)
+
+            if std_specs_ref is None:
+                std_specs_ref = std_specs
+            else:
+                for s0, s1 in zip(std_specs_ref, std_specs):
+                    if s0.name != s1.name or s0.shape != s1.shape:
+                        raise RuntimeError(
+                            f"Inconsistent std target layout between cases for '{s0.name}'. "
+                            f"Expected {s0.shape}, got {s1.shape}."
+                        )
+
+            Y_std_rows.append(y_std_flat)
+        elif std_specs_ref is not None:
+            raise RuntimeError(
+                "Earlier cases contained std data, but this case does not. "
+                "Refusing to save an inconsistent Y_std dataset."
+            )
+
+        # Save full case data, including std arrays
         np.savez(
             case_dir / "result.npz",
             T_heat_pipe=T_hp,
@@ -359,11 +424,11 @@ def generate_training_data(
                         except OSError:
                             pass
 
-        # Save accumulated dataset every `save_every` iterations
         n_done = len(Y_rows)
         if n_done % save_every == 0 or n_done == n_samples:
             X_partial = X[:n_done]
             Y_partial = np.vstack(Y_rows)
+            Y_std_partial = np.vstack(Y_std_rows) if Y_std_rows else None
 
             save_training_dataset(
                 X=X_partial,
@@ -372,12 +437,16 @@ def generate_training_data(
                 num_energy_groups=num_energy_groups,
                 data_file=data_file,
                 metadata_file=metadata_file,
+                Y_std=Y_std_partial,
+                std_specs=std_specs_ref,
             )
 
             print(f"Saved accumulated dataset with {n_done} / {n_samples} samples.")
 
     Y = np.vstack(Y_rows)
-    return Y, specs_ref
+    Y_std = np.vstack(Y_std_rows) if Y_std_rows else None
+    return Y, specs_ref, Y_std, std_specs_ref
+
 
 def save_training_dataset(
     X: np.ndarray,
@@ -386,14 +455,20 @@ def save_training_dataset(
     num_energy_groups: int,
     data_file: Path,
     metadata_file: Path,
+    Y_std: np.ndarray | None = None,
+    std_specs: List[TargetSpec] | None = None,
+    extra_metadata: dict | None = None,
 ) -> None:
     ensure_dir(data_file.parent)
 
-    np.savez(
-        data_file,
-        X=X,
-        Y=Y,
-    )
+    save_payload = {
+        "X": X,
+        "Y": Y,
+    }
+    if Y_std is not None:
+        save_payload["Y_std"] = Y_std
+
+    np.savez(data_file, **save_payload)
 
     metadata = {
         "input_order": ["T_heat_pipe", "T_fuel_pin", "T_moderator"],
@@ -403,6 +478,14 @@ def save_training_dataset(
         "X_shape": list(X.shape),
         "Y_shape": list(Y.shape),
     }
+
+    if Y_std is not None and std_specs is not None:
+        metadata["std_keys"] = STD_KEYS
+        metadata["std_specs"] = specs_to_jsonable(std_specs)
+        metadata["Y_std_shape"] = list(Y_std.shape)
+
+    if extra_metadata is not None:
+        metadata.update(extra_metadata)
 
     with open(metadata_file, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2)
@@ -424,6 +507,26 @@ def load_training_dataset(
 
     specs = specs_from_jsonable(metadata["target_specs"])
     return X, Y, specs, metadata
+
+
+def load_training_std_dataset(
+    data_file: Path,
+    metadata_file: Path,
+) -> Tuple[np.ndarray | None, List[TargetSpec] | None]:
+    data = np.load(data_file)
+
+    if "Y_std" not in data:
+        return None, None
+
+    with open(metadata_file, "r", encoding="utf-8") as f:
+        metadata = json.load(f)
+
+    std_specs_data = metadata.get("std_specs")
+    if std_specs_data is None:
+        return data["Y_std"], None
+
+    std_specs = specs_from_jsonable(std_specs_data)
+    return data["Y_std"], std_specs
 
 
 # =============================================================================
@@ -576,7 +679,7 @@ def build_or_load_training_data(force_recompute: bool = False) -> Tuple[np.ndarr
     )
 
     run_root = TRAINING_DATA_DIR / "openmc_runs"
-    Y, specs = generate_training_data(
+    Y, specs, Y_std, std_specs = generate_training_data(
         X=X,
         num_energy_groups=NUM_ENERGY_GROUPS,
         run_root=run_root,
@@ -595,6 +698,12 @@ def build_or_load_training_data(force_recompute: bool = False) -> Tuple[np.ndarr
         "target_specs": specs_to_jsonable(specs),
     }
 
+    if Y_std is not None and std_specs is not None:
+        metadata["std_keys"] = STD_KEYS
+        metadata["std_specs"] = specs_to_jsonable(std_specs)
+        metadata["Y_std_shape"] = list(Y_std.shape)
+
+
     save_training_dataset(
         X=X,
         Y=Y,
@@ -602,6 +711,13 @@ def build_or_load_training_data(force_recompute: bool = False) -> Tuple[np.ndarr
         num_energy_groups=NUM_ENERGY_GROUPS,
         data_file=TRAINING_DATA_FILE,
         metadata_file=METADATA_FILE,
+        Y_std=Y_std,
+        std_specs=std_specs,
+        extra_metadata={
+            "temperature_range_K": [T_MIN, T_MAX],
+            "grid_shape": [N_T_HEAT_PIPE, N_T_FUEL_PIN, N_T_MODERATOR],
+            "n_samples": int(X.shape[0]),
+        },
     )
 
     return X, Y, specs, metadata
@@ -647,3 +763,8 @@ if __name__ == "__main__":
     X, Y, specs, metadata = build_or_load_training_data(force_recompute=FORCE_RECOMPUTE_DATA)
     surrogate = train_and_save_model(X, Y, specs, metadata)
     demo_prediction(surrogate)
+
+    # Y_std, std_specs = load_training_std_dataset(TRAINING_DATA_FILE, METADATA_FILE)
+    # if Y_std is not None and std_specs is not None:
+    #     print("\nStd values for first sample:")
+    #     for s in std_specs: print(f"\n{s.name}:\n", Y_std[0, s.start:s.stop].reshape(s.shape))
