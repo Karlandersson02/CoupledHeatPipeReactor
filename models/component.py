@@ -23,3 +23,7 @@ class Component(ABC):
     @abstractmethod
     def pack(self, X_tuple: tuple) -> np.ndarray:
         ...
+
+    @abstractmethod
+    def unpack(self, X) -> tuple:
+        ...

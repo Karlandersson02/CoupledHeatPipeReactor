@@ -1,16 +1,12 @@
 import numpy as np
 
-from utils.sodium_properties import (
-    calculate_Na_h_fg,
-    calculate_Na_viscosity_v,
-    calculate_Na_rho_v,
-    calculate_rho_cc
-)
+import data.dataclass as d_class
+import utils.sodium_properties as s_props
+
 from models.component import Component
-from data.dataclass import *
 
 class VapourDiscretised(Component):
-    def __init__(self, config: HeatpipeConfigResolved, T_HP=None):
+    def __init__(self, config: d_class.HeatpipeConfigResolved, T_HP=None):
         self.cfg = config
         self.T_HP = None
         self.r2r1 = 1
@@ -106,15 +102,15 @@ class VapourDiscretised(Component):
         return np.r_[self.r2r1 * r1, r2]
     
     def calculate_rho(self, T):
-        return calculate_Na_rho_v(T)
+        return s_props.calculate_Na_rho_v(T)
         # return calculate_rho_cc(T)
     
     def calculate_hfg(self, T):
-        return calculate_Na_h_fg(T)
+        return s_props.calculate_Na_h_fg(T)
         # return np.full_like(T, 4.182e6)
     
     def calculate_viscosity(self, T):
-        return calculate_Na_viscosity_v(T)
+        return s_props.calculate_Na_viscosity_v(T)
         # return np.full_like(T, 1.80e-5)
 
     def _calculate_dx(self):
@@ -206,16 +202,12 @@ if __name__ == "__main__":
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
 
-    geom = HeatpipeGeometry(**data["geometry"])
-    geom.delta_wick = 0.00025
-    geom.delta_gap = 0.00025
-    mesh = HeatpipeMesh(**data["mesh"])
-    mesh.N_R = 20
-    mesh.N_Z = 50
-    mat = HeatpipeMaterial(**data["material"])
-    wick = HeatpipeWick(**data["wick"])
-    pipe_bc = HeatpipeBC(**data["bc"])
-    cfg = HeatpipeConfig(geom, mesh, mat, wick, pipe_bc)
+    geom = d_class.HeatpipeGeometry(**data["geometry"])
+    mesh = d_class.HeatpipeMesh(N_R=20, N_Z=50)
+    mat = d_class.HeatpipeMaterial(**data["material"])
+    wick = d_class.HeatpipeWick(**data["wick"])
+    pipe_bc = d_class.HeatpipeBC(**data["bc"])
+    cfg = d_class.HeatpipeConfig(geom, mesh, mat, wick, pipe_bc)
     cfg = cfg.resolve_geometry()
 
     heatpipe = HeatpipeDiscretised(cfg)
@@ -225,7 +217,7 @@ if __name__ == "__main__":
     solver = Solver([vapour])
     solver.newton_krylov()
 
-    u_vap, T_vap = solver.solution
+    u_vap, T_vap = solver.solution # type: ignore
 
     plt.rcParams["font.size"] = 22
     plt.rcParams["font.family"] = "Computer modern"

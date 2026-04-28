@@ -5,9 +5,9 @@
             "delta_wick": 0.00038933333333333344,
             "delta_gap": 0.0006813333333333335,
             "delta_wall": 0.00038933333333333344,
-            "l_evap": 1.8,
+            "l_evap": 1.5,
             "l_adiabatic": 0.2,
-            "l_cond": 0.6
+            "l_cond": 1
         },
         "bc": {
             "Temperature_BC": true,
@@ -20,7 +20,7 @@
             "k_gap": 84,
             "k_wall": 19.0,
             "h_vap": 1e6,
-            "h_cond": 200
+            "h_cond": 229
         },
         "wick": {
             "Is_annular": false,
@@ -39,7 +39,7 @@
             "delta_gap": 1e-4, 
             "delta_wall": 6e-4,
             "r": 0.0065,
-            "l": 1.8
+            "l": 1.5
         },
         "energy": {
             "N_G": 8

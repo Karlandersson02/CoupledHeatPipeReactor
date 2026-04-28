@@ -1,17 +1,22 @@
 import numpy as np
 
+import data.dataclass as d_class
+import utils.material_properties as m_props
+
 from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import spsolve
 
-from data.dataclass import *
 from models.component import Component
 
 class HeatpipeDiscretisedVapour(Component):
-    def __init__(self, config: HeatpipeConfigResolved):
+    def __init__(self, config: d_class.HeatpipeConfigResolved):
 
         self.cfg = config
 
         self._initialize_discretization()
+
+        self.variable_k = False
+        self.k_temperature = 800
 
     def set_T_v(self, T_v):
         self.T_v = T_v
@@ -34,7 +39,10 @@ class HeatpipeDiscretisedVapour(Component):
         T_v = self.T_v
 
         surface_areas, delta_Rp, delta_Rm, delta_Z = self._initialize_discretization()
-        k = self._generate_k_matrix(T)
+        if self.variable_k:
+            k = self._generate_k_matrix(T)
+        else:
+            k = self._generate_k_matrix()
         h = self._generate_h_matrix()
         alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k)
 
@@ -233,25 +241,30 @@ class HeatpipeDiscretisedVapour(Component):
 
     def _generate_k_matrix(self, T=None):
         if T is None:
-            T = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
-
-        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
+            T = np.full(((self.cfg.mesh.N_Z, self.cfg.mesh.N_R)), self.k_temperature)
 
         def eval_material_prop(prop, T_slice, scale=1.0):
             value = prop(T_slice) if callable(prop) else prop
             return value * scale    # type: ignore
-
+        wick_k = lambda T: m_props.HP_wick_k(T, self.cfg.wick.porosity)
+        
         wick_slice = slice(0, self.cfg.mesh.N_wick)
         gap_slice  = slice(self.cfg.mesh.N_wick, self.cfg.mesh.N_wick + self.cfg.mesh.N_gap)
         wall_slice = slice(self.cfg.mesh.N_R - self.cfg.mesh.N_wall, self.cfg.mesh.N_R)
-
+        
         T_wick = T[:, wick_slice]
         T_gap  = T[:, gap_slice]
         T_wall = T[:, wall_slice]
 
-        k_matrix[:, wick_slice] = eval_material_prop(self.cfg.material.k_wick, T_wick)
-        k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.k_gap, T_gap)
-        k_matrix[:, wall_slice] = eval_material_prop(self.cfg.material.k_wall, T_wall)
+        k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
+
+        # k_matrix[:, wick_slice] = eval_material_prop(self.cfg.material.k_wick, T_wick)
+        # k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.k_gap , T_gap)
+        # k_matrix[:, wall_slice] = eval_material_prop(self.cfg.material.k_wall, T_wall)
+
+        k_matrix[:, wick_slice] = eval_material_prop(wick_k, T_wick)
+        k_matrix[:, gap_slice]  = eval_material_prop(m_props.HP_gap_k, T_gap)
+        k_matrix[:, wall_slice] = eval_material_prop(m_props.HP_wall_k, T_wall)
 
         return k_matrix
     
@@ -490,61 +503,3 @@ class HeatpipeDiscretisedVapour(Component):
         M = M.tocsr()
 
         return M, C
-
-if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    import json
-    from typing import Sequence
-    from utils.solver import Solver
-
-    with open("./data/vapour_data.json", "r") as f:
-        data_guoju = json.load(f)
-        data = data_guoju["data_guoju_560"]
-    
-    geom = HeatpipeGeometry(**data["geometry"])
-    geom.delta_wick = 0.00025
-    geom.delta_gap = 0.00025
-    mesh = HeatpipeMesh(**data["mesh"])
-    mesh.N_R = 30
-    mesh.N_Z = 30
-    mat = HeatpipeMaterial(**data["material"])
-    wick = HeatpipeWick(**data["wick"])
-    bc = HeatpipeBC(**data["bc"])
-    cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
-    cfgs: Sequence[HeatpipeConfigResolved] = make_mesh_sequence(cfg, 1)
-    
-    heatpipes = [HeatpipeDiscretised(cfg) for cfg in cfgs]
-    for heatpipe in heatpipes:
-        print(f"N_Z = {heatpipe.cfg.mesh.N_Z}, N_R = {heatpipe.cfg.mesh.N_R}")
-    solver = Solver(heatpipes)
-    solver.newton_krylov()
-
-    T_solid, T_vap = solver.solution
-
-    N_Z = cfgs[-1].mesh.N_Z
-    N_R = cfgs[-1].mesh.N_R
-
-    heatpipe = heatpipes[-1]
-    T_linear = heatpipe.linear_solve()
-
-    plt.rcParams["font.size"] = 22
-    plt.rcParams["font.family"] = "Computer modern"
-    plt.rcParams["text.usetex"] = True
-
-    fig = plt.figure(figsize = (16, 9))
-
-    ax = fig.add_subplot(111)
-    r_centers = heatpipe.R[0::2]
-
-    delta_R = heatpipe.delta_R[0::2] + heatpipe.delta_R[1::2]
-    r_faces = np.r_[heatpipe.cfg.geometry.r_vapour, heatpipe.cfg.geometry.r_vapour + np.cumsum(delta_R)]
-
-    r_wick_disc = r_faces[heatpipe.cfg.mesh.N_wick]
-    r_gap_disc  = r_faces[heatpipe.cfg.mesh.N_wick + heatpipe.cfg.mesh.N_gap]
-
-    ax.plot(r_centers, T_solid[0], lw=4, label="non-linear")
-    ax.plot(r_centers, T_linear[:-1].reshape(N_Z, N_R)[0], ls="--", lw=4, label="linear")
-    ax.vlines([r_wick_disc, r_gap_disc], np.min(T_solid[0]), np.max(T_solid[0]), colors="black")
-    
-    plt.legend()
-    plt.show()

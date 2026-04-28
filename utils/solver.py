@@ -9,7 +9,8 @@ from models.component import Component
 from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
 from models.fuel_pin.fuel_pin_model import FuelPin
 from models.neutronics.axial_neutron_model import NeutronicsModel
-from coupled_systems.reactor import Reactor
+from coupled.iso_reactor import Reactor
+# from coupled.vapour_reactor import VapourReactor
 
 
 def interpolate_2d(
@@ -33,7 +34,7 @@ def interpolate_2d(
 
 
 class Solver:
-    def __init__(self, components: Sequence[Component], iterate: bool = True, save_iterates: bool = False):
+    def __init__(self, components: Sequence[Component], iterate: bool = False, save_iterates: bool = True):
         self.components = list(components)
         self.iterate = iterate
         self.solutions: list[Any] = []
@@ -59,7 +60,7 @@ class Solver:
 
         return solver_fn(component.get_residuals, x_initial, **valid_kwargs)
 
-    def _transfer_heatpipe(
+    def _transfer_iso_heatpipe(
         self,
         current: HeatpipeDiscretised,
         nxt: HeatpipeDiscretised,
@@ -75,6 +76,7 @@ class Solver:
 
         field = x_out[0].reshape(current.cfg.mesh.N_Z, current.cfg.mesh.N_R)
         field_interp = interpolate_2d(z_coarse, r_coarse, z_fine, r_fine, field)
+        field_interp = field_interp.reshape(-1)
 
         return nxt.pack((field_interp, x_out[-1]))
 
@@ -116,7 +118,7 @@ class Solver:
 
         return nxt.pack((field_interp, x_out[-1]))
 
-    def _transfer_reactor(
+    def _transfer_iso_reactor(
         self,
         current: Reactor,
         nxt: Reactor,
@@ -124,17 +126,85 @@ class Solver:
     ) -> np.ndarray:
         x_out = current.unpack(x_sol)
 
-        hp_current = current.heat_pipe_thermal_model
-        fp_current = current.fuel_pin_thermal_model
+        hp_current  = current.heat_pipe_thermal_model
+        fp_current  = current.fuel_pin_thermal_model
         neu_current = current.neutron_flux_model
 
-        hp_next = nxt.heat_pipe_thermal_model
-        fp_next = nxt.fuel_pin_thermal_model
+        hp_next  = nxt.heat_pipe_thermal_model
+        fp_next  = nxt.fuel_pin_thermal_model
         neu_next = nxt.neutron_flux_model
 
-        x_init_hp = self._transfer_heatpipe(hp_current, hp_next, x_out[0])
-        x_init_fp = self._transfer_fuel_pin(fp_current, fp_next, x_out[1])
+        x_init_hp  = self._transfer_iso_heatpipe(hp_current, hp_next, x_out[0])
+        x_init_fp  = self._transfer_fuel_pin(fp_current, fp_next, x_out[1])
         x_init_neu = self._transfer_neutronics(neu_current, neu_next, x_out[2])
+
+        return nxt.pack((x_init_hp, x_init_fp, x_init_neu))
+    
+    def _transfer_vap_heatpipe(
+        self,
+        current,
+        nxt,
+        x_sol: np.ndarray,
+    ) -> np.ndarray:
+        x_out = current.unpack(x_sol)
+
+        z_coarse   = np.linspace(1.0, current.cfg.geometry.l_tot, current.cfg.mesh.N_Z)
+        z_coarse_u = np.linspace(1.0, current.cfg.geometry.l_tot, current.cfg.mesh.N_Z - 1)
+        r_coarse   = np.linspace(1.0, current.cfg.geometry.r_outer, current.cfg.mesh.N_R)
+
+        z_fine   = np.linspace(1.0, nxt.cfg.geometry.l_tot, nxt.cfg.mesh.N_Z)
+        z_fine_u = np.linspace(1.0, nxt.cfg.geometry.l_tot, nxt.cfg.mesh.N_Z - 1)
+        r_fine   = np.linspace(1.0, nxt.cfg.geometry.r_outer, nxt.cfg.mesh.N_R)
+
+        T_solid = x_out[0].reshape(current.cfg.mesh.N_Z, current.cfg.mesh.N_R)
+        T_solid_interp = interpolate_2d(z_coarse, r_coarse, z_fine, r_fine, T_solid)
+        T_solid_interp = T_solid_interp.reshape(-1)
+
+        u_v_interp = np.interp(z_fine_u, z_coarse_u, x_out[1])
+        T_v_interp = np.interp(z_fine, z_coarse, x_out[2])
+
+        return nxt.pack((T_solid_interp, u_v_interp, T_v_interp))
+    
+    def _transfer_vap_reactor(
+        self,
+        current,
+        nxt,
+        x_sol: np.ndarray,
+    ) -> np.ndarray:
+        x_out = current.unpack(x_sol)
+
+        hp_current  = current.heatpipe
+        fp_current  = current.fuel_pin_thermal_model
+        neu_current = current.neutron_flux_model
+
+        hp_next  = nxt.heatpipe
+        fp_next  = nxt.fuel_pin_thermal_model
+        neu_next = nxt.neutron_flux_model
+
+        x_init_hp  = self._transfer_vap_heatpipe(hp_current, hp_next, x_out[0])
+        x_init_fp  = self._transfer_fuel_pin(fp_current, fp_next, x_out[1])
+        x_init_neu = self._transfer_neutronics(neu_current, neu_next, x_out[2])
+
+        return nxt.pack((x_init_hp, x_init_fp, x_init_neu))
+    
+    def _transfer_iso_to_vapour(
+            self,
+            current: Reactor,
+            nxt,
+            x_sol: np.ndarray
+    ) -> np.ndarray:
+        x_out = current.unpack(x_sol)
+
+        hp_next = nxt.heatpipe
+
+        T_init_solid = x_out[0][:-1]
+        T_init_vap = np.repeat(x_out[0][-1:], hp_next.cfg.mesh.N_Z)
+        hp_next.vapour.set_T_HP(T_init_solid * nxt.T_cond)
+        u_init_vap = hp_next.vapour._build_initial_velocity(T_init_vap * nxt.T_cond) / nxt.u_v_ref
+
+        x_init_hp  = np.r_[T_init_solid, u_init_vap, T_init_vap]
+        x_init_fp  = x_out[1]
+        x_init_neu = x_out[2]
 
         return nxt.pack((x_init_hp, x_init_fp, x_init_neu))
 
@@ -148,7 +218,7 @@ class Solver:
         x_sol: np.ndarray,
     ) -> np.ndarray:
         if self._is_type(current, "HeatpipeDiscretised") and self._is_type(nxt, "HeatpipeDiscretised"):
-            return self._transfer_heatpipe(current, nxt, x_sol)
+            return self._transfer_iso_heatpipe(current, nxt, x_sol)
 
         if self._is_type(current, "FuelPin") and self._is_type(nxt, "FuelPin"):
             return self._transfer_fuel_pin(current, nxt, x_sol)
@@ -157,7 +227,16 @@ class Solver:
             return self._transfer_neutronics(current, nxt, x_sol)
 
         if self._is_type(current, "Reactor") and self._is_type(nxt, "Reactor"):
-            return self._transfer_reactor(current, nxt, x_sol)
+            return self._transfer_iso_reactor(current, nxt, x_sol)
+
+        if self._is_type(current, "Reactor") and self._is_type(nxt, "VapourReactor"):
+            return self._transfer_iso_to_vapour(current, nxt, x_sol)
+
+        if self._is_type(current, "Heatpipe") and self._is_type(nxt, "Heatpipe"):
+            return self._transfer_vap_heatpipe(current, nxt, x_sol)
+        
+        if self._is_type(current, "VapourReactor") and self._is_type(nxt, "VapourReactor"):
+            return self._transfer_vap_reactor(current, nxt, x_sol)
 
         raise TypeError(
             f"Unsupported component transfer: {type(current).__name__} -> {type(nxt).__name__}"

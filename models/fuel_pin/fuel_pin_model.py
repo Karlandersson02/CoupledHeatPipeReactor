@@ -1,12 +1,12 @@
 import numpy as np
 
-from models.component import Component
-from data.dataclass import *
-
 import utils.material_properties as m_props
+import data.dataclass as d_class
+
+from models.component import Component
 
 class FuelPin(Component):
-    def __init__(self, config: FuelPinConfigResolved):
+    def __init__(self, config: d_class.FuelPinConfigResolved):
 
         self.cfg = config
 
@@ -20,6 +20,7 @@ class FuelPin(Component):
         self.calculate_qr()
 
         self.variable_k = False
+        self.k_temperature = 1400        # used if variable_k is False
 
     def initial_guess(self):
         X_initial = np.ones((self.cfg.mesh.N_Z * self.cfg.mesh.N_R, ))
@@ -247,7 +248,7 @@ class FuelPin(Component):
     
     def generate_k_matrix(self, T=None):
         if T is None:
-            T = np.full((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), 1400)
+            T = np.full((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), self.k_temperature)
 
         k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
 
@@ -473,58 +474,34 @@ class FuelPin(Component):
         return M, C
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    from utils.solver import Solver
     import json
+    import matplotlib.pyplot as plt
+    
+    from utils.solver import Solver
 
-    with open("./data/test_data.json", "r") as f:
+    with open("./data/reactor_data.json", "r") as f:
         data = json.load(f)["FuelPin"]
 
-    N_Z = 100
-    N_R = 100
-
-    # data = {
-    #     "geometry": {
-    #         "delta_gap": 2.5e-3,     # random
-    #         "delta_wall": 2.5e-3,
-    #         "r": 1e-2,
-    #         "l": 2.,
-    #     },
-
-    #     "mesh": {
-    #         "N_R": N_R,
-    #         "N_Z": N_Z,
-    #     },
-
-    #     "energy": {
-    #         "N_G": 2,
-    #     },
-
-    #     "material": {
-    #         "k_fuel": 15.0,
-    #         "k_clad": 16.5,
-    #         "h_gap": 1e5,
-    #         "h_mod": 1e4,
-    #     },
-    # }
+    N_Z = 50
+    N_R = 30
 
     phi_ng  = np.tile(np.array([4.16e18, 5.47e17], dtype=float), (N_Z, 1))
     Sigma_f = np.array([9.4e-2, 5.48e1], dtype=float)
     kappa   = 3.204e-11
     T_mod   = np.ones(N_Z) * 1000.0
 
-    geom   = FuelPinGeometry(**data["geometry"])
-    mesh   = FuelPinMesh(N_Z=N_Z, N_R=N_R)
-    energy = FuelPinEnergy(**data["energy"])
-    mat    = FuelPinMaterial(**data["material"])
-    cfg    = FuelPinConfig(geom, mesh, energy, mat)
+    geom   = d_class.FuelPinGeometry(**data["geometry"])
+    mesh   = d_class.FuelPinMesh(N_Z=N_Z, N_R=N_R)
+    energy = d_class.FuelPinEnergy(**data["energy"])
+    mat    = d_class.FuelPinMaterial(**data["material"])
+    cfg    = d_class.FuelPinConfig(geom, mesh, energy, mat)
     cfg = cfg.resolve_geometry()
 
     fuel_pin = FuelPin(cfg)
     solver = Solver([fuel_pin])
     solver.newton_krylov()
 
-    T, = solver.solution
+    T, = solver.solution # type: ignore
 
     fuel_pin.linear_solve()
 

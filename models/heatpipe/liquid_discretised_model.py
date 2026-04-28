@@ -1,13 +1,12 @@
 import numpy as np
-from scipy.optimize import root, newton_krylov
 import matplotlib.pyplot as plt
-import matplotlib as mpl
+
+import data.dataclass as d_class
 
 from utils.sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_l, calculate_Na_h_fg
-from data.dataclass import *
 
 class LiquidDiscretised:
-    def __init__(self, config: HeatpipeConfigResolved, T_HP):
+    def __init__(self, config: d_class.HeatpipeConfigResolved, T_HP):
         self.cfg = config
         self.T_HP = T_HP
 
@@ -81,22 +80,20 @@ if __name__ == "__main__":
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
 
-    geom = HeatpipeGeometry(**data["geometry"])
-    mesh = HeatpipeMesh(**data["mesh"])
-    mesh.N_Z = 30
-    mesh.N_R = 20
-    mat = HeatpipeMaterial(**data["material"])
-    wick = HeatpipeWick(**data["wick"])
-    bc = HeatpipeBC(**data["bc"])
-    cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
+    geom = d_class.HeatpipeGeometry(**data["geometry"])
+    mesh = d_class.HeatpipeMesh(N_R=20, N_Z=30)
+    mat = d_class.HeatpipeMaterial(**data["material"])
+    wick = d_class.HeatpipeWick(**data["wick"])
+    bc = d_class.HeatpipeBC(**data["bc"])
+    cfg = d_class.HeatpipeConfig(geom, mesh, mat, wick, bc)
     cfg = cfg.resolve_geometry()
 
     heatpipe = HeatpipeDiscretised(cfg)
     solver = Solver([heatpipe])
     solver.fsolve()
 
-    T_HP = heatpipe.pack(solver.solution)
-    cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
+    T_HP = heatpipe.pre_process(solver.solution)
+    cfg = d_class.HeatpipeConfig(geom, mesh, mat, wick, bc)
     cfg = cfg.resolve_geometry()
 
     liquid = LiquidDiscretised(cfg, T_HP)
@@ -112,7 +109,7 @@ if __name__ == "__main__":
     x = np.linspace(0, heatpipe.cfg.geometry.l_tot, len(P))
     ax.grid(alpha=0.4)
     ax.plot(x, P, color="black")
-    ax.set_xlim([heatpipe.cfg.geometry.l_tot, 0])
+    ax.set_xlim((heatpipe.cfg.geometry.l_tot, 0.))
 
     ax.set_xlabel("l")
     ax.set_ylabel("P")
