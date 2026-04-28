@@ -1,25 +1,18 @@
 import numpy as np
 import matplotlib.pyplot as plt
+
+import utils.sodium_properties as s_props
+import data.dataclass as d_class
+
 from scipy.optimize import brentq
 
-from utils.sodium_properties import (
-    calculate_Na_h_fg,
-    calculate_Na_rho_l,
-    calculate_Na_rho_v,
-    calculate_Na_surface_tension,
-    calculate_Na_viscosity_l,
-    calculate_Na_viscosity_v,
-    calculate_Na_thermal_conductivity_l,
-)
-
-from coupled_systems.heatpipe_decoupled import Heatpipe
-from data.dataclass import *
+from utils.heatpipe_decoupled import Heatpipe
 
 R = 8.314472
 R_Na = R / 0.022990
 
 class heat_pipe_limitations:
-    def __init__(self, heatpipe: Heatpipe, config: HeatpipeConfigResolved):
+    def __init__(self, heatpipe: Heatpipe, config: d_class.HeatpipeConfigResolved):
         self.HP = heatpipe
         self.cfg = config
 
@@ -66,12 +59,12 @@ class heat_pipe_limitations:
             Liquid: Darcy's law in 1D, given by eq. (3.7) in Faghri
         """
 
-        h_fg    = calculate_Na_h_fg(T_span)
-        rho_l   = calculate_Na_rho_l(T_span)
-        rho_v   = calculate_Na_rho_v(T_span)
-        mu_v    = calculate_Na_viscosity_v(T_span)
-        mu_l    = calculate_Na_viscosity_l(T_span)
-        sigma_l = calculate_Na_surface_tension(T_span)
+        h_fg    = s_props.calculate_Na_h_fg(T_span)
+        rho_l   = s_props.calculate_Na_rho_l(T_span)
+        rho_v   = s_props.calculate_Na_rho_v(T_span)
+        mu_v    = s_props.calculate_Na_viscosity_v(T_span)
+        mu_l    = s_props.calculate_Na_viscosity_l(T_span)
+        sigma_l = s_props.calculate_Na_surface_tension(T_span)
 
         
         # Calculating the pressure drop due to viscous forces in the liquid flow.     
@@ -140,7 +133,7 @@ class heat_pipe_limitations:
         for T in T_span:
             print(f"Progress: {(T - np.min(T_span))*100 / (np.max(T_span) - np.min(T_span))} %")
             # Calculate the max capillary head for the current temperature.
-            sigma_l = calculate_Na_surface_tension(T)
+            sigma_l = s_props.calculate_Na_surface_tension(T)
             Delta_p_cap_max = (2 * sigma_l / self.cfg.wick.r_pore)
 
             # Set margin to 0 to force atleast two iterations, due to "< 0." in break condition.
@@ -212,11 +205,11 @@ class heat_pipe_limitations:
     
     def calculate_analytical_boiling_limit(self, T_span):
 
-        h_fg    = calculate_Na_h_fg(T_span)
-        rho_l   = calculate_Na_rho_l(T_span)
-        rho_v   = calculate_Na_rho_v(T_span)
-        sigma_l = calculate_Na_surface_tension(T_span)
-        k_l     = calculate_Na_thermal_conductivity_l(T_span)
+        h_fg    = s_props.calculate_Na_h_fg(T_span)
+        rho_l   = s_props.calculate_Na_rho_l(T_span)
+        rho_v   = s_props.calculate_Na_rho_v(T_span)
+        sigma_l = s_props.calculate_Na_surface_tension(T_span)
+        k_l     = s_props.calculate_Na_thermal_conductivity_l(T_span)
 
         nu_v = 1.0 / rho_v
         nu_l = 1.0 / rho_l
@@ -258,8 +251,8 @@ class heat_pipe_limitations:
     
     def calculate_analytical_sonic_limit(self, T_span):
 
-        h_fg    = calculate_Na_h_fg(T_span)
-        rho_v   = calculate_Na_rho_v(T_span)
+        h_fg    = s_props.calculate_Na_h_fg(T_span)
+        rho_v   = s_props.calculate_Na_rho_v(T_span)
 
         A_v = np.pi * self.cfg.geometry.r_vapour**2 
         gamma = 5/3
@@ -277,9 +270,9 @@ class heat_pipe_limitations:
 
     def calculate_analytical_entrainment_limit(self, T_span):
 
-        h_fg    = calculate_Na_h_fg(T_span)
-        rho_v   = calculate_Na_rho_v(T_span)
-        sigma_l = calculate_Na_surface_tension(T_span)
+        h_fg    = s_props.calculate_Na_h_fg(T_span)
+        rho_v   = s_props.calculate_Na_rho_v(T_span)
+        sigma_l = s_props.calculate_Na_surface_tension(T_span)
 
         A_v = np.pi * self.cfg.geometry.r_vapour**2 
 
@@ -317,9 +310,9 @@ class heat_pipe_limitations:
 
     def analytical_pressure_drop_Busse(self):
         T_v   = self.HP.calculated_quantities["heatpipe_T"][-1]
-        h_fg  = calculate_Na_h_fg(T_v)
-        rho_v = calculate_Na_rho_v(T_v)
-        mu_v  = calculate_Na_viscosity_v(T_v)
+        h_fg  = s_props.calculate_Na_h_fg(T_v)
+        rho_v = s_props.calculate_Na_rho_v(T_v)
+        mu_v  = s_props.calculate_Na_viscosity_v(T_v)
 
         Rv  = self.cfg.geometry.r_vapour
         d_v = 2.0 * Rv
@@ -456,12 +449,12 @@ if __name__ == "__main__":
         Q = np.repeat(np.array([Qtot / N], dtype=float), N)
         return Q
 
-    geom = HeatpipeGeometry(**data["geometry"])
-    mesh = HeatpipeMesh(**data["mesh"])
-    mat = HeatpipeMaterial(**data["material"])
-    bc = HeatpipeBC(**data["bc"])
-    wick = HeatpipeWick(**data["wick"])
-    cfg = HeatpipeConfig(geom, mesh, mat, bc, wick)
+    geom = d_class.HeatpipeGeometry(**data["geometry"])
+    mesh = d_class.HeatpipeMesh(N_R=20, N_Z=50)
+    mat = d_class.HeatpipeMaterial(**data["material"])
+    bc = d_class.HeatpipeBC(**data["bc"])
+    wick = d_class.HeatpipeWick(**data["wick"])
+    cfg = d_class.HeatpipeConfig(geom, mesh, mat, wick, bc)
     cfg = cfg.resolve_geometry()
 
     HP = Heatpipe(cfg)

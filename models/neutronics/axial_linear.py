@@ -2,9 +2,7 @@ import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as spla
 
-
 N_G = 8
-
 
 def calculate_diffusivity(T):
     D = np.array([1.856146, 0.931944, 0.808143, 0.8032, 0.804013, 0.751048, 0.664298, 0.668599])
@@ -195,11 +193,11 @@ class LinearNeutronModel:
         # Solve (F x) = k (L x), equivalently inv(L)F x = k x
         A = spla.LinearOperator(
             shape=L.shape,
-            matvec=lambda x: spla.spsolve(L, F @ x),
+            matvec=lambda x: spla.spsolve(L, F @ x),         # type: ignore
             dtype=np.float64,
         )
 
-        eigvals, eigvecs = spla.eigs(A, k=1, which="LR")
+        eigvals, eigvecs = spla.eigs(A, k=1, which="LR")     # type: ignore
         k_eff = np.real(eigvals[0])
         phi = np.real(eigvecs[:, 0])
 

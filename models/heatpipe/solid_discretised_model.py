@@ -1,21 +1,23 @@
 import numpy as np
 
+import data.dataclass as d_class
+import utils.material_properties as m_props
+
 from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import spsolve
 
-from data.dataclass import *
 from models.component import Component
 
-import utils.material_properties as m_props
 
 class HeatpipeDiscretised(Component):
-    def __init__(self, config: HeatpipeConfigResolved):
+    def __init__(self, config: d_class.HeatpipeConfigResolved):
 
         self.cfg = config
 
         self._initialize_discretization()
 
         self.variable_k = False
+        self.k_temperature = 800     # used if variable_k is False
 
     def initial_guess(self):
         X_initial = np.full(self.cfg.mesh.N_Z * self.cfg.mesh.N_R + 1, 800)
@@ -188,11 +190,15 @@ class HeatpipeDiscretised(Component):
         X_tuple = (X[:-1].reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R), X[-1])
         return X_tuple
     
+    def pre_process(self, X_tuple):
+        X = np.r_[X_tuple[0].reshape(self.cfg.mesh.N_Z * self.cfg.mesh.N_R), X_tuple[1]]
+        return X
+    
     def unpack(self, X):
         return (X[:-1], X[-1])
     
     def pack(self, X_tuple):
-        X = np.r_[X_tuple[0].reshape(self.cfg.mesh.N_Z * self.cfg.mesh.N_R), X_tuple[1]]
+        X = np.r_[X_tuple[0], X_tuple[1]]
         return X
 
     def _initialize_discretization(self):     
@@ -257,7 +263,7 @@ class HeatpipeDiscretised(Component):
 
     def _generate_k_matrix(self, T=None):
         if T is None:
-            T = np.full(((self.cfg.mesh.N_Z, self.cfg.mesh.N_R)), 800)
+            T = np.full(((self.cfg.mesh.N_Z, self.cfg.mesh.N_R)), self.k_temperature)
 
         def eval_material_prop(prop, T_slice, scale=1.0):
             value = prop(T_slice) if callable(prop) else prop
@@ -657,28 +663,26 @@ class HeatpipeDiscretised(Component):
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import json
-    from typing import Sequence
+    
     from utils.solver import Solver
 
     with open("./data/vapour_data.json", "r") as f:
         data_guoju = json.load(f)
         data = data_guoju["data_guoju_560"]
     
-    geom = HeatpipeGeometry(**data["geometry"])
-    geom.delta_wick = 0.00025
-    geom.delta_gap = 0.00025
-    mesh = HeatpipeMesh(N_Z=30, N_R=30)
-    mat = HeatpipeMaterial(**data["material"])
-    wick = HeatpipeWick(**data["wick"])
-    bc = HeatpipeBC(**data["bc"])
-    cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
+    geom = d_class.HeatpipeGeometry(**data["geometry"])
+    mesh = d_class.HeatpipeMesh(N_Z=30, N_R=30)
+    mat = d_class.HeatpipeMaterial(**data["material"])
+    wick = d_class.HeatpipeWick(**data["wick"])
+    bc = d_class.HeatpipeBC(**data["bc"])
+    cfg = d_class.HeatpipeConfig(geom, mesh, mat, wick, bc)
     cfg = cfg.resolve_geometry()
     
     heatpipe = HeatpipeDiscretised(cfg)
     solver = Solver([heatpipe])
     solver.newton_krylov()
 
-    T_solid, T_vap = solver.solution
+    T_solid, T_vap = solver.solution # type: ignore
 
     N_Z = cfg.mesh.N_Z
     N_R = cfg.mesh.N_R

@@ -1,58 +1,10 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib as mpl
 from pathlib import Path
 
-from data.dataclass import *
+import data.dataclass as d_class
+
 from models.component import Component
-
-N_G = 8
-
-"""
-energy_group_edges = np.array([1.000000e-05, 3.448488e-04, 1.189207e-02, 4.100967e-01, 1.414214e+01,
- 4.876899e+02, 1.681793e+04, 5.799643e+05, 2.000000e+07])
-
-total_xs = np.array([0.212918, 0.385936, 0.433878, 0.439159, 0.434345, 0.460764, 0.486712,
- 0.288787])
-
-scatter_matrix_xs = np.array([[1.861927e-01, 2.573515e-02, 9.995288e-06, 0.000000e+00, 0.000000e+00,
-  0.000000e+00, 0.000000e+00, 0.000000e+00],
- [0.000000e+00, 3.692822e-01, 1.589830e-02, 0.000000e+00, 0.000000e+00,
-  0.000000e+00, 0.000000e+00, 0.000000e+00],
- [0.000000e+00, 0.000000e+00, 4.148961e-01, 1.600025e-02, 0.000000e+00,
-  0.000000e+00, 0.000000e+00, 0.000000e+00],
- [0.000000e+00, 0.000000e+00, 0.000000e+00, 4.163120e-01, 1.253294e-02,
-  0.000000e+00, 0.000000e+00, 0.000000e+00],
- [0.000000e+00, 0.000000e+00, 0.000000e+00, 2.535302e-05, 4.066482e-01,
-  1.582596e-02, 8.742419e-07, 0.000000e+00],
- [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 1.355158e-02,
-  4.168228e-01, 6.309109e-04, 1.209800e-06],
- [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00,
-  1.073801e-01, 3.237823e-01, 0.000000e+00],
- [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00,
-  2.854831e-01, 0.000000e+00, 0.000000e+00]])
-
-fission_xs = np.array([0.000751, 0.000286, 0.000963, 0.003956, 0.006032, 0.023611, 0.043511,
- 0.      ])
-
-nu_fission_xs = np.array([0.002037, 0.000699, 0.002345, 0.009633, 0.014699, 0.057533, 0.106024,
- 0.      ])
-
-nu = np.array([2.714564, 2.444811, 2.433696, 2.434935, 2.436692, 2.4367  , 2.4367  ,
- 0.      ])
-
-chi = np.array([8.474541e-01, 1.516625e-01, 8.794743e-04, 3.858033e-06, 0.000000e+00,
- 0.000000e+00, 0.000000e+00, 0.000000e+00])
-
-kappa_fission_xs = np.array([ 147353.508045,   55296.41105 ,  186344.814661,  765153.0062  ,
- 1166686.746873, 4566501.413217, 8415328.558173,       0.      ])
-
-kappa = np.array([1.963227e+08, 1.934084e+08, 1.934085e+08, 1.934054e+08, 1.934054e+08,
- 1.934054e+08, 1.934054e+08, 0.000000e+00])
-
-diffusion_coefficient = np.array([1.873379, 0.940634, 0.809891, 0.795359, 0.801553, 0.732249, 0.630263,
- 1.438368])
-"""
+from utils.interpolator import OpenMCTallyGridSurrogate
 
 def calculate_diffusivity(T):
     D = np.array([1.873379, 0.940634, 0.809891, 0.795359, 0.801553, 0.732249, 0.630263, 1.438368])
@@ -118,11 +70,7 @@ class NeutronicsModel(Component):
 
         self.Z = np.linspace(0, self.cfg.mesh.l, self.cfg.mesh.N_Z)
 
-        MODEL_PATH = Path("./utils/rgi_surrogate.joblib")
-        from utils.interpolator import OpenMCTallyGridSurrogate
         self.interpolator_model = OpenMCTallyGridSurrogate()
-        self.interpolator_model = self.interpolator_model.load(MODEL_PATH)
-
 
     def initial_guess(self):
         phi_ng_initial = np.full((self.cfg.mesh.N_Z*self.cfg.energy.N_G), 1)
@@ -250,28 +198,34 @@ class NeutronicsModel(Component):
 
     #     return Diffusivity, Sigma_t, Sigma_s0, Sigma_f, fission_number, Chi, kappa
 
-if __name__ == "__main__":
-    data = {}
+if __name__ == "__main__":  
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
 
     from utils.solver import Solver
 
-    mesh = NeutronicsMesh(
+    mesh = d_class.NeutronicsMesh(
         N_R = 50,
         N_Z = 100,
         l = 1.8
     )
-    energy = NeutronicsEnergy(
+    energy = d_class.NeutronicsEnergy(
         N_G = 8,
         power = 1000
     )
-    cfg = NeutronicsConfig(mesh, energy)
+    cfg = d_class.NeutronicsConfig(mesh, energy)
+
+    MODEL_PATH = Path("./utils/rgi_surrogate.joblib")
+    interpolator_model = OpenMCTallyGridSurrogate()
+    interpolator_model = interpolator_model.load(MODEL_PATH)
 
     neutronics_model = NeutronicsModel(cfg)
+    neutronics_model.interpolator_model = interpolator_model
 
     solver = Solver([neutronics_model])
-    solver.fsolve(maxfev=1)
+    solver.fsolve()
 
-    phi_n_g, k = solver.solution
+    phi_n_g, k = solver.solution      # type: ignore
 
     mpl.rcParams["text.usetex"] = True
     mpl.rcParams["font.family"] = "Computer modern"
@@ -285,7 +239,6 @@ if __name__ == "__main__":
     for i in range(len(colors)):
         ax.plot(phi_n_g[:, i], color=colors[i], label=i)
     ax.legend()
-    # ax.plot(phi[:, 1], color="blue")
     ax.set_yscale("log")
     ax.set_title(r"$k_{eff} = $" + f"{k:.2f}")
 
