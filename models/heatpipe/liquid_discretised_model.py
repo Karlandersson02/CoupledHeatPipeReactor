@@ -104,7 +104,7 @@ if __name__ == "__main__":
 
     plt.rcParams["font.size"] = 22
     plt.rcParams["font.family"] = "Computer modern"
-    plt.rcParams["text.usetex"] = True
+    # plt.rcParams["text.usetex"] = True
 
     fig = plt.figure(figsize=(16,9))
     ax = fig.add_subplot(111)
