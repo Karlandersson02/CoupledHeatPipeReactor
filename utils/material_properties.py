@@ -41,7 +41,7 @@ def HP_wick_k(T, porosity):
 
 
 def moderator_k(T):
-    # Utilizing a isotropic graphite variant (G-348) that were intedent to be used in a gas-cooled reactor.
+    # Utilizing a isotropic graphite variant (G-348) that were intended to be used in a gas-cooled reactor.
     # https://www.osti.gov/servlets/purl/1330693.
 
     # Assuming that the moderator can be modelled as only graphite.

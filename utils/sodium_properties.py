@@ -1,30 +1,29 @@
 import numpy as np
 from scipy.optimize import brentq
 
-def calculate_Na_rho_l(T_liquid):
-
+def calculate_Na_rho_l(T):
     # Constants and formula taken from:
     # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz 
     # page 86. 
 
-    rho_C = 219.0
-    f = 275.32
-    g = 511.58
-    T_C = 2503.7 
+    # https://researchdata.brighton.ac.uk/id/eprint/258/3/Thermodynamic%20and%20transport%20porperties%20of%20sodium%20liquid%20and%20vapor.pdf
 
-    # units is kg / m^3
-    return rho_C + f * (1 - T_liquid / T_C) + g * (1 - T_liquid / T_C)**(0.5) 
+    f     = 275.32
+    g     = 511.58
+    h     = 0.5
+    rho_c = 219
+    T_c   = 2503.7
 
-def calculate_Na_rho_v(T_vapour):
-    # Constants and formula taken from:
-    # MODELING OF TRANSIENT HEAT PIPE OPERATION - NASA GRANT NAG-1-392
-    # BY Gene T. Colwell, George W, Woodruff 
-    # page 190.
+    # kg / m^3
+    return rho_c + f*(1 - T/T_c) + g*(1 - T/T_c)**h
 
-    # Should probably be for saturated vapour(?)
-    
-    # Unit is kg / m^3
-    return 6.335e8 * (1 / T_vapour**(1.5)) * 10**(-5567 / T_vapour)
+def calculate_Na_rho_v(T):
+    rho_l       = density_l(T)
+    DHg         = calculate_Na_h_fg(T)
+    gamma_sigma = calculate_gamma_sigma(T)
+
+    # kg / m^3
+    return 1 / (DHg/(T*gamma_sigma) + 1/rho_l)
 
 def calculate_rho_cc(T_vapour):
     pc = 1300
@@ -41,6 +40,8 @@ def calculate_Na_viscosity_l(T_liquid):
     # Constants and formula taken from:
     # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz 
     # page 207.
+
+    # https://researchdata.brighton.ac.uk/id/eprint/258/3/Thermodynamic%20and%20transport%20porperties%20of%20sodium%20liquid%20and%20vapor.pdf
 
     # unit is Pa * s
     return np.exp(-6.4406 - 0.3958 * np.log(T_liquid) + 556.835 / T_liquid)
@@ -63,16 +64,28 @@ def calculate_Na_h_fg(T_vapour):
     # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz 
     # page 65.
 
+    # https://researchdata.brighton.ac.uk/id/eprint/258/3/Thermodynamic%20and%20transport%20porperties%20of%20sodium%20liquid%20and%20vapor.pdf
+
     T_crit_Na = 2503.7
 
     # Original unit is in kJ / kg, converting it to J / kg.
     return 1e3 * (393.37 * (1 - T_vapour / T_crit_Na) + 4398.6 * (1 - T_vapour / T_crit_Na)**(0.29302))
+
+def calculate_gamma_sigma(T):
+    a = 11.9463
+    b = -12633.73
+    c = -0.4672
+
+    # Pa / K
+    return 1e6 * (-b/T**2 + c/T)*np.exp(a + b/T + c*np.log(T))
 
 def calculate_Na_surface_tension(T_liquid):
 
     # Constants and formula taken from:
     # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz 
     # page 65.
+
+    # https://researchdata.brighton.ac.uk/id/eprint/258/3/Thermodynamic%20and%20transport%20porperties%20of%20sodium%20liquid%20and%20vapor.pdf
 
     sigma_0 = 240.5
     n = 1.126
@@ -87,6 +100,8 @@ def calculate_Na_pressure_v(T_vapour):
     # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz 
     # page 55.
 
+    # https://researchdata.brighton.ac.uk/id/eprint/258/3/Thermodynamic%20and%20transport%20porperties%20of%20sodium%20liquid%20and%20vapor.pdf
+
     A = 11.9463
     B = 12633.73
     C = 0.4672
@@ -99,6 +114,8 @@ def calculate_Na_temperature_v(p_vapour):
     # Numerical inversion of calculate_Na_pressure_v().
     # Pressure in Pa. Valid range: ~2923 Pa (864 K) to ~25.6 MPa (2503.7 K).
     # Returns NaN outside valid range.
+
+    # https://researchdata.brighton.ac.uk/id/eprint/258/3/Thermodynamic%20and%20transport%20porperties%20of%20sodium%20liquid%20and%20vapor.pdf
 
     T_min, T_max = 200, 2503.7
     P_min = calculate_Na_pressure_v(T_min)
@@ -120,6 +137,8 @@ def calculate_Na_thermal_conductivity_l(T_liquid):
     # Constants and formula taken from:
     # Thermodynamic and Transport Properties of Sodium Liquid and Vapor by J. K. Fink and L. Leibowitz
     # ANL/RE-95/2, page 181, equation (1).
+
+    # https://researchdata.brighton.ac.uk/id/eprint/258/3/Thermodynamic%20and%20transport%20porperties%20of%20sodium%20liquid%20and%20vapor.pdf
 
     A = 124.67
     B = -0.11381
