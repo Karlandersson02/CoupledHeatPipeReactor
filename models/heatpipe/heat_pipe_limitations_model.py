@@ -11,7 +11,7 @@ from utils.heatpipe_decoupled import Heatpipe
 R = 8.314472
 R_Na = R / 0.022990
 
-class heat_pipe_limitations:
+class HeatPipeLimitations:
     def __init__(self, heatpipe: Heatpipe, config: d_class.HeatpipeConfigResolved):
         self.HP = heatpipe
         self.cfg = config
@@ -19,10 +19,10 @@ class heat_pipe_limitations:
     def plot_analytical_limits(self, T_low, T_high):
         T_span = np.linspace(T_low, T_high, T_high - T_low + 1)
 
-        Q_sonic       = HP_limits.calculate_analytical_sonic_limit(T_span)
-        Q_cap         = HP_limits.calculate_analytical_capillary_limit(T_span)
-        Q_boil        = HP_limits.calculate_analytical_boiling_limit(T_span)
-        Q_entrainment = HP_limits.calculate_analytical_entrainment_limit(T_span)
+        Q_sonic       = self.calculate_analytical_sonic_limit(T_span)
+        Q_cap         = self.calculate_analytical_capillary_limit(T_span)
+        Q_boil        = self.calculate_analytical_boiling_limit(T_span)
+        Q_entrainment = self.calculate_analytical_entrainment_limit(T_span)
 
         plt.semilogy(T_span, Q_sonic,       label="Sonic")
         plt.semilogy(T_span, Q_cap,         label="Capillary")
@@ -94,7 +94,7 @@ class heat_pipe_limitations:
         F_v_inertial = inertial_fraction / (8 * rho_v * self.cfg.geometry.r_vapour**4 * h_fg**2)
 
         # Calculating Q_max based on the pressure drops.
-        Delta_p_cap_max = (2 * sigma_l / self.cfg.wick.r_pore)
+        Delta_p_cap_max = (1. * sigma_l / self.cfg.wick.r_pore)
 
         # Equation is off the quadratic form.
         a = F_v_inertial
@@ -203,50 +203,212 @@ class heat_pipe_limitations:
         return Q_cap 
     
     
-    def calculate_analytical_boiling_limit(self, T_span):
+    # def calculate_analytical_boiling_limit(self, T_span):
 
-        h_fg    = s_props.calculate_Na_h_fg(T_span)
-        rho_l   = s_props.calculate_Na_rho_l(T_span)
-        rho_v   = s_props.calculate_Na_rho_v(T_span)
-        sigma_l = s_props.calculate_Na_surface_tension(T_span)
-        k_l     = s_props.calculate_Na_thermal_conductivity_l(T_span)
+    #     h_fg    = s_props.calculate_Na_h_fg(T_span)
+    #     rho_l   = s_props.calculate_Na_rho_l(T_span)
+    #     rho_v   = s_props.calculate_Na_rho_v(T_span)
+    #     sigma_l = s_props.calculate_Na_surface_tension(T_span)
+    #     k_l     = s_props.calculate_Na_thermal_conductivity_l(T_span)
 
-        nu_v = 1.0 / rho_v
-        nu_l = 1.0 / rho_l
-        k_eff = (1 - self.cfg.wick.porosity) * self.cfg.material.k_wick + self.cfg.wick.porosity * k_l
+    #     nu_v = 1.0 / rho_v
+    #     nu_l = 1.0 / rho_l
+    #     k_eff = (1 - self.cfg.wick.porosity) * self.cfg.material.k_wick + self.cfg.wick.porosity * k_l
 
-        def residual(Q, i):
-            q_r   = Q / (np.pi * self.cfg.geometry.r_vapour**2)
-            R_b   = np.sqrt((2 * sigma_l[i] * T_span[i] * k_l[i] * (nu_v[i] - nu_l[i]))
-                            / (h_fg[i] * q_r))
-            dT    = (2 * sigma_l[i] * T_span[i]) / (h_fg[i] * rho_v[i]) * (1/R_b - 1/self.cfg.wick.r_pore)
-            Q_rhs = (2 * np.pi * self.cfg.geometry.l_evap * k_eff[i] * dT) / np.log(self.cfg.geometry.r_wick / self.cfg.geometry.r_vapour)
-            return Q - Q_rhs
+    #     def residual(Q, i):
+    #         q_r   = Q / (np.pi * self.cfg.geometry.r_vapour**2)
+    #         R_b   = np.sqrt((2 * sigma_l[i] * T_span[i] * k_l[i] * (nu_v[i] - nu_l[i]))
+    #                         / (h_fg[i] * q_r))
+    #         dT    = (2 * sigma_l[i] * T_span[i]) / (h_fg[i] * rho_v[i]) * (1/R_b - 1/self.cfg.wick.r_pore)
+    #         Q_rhs = (2 * np.pi * self.cfg.geometry.l_evap * k_eff[i] * dT) / np.log(self.cfg.geometry.r_wick / self.cfg.geometry.r_vapour)
+    #         return Q - Q_rhs
 
-        def find_bracket(residual, i, Q_min=1e-3, Q_max=1e13, n_search=500):
-            Q_vals = np.logspace(np.log10(Q_min), np.log10(Q_max), n_search)
-            r_vals = np.array([residual(Q, i) for Q in Q_vals])
-            sign_changes = np.where(np.diff(np.sign(r_vals)))[0]
-            if len(sign_changes) == 0:
-                return None, None
-            idx = sign_changes[0]
-            return Q_vals[idx], Q_vals[idx + 1]
+    #     def find_bracket(residual, i, Q_min=1e-3, Q_max=1e13, n_search=500):
+    #         Q_vals = np.logspace(np.log10(Q_min), np.log10(Q_max), n_search)
+    #         r_vals = np.array([residual(Q, i) for Q in Q_vals])
+    #         sign_changes = np.where(np.diff(np.sign(r_vals)))[0]
+    #         if len(sign_changes) == 0:
+    #             return None, None
+    #         idx = sign_changes[0]
+    #         return Q_vals[idx], Q_vals[idx + 1]
 
-        Q_boil = np.zeros_like(T_span)
-        for i in range(len(T_span)):
-            a, b = find_bracket(residual, i)
-            if a is None:
-                Q_boil[i] = np.nan
+    #     Q_boil = np.zeros_like(T_span)
+    #     for i in range(len(T_span)):
+    #         a, b = find_bracket(residual, i)
+    #         if a is None:
+    #             Q_boil[i] = np.nan
+    #         else:
+    #             Q_boil[i] = brentq(residual, a=a, b=b, args=(i,))
+
+    #     # plt.semilogy(T_span, Q_boil, label="Boiling limit")
+    #     # plt.xlabel("Temperature [Kelvin]")
+    #     # plt.ylabel("Heat transfer [W]")
+
+    #     # plt.show()
+
+    #     print(Q_boil)
+
+    #     return Q_boil
+    
+    def calculate_analytical_boiling_limit(
+        self,
+        T_span,
+        root="lower",              # "lower" matches your current first-bracket behaviour
+        return_diagnostics=False,
+    ):
+        T_span = np.asarray(T_span, dtype=float)
+        scalar_input = T_span.ndim == 0
+        T_span = np.atleast_1d(T_span)
+
+        def as_array(x, name):
+            x = np.asarray(x, dtype=float)
+            try:
+                return np.broadcast_to(x, T_span.shape).astype(float, copy=False)
+            except ValueError as exc:
+                raise ValueError(
+                    f"{name} returned shape {x.shape}, but expected something "
+                    f"broadcastable to {T_span.shape}."
+                ) from exc
+
+        h_fg    = as_array(s_props.calculate_Na_h_fg(T_span), "h_fg")
+        rho_l   = as_array(s_props.calculate_Na_rho_l(T_span), "rho_l")
+        rho_v   = as_array(s_props.calculate_Na_rho_v(T_span), "rho_v")
+        sigma_l = as_array(s_props.calculate_Na_surface_tension(T_span), "sigma_l")
+        k_l     = as_array(s_props.calculate_Na_thermal_conductivity_l(T_span), "k_l")
+
+        r_vapour = float(self.cfg.geometry.r_vapour)
+        r_wick   = float(self.cfg.geometry.r_wick)
+        r_pore   = float(self.cfg.wick.r_pore)
+        l_evap   = float(self.cfg.geometry.l_evap)
+        porosity = float(self.cfg.wick.porosity)
+        k_wick   = float(self.cfg.material.k_wick)
+
+        if r_vapour <= 0:
+            raise ValueError("cfg.geometry.r_vapour must be positive.")
+        if r_wick <= r_vapour:
+            raise ValueError("cfg.geometry.r_wick must be larger than r_vapour.")
+        if r_pore <= 0:
+            raise ValueError("cfg.wick.r_pore must be positive.")
+        if l_evap <= 0:
+            raise ValueError("cfg.geometry.l_evap must be positive.")
+        if not (0.0 <= porosity <= 1.0):
+            raise ValueError("cfg.wick.porosity must be between 0 and 1.")
+
+        area_vapour = np.pi * r_vapour**2
+        log_ratio = np.log(r_wick / r_vapour)
+
+        Q_boil = np.full_like(T_span, np.nan, dtype=float)
+
+        diagnostics = {
+            "invalid_property_points": 0,
+            "no_real_root_points": 0,
+            "non_finite_result_points": 0,
+        }
+
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            v_v = 1.0 / rho_v
+            v_l = 1.0 / rho_l
+
+            k_eff = (1.0 - porosity) * k_wick + porosity * k_l
+
+            # Your residual can be written as:
+            #
+            #     residual(Q) = Q - E sqrt(Q) + F
+            #
+            # where x = sqrt(Q) gives:
+            #
+            #     x^2 - E x + F = 0
+            #
+            B = 2.0 * sigma_l * T_span * k_l * (v_v - v_l) / h_fg
+            C = 2.0 * sigma_l * T_span / (h_fg * rho_v)
+            D = 2.0 * np.pi * l_evap * k_eff / log_ratio
+
+            E = D * C / np.sqrt(B * area_vapour)
+            F = D * C / r_pore
+
+            valid_base = (
+                np.isfinite(T_span)
+                & np.isfinite(h_fg)
+                & np.isfinite(rho_l)
+                & np.isfinite(rho_v)
+                & np.isfinite(sigma_l)
+                & np.isfinite(k_l)
+                & np.isfinite(k_eff)
+                & np.isfinite(B)
+                & np.isfinite(C)
+                & np.isfinite(D)
+                & np.isfinite(E)
+                & np.isfinite(F)
+                & (T_span > 0.0)
+                & (h_fg > 0.0)
+                & (rho_l > 0.0)
+                & (rho_v > 0.0)
+                & (sigma_l > 0.0)
+                & (k_l > 0.0)
+                & (k_eff > 0.0)
+                & (B > 0.0)
+                & (C > 0.0)
+                & (D > 0.0)
+                & (E > 0.0)
+                & (F >= 0.0)
+            )
+
+            diagnostics["invalid_property_points"] = int(np.count_nonzero(~valid_base))
+
+            # Discriminant condition:
+            #
+            #     E^2 - 4F >= 0
+            #
+            # Written this way to avoid unnecessary overflow in E**2.
+            ratio = 4.0 * (F / E) / E
+            has_real_root = valid_base & np.isfinite(ratio) & (ratio <= 1.0)
+
+            diagnostics["no_real_root_points"] = int(
+                np.count_nonzero(valid_base & ~has_real_root)
+            )
+
+            sqrt_disc = np.full_like(T_span, np.nan, dtype=float)
+            sqrt_disc[has_real_root] = (
+                E[has_real_root]
+                * np.sqrt(np.maximum(0.0, 1.0 - ratio[has_real_root]))
+            )
+
+            x_upper = np.full_like(T_span, np.nan, dtype=float)
+            x_lower = np.full_like(T_span, np.nan, dtype=float)
+
+            x_upper[has_real_root] = 0.5 * (E[has_real_root] + sqrt_disc[has_real_root])
+
+            # More stable than:
+            # x_lower = 0.5 * (E - sqrt_disc)
+            x_lower[has_real_root] = F[has_real_root] / x_upper[has_real_root]
+
+            if root == "lower":
+                x = x_lower
+            elif root == "upper":
+                x = x_upper
             else:
-                Q_boil[i] = brentq(residual, a=a, b=b, args=(i,))
+                raise ValueError("root must be either 'lower' or 'upper'.")
 
-        # plt.semilogy(T_span, Q_boil, label="Boiling limit")
-        # plt.xlabel("Temperature [Kelvin]")
-        # plt.ylabel("Heat transfer [W]")
+            Q = x**2
 
-        # plt.show()
+            valid_result = has_real_root & np.isfinite(Q) & (Q >= 0.0)
+            Q_boil[valid_result] = Q[valid_result]
+
+            diagnostics["non_finite_result_points"] = int(
+                np.count_nonzero(has_real_root & ~valid_result)
+            )
+
+        print(Q_boil)
+        print(diagnostics)
+
+        if scalar_input:
+            Q_boil = Q_boil.item()
+
+        if return_diagnostics:
+            return Q_boil, diagnostics
 
         return Q_boil
+
     
     
     def calculate_analytical_sonic_limit(self, T_span):
@@ -277,10 +439,10 @@ class heat_pipe_limitations:
         A_v = np.pi * self.cfg.geometry.r_vapour**2 
 
         # Assuming that the area of the individual pore is a half sphere (best case scenario)
-        #R_h_w = self.cfg.wick.r_pore / 3
+        R_h_w = self.cfg.wick.r_pore / 3
 
         # Assuming that the area of the individual pore is flat (worst case scenario)
-        R_h_w = self.cfg.wick.r_pore
+        #R_h_w = self.cfg.wick.r_pore
         
         Q_entrainment = A_v * h_fg * np.sqrt( (sigma_l * rho_v) / (2 * R_h_w) )
 
@@ -414,7 +576,7 @@ if __name__ == "__main__":
         "porosity": 0.7,
     }
 
-    data = {
+    data123 = {
         "r_outer":  0.01410/2,
         "r_wall":   0.01410/2,
         "r_wick":   0.0130/2, 
@@ -448,6 +610,12 @@ if __name__ == "__main__":
     def build_flat_profile(Qtot, N):
         Q = np.repeat(np.array([Qtot / N], dtype=float), N)
         return Q
+    
+
+    import json
+    with open("./data/reactor_data.json", "r") as f:
+        data_guoju = json.load(f)
+        data = data_guoju["data_guoju_1000"]
 
     geom = d_class.HeatpipeGeometry(**data["geometry"])
     mesh = d_class.HeatpipeMesh(N_R=20, N_Z=50)
@@ -458,7 +626,7 @@ if __name__ == "__main__":
     cfg = cfg.resolve_geometry()
 
     HP = Heatpipe(cfg)
-    HP_limits = heat_pipe_limitations(HP, cfg)
+    HP_limits = HeatPipeLimitations(HP, cfg)
 
     HP_limits.plot_analytical_limits(700, 1400)
 
