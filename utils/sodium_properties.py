@@ -18,7 +18,7 @@ def calculate_Na_rho_l(T):
     return rho_c + f*(1 - T/T_c) + g*(1 - T/T_c)**h
 
 def calculate_Na_rho_v(T):
-    rho_l       = density_l(T)
+    rho_l       = calculate_Na_rho_l(T)
     DHg         = calculate_Na_h_fg(T)
     gamma_sigma = calculate_gamma_sigma(T)
 

@@ -17,7 +17,7 @@
     },
     "material": {
       "k_wick": 66.2,
-      "k_gap": 84,
+      "k_gap": 66.2,
       "k_wall": 19.0,
       "h_vap": 1e6,
       "h_cond": 59.6
@@ -53,7 +53,79 @@
     },
     "material": {
       "k_wick": 66.2,
-      "k_gap": 84,
+      "k_gap": 66.2,
+      "k_wall": 19.0,
+      "h_vap": 1e6,
+      "h_cond": 62.6
+    },
+    "wick": {
+      "Is_annular": false,
+        "K":1e-10,
+        "r_pore": 0.00002,
+        "porosity": 0.7
+    },
+    "other": {
+      "P_C": 2476,
+      "T_C": 856,
+      "h_fg": 4.182e6,
+      "mu_v": 1.80e-5
+    }
+  },
+  "ivanovskii_615": {
+    "geometry": {
+      "r_vapour": 0.007,
+      "delta_wick": 0.0004,
+      "delta_gap": 0.0005,
+      "delta_wall": 0.001,
+      "l_evap": 0.1,
+      "l_adiabatic": 0.05,
+      "l_cond": 0.25
+    },
+    "bc": {
+      "Temperature_BC": true,
+      "T_cond": 300,
+      "T_op": 850,
+      "Q": 615
+    },
+    "material": {
+      "k_wick": 66.2,
+      "k_gap": 66.2,
+      "k_wall": 19.0,
+      "h_vap": 1e6,
+      "h_cond": 62.6
+    },
+    "wick": {
+      "Is_annular": false,
+        "K":1e-10,
+        "r_pore": 0.00002,
+        "porosity": 0.7
+    },
+    "other": {
+      "P_C": 2476,
+      "T_C": 856,
+      "h_fg": 4.182e6,
+      "mu_v": 1.80e-5
+    }
+  },
+  "ivanovskii_315": {
+    "geometry": {
+      "r_vapour": 0.007,
+      "delta_wick": 0.0004,
+      "delta_gap": 0.0005,
+      "delta_wall": 0.001,
+      "l_evap": 0.1,
+      "l_adiabatic": 0.05,
+      "l_cond": 0.20
+    },
+    "bc": {
+      "Temperature_BC": true,
+      "T_cond": 300,
+      "T_op": 850,
+      "Q": 315
+    },
+    "material": {
+      "k_wick": 66.2,
+      "k_gap": 66.2,
       "k_wall": 19.0,
       "h_vap": 1e6,
       "h_cond": 62.6

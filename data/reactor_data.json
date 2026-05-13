@@ -1,19 +1,19 @@
 {
     "HeatPipe": {
         "geometry": {
-            "r_vapour": 0.00654,
+            "r_vapour": 0.00954,
             "delta_wick": 0.00038933333333333344,
             "delta_gap": 0.0006813333333333335,
             "delta_wall": 0.00038933333333333344,
             "l_evap": 1.5,
             "l_adiabatic": 0.2,
-            "l_cond": 1
+            "l_cond": 0.6
         },
         "bc": {
             "Temperature_BC": true,
             "T_cond": 300,
             "T_op": 850,
-            "Q": 1000
+            "Q": 5000
         },
         "material": {
             "k_wick": 66.2,

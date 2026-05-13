@@ -17,6 +17,7 @@ class HeatpipeDiscretisedVapour(Component):
 
         self.variable_k = False
         self.k_temperature = 800
+        self.use_self_properties = False
 
     def set_T_v(self, T_v):
         self.T_v = T_v
@@ -258,13 +259,14 @@ class HeatpipeDiscretisedVapour(Component):
 
         k_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R), dtype=float)
 
-        # k_matrix[:, wick_slice] = eval_material_prop(self.cfg.material.k_wick, T_wick)
-        # k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.k_gap , T_gap)
-        # k_matrix[:, wall_slice] = eval_material_prop(self.cfg.material.k_wall, T_wall)
-
-        k_matrix[:, wick_slice] = eval_material_prop(wick_k, T_wick)
-        k_matrix[:, gap_slice]  = eval_material_prop(m_props.HP_gap_k, T_gap)
-        k_matrix[:, wall_slice] = eval_material_prop(m_props.HP_wall_k, T_wall)
+        if self.use_self_properties:
+            k_matrix[:, wick_slice] = eval_material_prop(self.cfg.material.k_wick, T_wick)
+            k_matrix[:, gap_slice]  = eval_material_prop(self.cfg.material.k_gap , T_gap)
+            k_matrix[:, wall_slice] = eval_material_prop(self.cfg.material.k_wall, T_wall)
+        else:
+            k_matrix[:, wick_slice] = eval_material_prop(wick_k, T_wick)
+            k_matrix[:, gap_slice]  = eval_material_prop(m_props.HP_gap_k, T_gap)
+            k_matrix[:, wall_slice] = eval_material_prop(m_props.HP_wall_k, T_wall)
 
         return k_matrix
     
@@ -273,8 +275,10 @@ class HeatpipeDiscretisedVapour(Component):
         h_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R))
         
         # Heat transfer coefficient for the vapor section.
-        h_matrix[:self.cfg.mesh.N_evap, 0]                      = self.cfg.material.h_vap
-        h_matrix[(self.cfg.mesh.N_Z - self.cfg.mesh.N_cond):self.cfg.mesh.N_Z, 0] = self.cfg.material.h_vap
+        # h_matrix[:self.cfg.mesh.N_evap, 0]                                        = self.cfg.material.h_vap
+        # h_matrix[(self.cfg.mesh.N_Z - self.cfg.mesh.N_cond):self.cfg.mesh.N_Z, 0] = self.cfg.material.h_vap
+
+        h_matrix[:, 0] = self.cfg.material.h_vap
 
         # Heat transfer coefficient for the condensator section.
         h_matrix[(self.cfg.mesh.N_Z - self.cfg.mesh.N_cond):self.cfg.mesh.N_Z, self.cfg.mesh.N_R - 1] = self.cfg.material.h_cond
@@ -309,18 +313,14 @@ class HeatpipeDiscretisedVapour(Component):
         cooling_mask = np.zeros_like(alpha, dtype=bool)
         
         # Configure masks
-        vapour_mask[0:self.cfg.mesh.N_evap, 0, 1] = True
-        vapour_mask[(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic):, 0, 1] = True
+        # vapour_mask[0:self.cfg.mesh.N_evap, 0, 1] = True
+        # vapour_mask[(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic):, 0, 1] = True
+        vapour_mask[:, 0, 1] = True
         cooling_mask[(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic):, -1, 0] = True
 
         # Apply masks
         alpha[vapour_mask] = surface_tensor[vapour_mask]
         alpha[cooling_mask] = surface_tensor[cooling_mask]
-
-        # Adiabatic middle boundaries
-        adiabatic_mask = np.zeros_like(alpha, dtype=bool)
-        adiabatic_mask[self.cfg.mesh.N_evap:(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic), :, 0:2] = True
-        alpha[adiabatic_mask] = 0
         return alpha
 
     def linear_solve(self):
@@ -503,3 +503,122 @@ class HeatpipeDiscretisedVapour(Component):
         M = M.tocsr()
 
         return M, C
+
+if __name__ == "__main__":
+    from utils.heatpipe_utils import generate_cfgs_seq
+    import json
+    import matplotlib.pyplot as plt
+
+    def centers_to_edges(x, first_edge=None, last_edge=None):
+        edges = np.empty(len(x) + 1)
+        edges[1:-1] = 0.5 * (x[:-1] + x[1:])
+
+        if first_edge is None:
+            edges[0] = x[0] - 0.5 * (x[1] - x[0])
+        else:
+            edges[0] = first_edge
+
+        if last_edge is None:
+            edges[-1] = x[-1] + 0.5 * (x[-1] - x[-2])
+        else:
+            edges[-1] = last_edge
+
+        return edges
+
+    with open("data/vapour_data.json", "r") as f:
+        data_guoju = json.load(f)
+        data = data_guoju["data_guoju_560"]
+        data["material"]["h_cond"] = 59.2
+
+    Qs = [560]
+    Ns = [[30, 80]]
+    cfgs = generate_cfgs_seq(data, Ns, Qs)
+    cfg = cfgs[0]
+
+    heatpipe = HeatpipeDiscretisedVapour(cfg)
+    T = heatpipe.linear_solve()
+
+    N_Z = cfg.mesh.N_Z
+    N_R = cfg.mesh.N_R
+
+    T_solid = T[:N_Z * N_R].reshape(N_Z, N_R)
+    T_v = T[-1]
+
+    z_edges = centers_to_edges(
+        heatpipe.Z,
+        first_edge=0.0,
+        last_edge=cfg.geometry.l_evap + cfg.geometry.l_adiabatic + cfg.geometry.l_cond,
+    )
+
+    r_edges = centers_to_edges(
+        heatpipe.R,
+        first_edge=cfg.geometry.r_vapour,
+        last_edge=cfg.geometry.r_outer,
+    )
+
+    fig, ax = plt.subplots(figsize=(8, 3), dpi=200)
+
+    c = ax.pcolormesh(
+        z_edges,
+        r_edges,
+        T_solid.T,
+        shading="flat",
+    )
+
+    fig.colorbar(c, ax=ax, label=r"$T$ [K]")
+
+    ax.set_xlabel(r"$z$ [m]")
+    ax.set_ylabel(r"$r$ [m]")
+    ax.set_title("Heat pipe solid temperature")
+
+    z_evap_end = cfg.geometry.l_evap
+    z_adiab_end = cfg.geometry.l_evap + cfg.geometry.l_adiabatic
+
+    ax.axvline(z_evap_end, color="k", linestyle="--", linewidth=0.8)
+    ax.axvline(z_adiab_end, color="k", linestyle="--", linewidth=0.8)
+
+    fig.tight_layout()
+    plt.show()
+
+    fig, ax = plt.subplots(figsize=(8, 3), dpi=200)
+
+    ax.plot(heatpipe.Z, T_solid[:, 0], label="Inner wall / wick-vapour interface")
+    ax.plot(heatpipe.Z, T_solid[:, -1], label="Outer wall")
+    ax.axhline(T_v, linestyle="--", label="Lumped vapour temperature")
+
+    ax.axvline(z_evap_end, color="k", linestyle="--", linewidth=0.8)
+    ax.axvline(z_adiab_end, color="k", linestyle="--", linewidth=0.8)
+
+    ax.set_xlabel(r"$z$ [m]")
+    ax.set_ylabel(r"$T$ [K]")
+    ax.set_title("Axial temperature profiles")
+    ax.legend()
+
+    fig.tight_layout()
+    plt.show()
+
+    surface_areas, delta_Rp, delta_Rm, delta_Z = heatpipe._initialize_discretization()
+    k = heatpipe._generate_k_matrix()
+    h = heatpipe._generate_h_matrix()
+    alpha = heatpipe._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k)
+
+    q_to_vap = h[:, 0] * alpha[:, 0, 1] * (T_solid[:, 0] - T_v)
+    q_to_cond = h[:, -1] * alpha[:, -1, 0] * (T_solid[:, -1] - cfg.bc.T_cond)
+
+    evap = slice(0, cfg.mesh.N_evap)
+    adiab = slice(cfg.mesh.N_evap, cfg.mesh.N_evap + cfg.mesh.N_adiabatic)
+    cond = slice(cfg.mesh.N_evap + cfg.mesh.N_adiabatic, cfg.mesh.N_Z)
+
+    print("T shape:", T.shape)
+    print("T_solid shape:", T_solid.shape)
+    print("T_v:", T_v)
+
+    print("\nEnergy diagnostics")
+    print("Q input:", np.sum(cfg.bc.Q[evap]))
+    print("Q to vapour:", np.sum(q_to_vap))
+    print("Q to condenser:", np.sum(q_to_cond))
+
+    print("\nq_to_vap by section")
+    print("evaporator:", np.sum(q_to_vap[evap]))
+    print("adiabatic:", np.sum(q_to_vap[adiab]))
+    print("condenser:", np.sum(q_to_vap[cond]))

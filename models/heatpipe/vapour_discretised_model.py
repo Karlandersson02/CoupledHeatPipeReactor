@@ -9,8 +9,8 @@ class VapourDiscretised(Component):
     def __init__(self, config: d_class.HeatpipeConfigResolved, T_HP=None):
         self.cfg = config
         self.T_HP = None
-        self.r2r1 = 1
         self.dx = self._calculate_dx()
+        self.loss_mult = 1
 
         if T_HP is not None and not np.isscalar(T_HP):
             self.set_T_HP(T_HP)
@@ -64,6 +64,9 @@ class VapourDiscretised(Component):
         Tim1 = T_v[:-1]
         Tbar = 0.5 * (Ti + Tim1)
 
+        p = s_props.calculate_Na_pressure_v(T_v)
+        dp = p[1:] - p[:-1]
+
         rho_full = np.asarray(self.calculate_rho(T_v), dtype=float)
         rhoi = rho_full[1:]
         rhoim1 = rho_full[:-1]
@@ -93,21 +96,22 @@ class VapourDiscretised(Component):
         )
 
         r2 = (
-            # (rhoi * ui**2 - rhoim1 * uim1**2)
-            (rhoi * (ui + uip1)/2*ui - rhoim1 * (ui + uim1)/2*uim1)
-            + h_fg_bar * rhobar * ((Ti - Tim1) / Tbar)
+            self.loss_mult * (rhoi * ui**2 - rhoim1 * uim1**2)
+            # loss_mult * (rhoi * (ui + uip1)/2*ui - rhoim1 * (ui + uim1)/2*uim1)
+            # + h_fg_bar * rhobar * ((Ti - Tim1) / Tbar)
+            + dp
             + self.dx[1:] * lami * (1.0 / (2*Dh)) * rhobar * ui * np.abs(ui)
         )
 
-        return np.r_[self.r2r1 * r1, r2]
+        return np.r_[r1, r2]
     
     def calculate_rho(self, T):
         return s_props.calculate_Na_rho_v(T)
-        # return calculate_rho_cc(T)
+        # return s_props.calculate_rho_cc(T)
     
     def calculate_hfg(self, T):
         return s_props.calculate_Na_h_fg(T)
-        # return np.full_like(T, 4.182e6)
+        return np.full_like(T, 4.182e6)
     
     def calculate_viscosity(self, T):
         return s_props.calculate_Na_viscosity_v(T)
@@ -131,16 +135,26 @@ class VapourDiscretised(Component):
             raise ValueError("T_HP has not been set.")
         return self.T_HP[:, 0]
 
+    # def _calculate_Gamma(self, T_v):
+    #     T_int = self._get_interface_temperature()
+
+    #     q_bis_surface = np.zeros(self.cfg.mesh.N_Z, dtype=float)
+
+    #     evap = slice(0, self.cfg.mesh.N_evap)
+    #     cond = slice(self.cfg.mesh.N_Z - self.cfg.mesh.N_cond, self.cfg.mesh.N_Z)
+
+    #     q_bis_surface[evap] = self.cfg.material.h_vap * (T_int[evap] - T_v[evap])
+    #     q_bis_surface[cond] = self.cfg.material.h_vap * (T_int[cond] - T_v[cond])
+
+    #     a_W = 2.0 / self.cfg.geometry.r_vapour
+    #     h_fg = np.asarray(self.calculate_hfg(T_v), dtype=float)
+
+    #     return a_W * q_bis_surface / h_fg
+
     def _calculate_Gamma(self, T_v):
         T_int = self._get_interface_temperature()
 
-        q_bis_surface = np.zeros(self.cfg.mesh.N_Z, dtype=float)
-
-        evap = slice(0, self.cfg.mesh.N_evap)
-        cond = slice(self.cfg.mesh.N_Z - self.cfg.mesh.N_cond, self.cfg.mesh.N_Z)
-
-        q_bis_surface[evap] = self.cfg.material.h_vap * (T_int[evap] - T_v[evap])
-        q_bis_surface[cond] = self.cfg.material.h_vap * (T_int[cond] - T_v[cond])
+        q_bis_surface = self.cfg.material.h_vap * (T_int - T_v)
 
         a_W = 2.0 / self.cfg.geometry.r_vapour
         h_fg = np.asarray(self.calculate_hfg(T_v), dtype=float)

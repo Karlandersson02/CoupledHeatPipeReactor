@@ -20,8 +20,13 @@ class Heatpipe(Component):
         self.N_u  = self.cfg.mesh.N_Z - 1
         self.N_v  = self.cfg.mesh.N_Z
 
+        self.return_u = False
+
     def set_variable_k(self, cond: bool):
         self.solid.variable_k = cond
+
+    def set_loss_mult_factor(self, factor):
+        self.vapour.loss_mult = factor
 
     def assemble(self):
         self.solid.assemble()
@@ -60,7 +65,10 @@ class Heatpipe(Component):
         c_s = self._calculate_c_s(T_v)
         mach = u_bar / c_s
 
-        return T_HP, mach, T_v
+        if self.return_u:
+            return T_HP, u, mach, T_v
+        else:
+            return T_HP, mach, T_v
 
     def unpack(self, X):
         T_HP = X[:self.N_HP]
@@ -71,10 +79,18 @@ class Heatpipe(Component):
     def pack(self, X_tuple):
         return np.r_[*X_tuple]
     
+    # def _calculate_c_s(self, T_v):
+    #     gamma = 5 / 3
+    #     c_s = np.sqrt(gamma * s_props.calculate_Na_pressure_v(T_v) / s_props.calculate_Na_rho_v(T_v))
+
+    #     return c_s
+
     def _calculate_c_s(self, T_v):
-        gamma = 5 / 3
-        c_s = np.sqrt(gamma * s_props.calculate_Na_pressure_v(T_v) / s_props.calculate_rho_cc(T_v))
-        return c_s
+        gamma = 5.0 / 3.0
+        # p = self.vapour.calculate_rho(T_v) * 361.7 * T_v
+        p = s_props.calculate_Na_pressure_v(T_v)
+        rho = self.vapour.calculate_rho(T_v)
+        return np.sqrt(gamma * p / rho)
     
     def _interpolate_u(self, u):
         u_full = np.r_[0, u, 0]
