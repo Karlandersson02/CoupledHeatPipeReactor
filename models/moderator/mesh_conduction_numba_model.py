@@ -841,7 +841,7 @@ def calculate_cross_diffusion_correction(
             e = (F_center - C_center) / d_CF
             T_vector_surface = (n_vec - e) * edge_length
 
-            cross_diffusion_correction[triangle_idx] += (
+            cross_diffusion_correction[triangle_idx] -= (
                 k_surface * np.dot(grad_flux_surface, T_vector_surface)
             )
     
