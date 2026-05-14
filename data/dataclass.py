@@ -84,6 +84,95 @@ def _allocate_counts(lengths: np.ndarray, total_cells: int) -> np.ndarray:
     return counts
 
 
+def _allocate_counts_quadratic(lengths: np.ndarray, total_cells: int) -> np.ndarray:
+    """
+    Allocate radial cell counts for a mesh that is uniform in r^2.
+
+    This is intended for the radial discretisation used in FuelPin.initialize_discretization(),
+    where the outer face radius after n cells is approximately
+
+        R_n = R_outer * sqrt(n / total_cells)
+
+    Therefore, a physical interface at radius R_i should be placed near
+
+        n_i = total_cells * (R_i / R_outer)^2
+
+    Parameters
+    ----------
+    lengths : np.ndarray
+        Radial layer thicknesses, ordered from the centre outward.
+        For the fuel pin this should be:
+
+            [r_fuel, delta_gap, delta_wall]
+
+    total_cells : int
+        Total number of radial cells.
+
+    Returns
+    -------
+    counts : np.ndarray
+        Integer cell counts per layer.
+    """
+
+    lengths = np.asarray(lengths, dtype=float)
+
+    if total_cells <= 0:
+        raise ValueError("total_cells must be positive.")
+
+    if np.any(lengths < 0.0):
+        raise ValueError("All lengths must be non-negative.")
+
+    if np.isclose(lengths.sum(), 0.0):
+        raise ValueError("The provided lengths must not all be zero.")
+
+    n_layers = len(lengths)
+
+    if np.count_nonzero(lengths > 0.0) > total_cells:
+        raise ValueError(
+            "There are more non-zero radial layers than available radial cells."
+        )
+
+    # Radii of layer interfaces:
+    # [0, R_fuel, R_gap_outer, R_clad_outer]
+    radii = np.concatenate(([0.0], np.cumsum(lengths)))
+
+    R_outer = radii[-1]
+
+    # Target mesh-interface indices for internal layer boundaries.
+    # Boundary index n means: after n radial cells.
+    raw_boundary_indices = total_cells * (radii[1:-1] / R_outer) ** 2
+
+    boundary_indices = []
+    previous = 0
+
+    for i, raw_idx in enumerate(raw_boundary_indices):
+        layer_idx = i
+
+        # Leave at least one cell for every remaining non-zero layer.
+        remaining_nonzero_layers = np.count_nonzero(lengths[layer_idx + 1:] > 0.0)
+
+        if lengths[layer_idx] > 0.0:
+            lower = previous + 1
+        else:
+            lower = previous
+
+        upper = total_cells - remaining_nonzero_layers
+
+        idx = int(round(raw_idx))
+        idx = max(lower, min(idx, upper))
+
+        boundary_indices.append(idx)
+        previous = idx
+
+    boundary_indices = np.array(boundary_indices, dtype=int)
+
+    counts = np.diff(
+        np.concatenate(([0], boundary_indices, [total_cells]))
+    )
+
+    return counts
+
+
 # Heatpipe ------------------------
 
 @dataclass(slots=True, kw_only=True)
@@ -466,7 +555,7 @@ class FuelPinConfig:
                 f"N_R changed from {N_R_old} to {N_R_new}"
             )
 
-        N_fuel, N_gap, N_wall = _allocate_counts(radial_lengths, N_R_new)
+        N_fuel, N_gap, N_wall = _allocate_counts_quadratic(radial_lengths, N_R_new)
 
         self.mesh.N_R = N_R_new
 
