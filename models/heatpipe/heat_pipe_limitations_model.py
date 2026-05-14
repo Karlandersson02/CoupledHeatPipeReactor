@@ -94,7 +94,7 @@ class HeatPipeLimitations:
         F_v_inertial = inertial_fraction / (8 * rho_v * self.cfg.geometry.r_vapour**4 * h_fg**2)
 
         # Calculating Q_max based on the pressure drops.
-        Delta_p_cap_max = (1. * sigma_l / self.cfg.wick.r_pore)
+        Delta_p_cap_max = (2. * sigma_l / self.cfg.wick.r_pore)
 
         # Equation is off the quadratic form.
         a = F_v_inertial
