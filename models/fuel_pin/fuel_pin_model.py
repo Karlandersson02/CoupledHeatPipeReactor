@@ -36,9 +36,39 @@ class FuelPin(Component):
 
         self.M, self.C = self.generate_matrix_form(alpha, self.qr, self.T_mod, k, h)
 
+    # def calculate_qr(self):
+    #     self.initialize_discretization()
+    #     self.qr = np.sum(self.phi_g * self.Sigma_f * self.kappa * self.Delta_V, axis = 1)
+
+    # def calculate_qr(self):
+    #     self.initialize_discretization()
+
+    #     q_vol_z = np.sum(
+    #         self.phi_g * self.Sigma_f * self.kappa,
+    #         axis=1,
+    #     )
+
+    #     fuel_slice = slice(0, self.cfg.mesh.N_fuel)
+
+    #     self.qr = q_vol_z * np.sum(self.Delta_V[fuel_slice])
+
     def calculate_qr(self):
         self.initialize_discretization()
-        self.qr = np.sum(self.phi_g * self.Sigma_f * self.kappa * self.Delta_V, axis = 1)
+
+        q_vol_z = np.sum(
+            self.phi_g * self.Sigma_f * self.kappa,
+            axis=1,
+        )
+
+        V_fuel = self.Delta_V[:self.cfg.mesh.N_fuel]
+
+        if not np.allclose(V_fuel, V_fuel[0]):
+            raise ValueError(
+                "Expected equal fuel-cell volumes. "
+                "Check the quadratic fuel-region discretisation."
+            )
+
+        self.qr = q_vol_z * V_fuel[0]
 
     def get_residuals(self, X):
         T = X.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
@@ -177,11 +207,17 @@ class FuelPin(Component):
         # Fuel heat production
         res[:, :N_fuel] += qr[:, None]
 
+        # res_norm_denom = (
+        #     (np.sum(qr) * self.Delta_Z / self.cfg.geometry.l)
+        #     / (np.pi * self.cfg.geometry.r**2)
+        # )
+
+        total_power = np.sum(qr) * N_fuel
+
         res_norm_denom = (
-            (np.sum(qr) * self.Delta_Z / self.cfg.geometry.l)
+            (total_power * self.Delta_Z / self.cfg.geometry.l)
             / (np.pi * self.cfg.geometry.r**2)
         )
-        # res_norm_denom = 1
 
         return res.reshape(-1) / res_norm_denom
 
@@ -203,31 +239,101 @@ class FuelPin(Component):
 
         self.T = T
 
-    def initialize_discretization(self):     
-        R         = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)
-        delta_R   = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)
+    # def initialize_discretization(self):     
+    #     R         = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)
+    #     delta_R   = np.zeros(2 * self.cfg.mesh.N_R, dtype=float)
         
-        # Calculating the radii of the half-elements
-        R[0] = np.sqrt(self.cfg.geometry.r**2 / (self.cfg.mesh.N_R * 2))
+    #     # Calculating the radii of the half-elements
+    #     R[0] = np.sqrt(self.cfg.geometry.r**2 / (self.cfg.mesh.N_R * 2))
 
-        for i in range(1, 2 * self.cfg.mesh.N_R):
-            R[i] = np.sqrt(R[i-1]**2 + R[0]**2)
+    #     for i in range(1, 2 * self.cfg.mesh.N_R):
+    #         R[i] = np.sqrt(R[i-1]**2 + R[0]**2)
 
-        # Calculating the differences in the radius of the half-elements
-        delta_R[0] = R[0]
-        for i in range(1, 2 * self.cfg.mesh.N_R):
-            delta_R[i] = R[i] - R[i - 1]
+    #     # Calculating the differences in the radius of the half-elements
+    #     delta_R[0] = R[0]
+    #     for i in range(1, 2 * self.cfg.mesh.N_R):
+    #         delta_R[i] = R[i] - R[i - 1]
+
+    #     delta_Rm = delta_R[0::2]
+    #     delta_Rp = delta_R[1::2]
+
+    #     surface_tensor = self.calculate_surfaces(delta_Rp, delta_Rm)
+
+    #     self.R = R[0::2]
+    #     self.Z = np.arange(0, self.cfg.geometry.l - self.Delta_Z, self.Delta_Z) + self.Delta_Z
+    #     self.delta_Rm = delta_Rm
+    #     self.delta_Rp = delta_Rp
+    #     self.Delta_V = np.pi * (delta_Rp[0] + delta_Rm[0])**2 * self.Delta_Z 
+    #     self.surface_tensor = surface_tensor
+
+    def initialize_discretization(self):
+        cfg = self.cfg
+
+        N_fuel = cfg.mesh.N_fuel
+        N_gap  = cfg.mesh.N_gap
+        N_wall = cfg.mesh.N_wall
+        N_R    = cfg.mesh.N_R
+
+        r_fuel = cfg.geometry.r_fuel
+        r_gap_outer = r_fuel + cfg.geometry.delta_gap
+        r_outer = cfg.geometry.r
+
+        if N_fuel + N_gap + N_wall != N_R:
+            raise ValueError(
+                "Inconsistent radial mesh: "
+                f"N_fuel + N_gap + N_wall = {N_fuel + N_gap + N_wall}, "
+                f"but N_R = {N_R}."
+            )
+
+        R_half = []
+
+        # Fuel: quadratic / equal-area mesh from 0 to r_fuel
+        if N_fuel > 0:
+            i = np.arange(1, 2 * N_fuel + 1, dtype=float)
+            R_fuel = r_fuel * np.sqrt(i / (2 * N_fuel))
+            R_half.append(R_fuel)
+
+        # Gap: linear mesh from r_fuel to r_gap_outer
+        if N_gap > 0:
+            i = np.arange(1, 2 * N_gap + 1, dtype=float)
+            R_gap = r_fuel + i * cfg.geometry.delta_gap / (2 * N_gap)
+            R_half.append(R_gap)
+
+        # Wall: linear mesh from r_gap_outer to r_outer
+        if N_wall > 0:
+            i = np.arange(1, 2 * N_wall + 1, dtype=float)
+            R_wall = r_gap_outer + i * cfg.geometry.delta_wall / (2 * N_wall)
+            R_half.append(R_wall)
+
+        R_half = np.concatenate(R_half)
+
+        if len(R_half) != 2 * N_R:
+            raise ValueError(
+                "Internal discretisation error: "
+                f"expected {2 * N_R} half-radii, got {len(R_half)}."
+            )
+
+        delta_R = np.empty_like(R_half)
+        delta_R[0] = R_half[0]
+        delta_R[1:] = R_half[1:] - R_half[:-1]
 
         delta_Rm = delta_R[0::2]
         delta_Rp = delta_R[1::2]
 
-        surface_tensor = self.calculate_surfaces(delta_Rp, delta_Rm)
+        R = R_half[0::2]
 
-        self.R = R[0::2]
+        self.R = R
+        self.Z = np.arange(0, self.cfg.geometry.l - self.Delta_Z, self.Delta_Z) + self.Delta_Z / 2
         self.delta_Rm = delta_Rm
         self.delta_Rp = delta_Rp
-        self.Delta_V = np.pi * (delta_Rp[0] + delta_Rm[0])**2 * self.Delta_Z 
-        self.surface_tensor = surface_tensor
+
+        self.Delta_V = (
+            np.pi
+            * ((R + delta_Rp)**2 - (R - delta_Rm)**2)
+            * self.Delta_Z
+        )
+
+        self.surface_tensor = self.calculate_surfaces(delta_Rp, delta_Rm)
 
 
     def calculate_surfaces(self, delta_Rp, delta_Rm):

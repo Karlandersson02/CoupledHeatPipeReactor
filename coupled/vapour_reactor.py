@@ -37,7 +37,7 @@ class VapourReactor(Component):
         self.N_T_v  = self.cfg_HP.mesh.N_Z
         self.N_HP   = self.N_T_HP + self.N_u_v + self.N_T_v
 
-        self.N_FP   = self.cfg_N.mesh.N_R  * self.cfg_N.mesh.N_Z
+        self.N_FP   = self.cfg_FP.mesh.N_R  * self.cfg_FP.mesh.N_Z
         self.N_N    = self.cfg_N.mesh.N_Z  * self.cfg_N.energy.N_G + 1
 
         self.N_var = self.N_HP + self.N_FP + self.N_N
@@ -49,6 +49,9 @@ class VapourReactor(Component):
     def set_variable_k(self, cond: bool):
         self.heatpipe.set_variable_k(cond)
         self.fuel_pin_thermal_model.variable_k  = cond
+
+    def set_interpolator_model(self, model):
+        self.neutron_flux_model.interpolator_model = model
 
     def initial_guess(self):
         i = np.arange(self.cfg_HP.mesh.N_evap, dtype=float)
@@ -81,27 +84,50 @@ class VapourReactor(Component):
     def post_process(self, X):
         X_HP, T_FP, phi_ng_hat_and_k = self.unpack(X)
 
-        T_HP       = X_HP[:self.N_T_HP]
-        u_v        = X_HP[self.N_T_HP:(self.N_T_HP + self.N_u_v)]
-        T_v        = X_HP[(self.N_T_HP + self.N_u_v):]
-        T_solid    = T_HP.reshape((self.cfg_HP.mesh.N_Z, self.cfg_HP.mesh.N_R))
-        T_FP       = T_FP.reshape((self.cfg_FP.mesh.N_Z, self.cfg_FP.mesh.N_R))
+        T_HP = X_HP[:self.N_T_HP]
+        u_v  = X_HP[self.N_T_HP:(self.N_T_HP + self.N_u_v)]
+        T_v  = X_HP[(self.N_T_HP + self.N_u_v):]
+
         phi_ng_hat = phi_ng_hat_and_k[:-1]
-        k          = phi_ng_hat_and_k[-1]
+        k = phi_ng_hat_and_k[-1]
 
         T_HP *= self.T_cond
         u_v  *= self.u_v_ref
         T_v  *= self.T_vap_ref
         T_FP *= self.T_cond
-        
-        # power normalisation
-        _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
-        phi_n_g_hat = phi_ng_hat.reshape((self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G))
+
+        T_solid = T_HP.reshape(
+            self.cfg_HP.mesh.N_Z,
+            self.cfg_HP.mesh.N_R,
+        )
+
+        T_FP_flat = T_FP
+
+        T_FP_reshaped = T_FP_flat.reshape(
+            self.cfg_FP.mesh.N_Z,
+            self.cfg_FP.mesh.N_R,
+        )
+
+        _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(
+            T_FP_flat
+        )
+
+        phi_n_g_hat = phi_ng_hat.reshape(
+            self.cfg_N.mesh.N_Z,
+            self.cfg_N.energy.N_G,
+        )
+
         power_density = kappa * Sigma_f * phi_n_g_hat
-        power = np.sum(power_density) * self.cfg_N.mesh.cross_sectional_area * self.cfg_N.mesh.delta_Z
+
+        power = (
+            np.sum(power_density)
+            * self.cfg_N.mesh.cross_sectional_area
+            * self.cfg_N.mesh.delta_Z
+        )
+
         phi_n_g = phi_n_g_hat * self.cfg_N.energy.power / power
 
-        return ((T_solid, u_v, T_v), T_FP, (phi_n_g, k))
+        return ((T_solid, u_v, T_v), T_FP_reshaped, (phi_n_g, k))
     
     def unpack(self, X):
         X_HP             = X[:self.N_HP].copy()
@@ -121,40 +147,70 @@ class VapourReactor(Component):
         T_v         = X_HP[(self.N_T_HP + self.N_u_v):self.N_HP]
         phi_ng_hat  = phi_ng_hat_and_k[:-1]
 
-        T_HP *= self.T_cond # modifies X_HP as well
+        T_HP *= self.T_cond
         u_v  *= self.u_v_ref
         T_v  *= self.T_vap_ref
         T_FP *= self.T_cond
 
         Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
-        qr = self.calculate_qr(T_FP, phi_ng_hat)
-        
-        T_HP_ave  = np.mean(T_HP[:self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap], dtype=float)
-        T_FP_ave  = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=1)
+
+        T_HP_ave  = np.mean(
+            T_HP[:self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap],
+            dtype=float,
+        )
         T_mod_ave = np.mean(T_mod)
+
+        self.neutron_flux_model.T_FP = T_FP
+        self.neutron_flux_model.T_M  = T_mod_ave
+        self.neutron_flux_model.T_HP = T_HP_ave
+
+        qr = self.calculate_qr(T_FP, phi_ng_hat)
 
         self.heatpipe.cfg.bc.Q = Q_HP
         res_cond_HP = self.heatpipe.get_residuals(X_HP)
-        
+
         self.fuel_pin_thermal_model.qr = qr
         self.fuel_pin_thermal_model.T_mod = T_mod
         res_cond_FP = self.fuel_pin_thermal_model.get_residuals(T_FP)
-        
-        self.neutron_flux_model.T_FP = T_FP
-        self.neutron_flux_model.T_M  = np.mean(T_mod)
-        self.neutron_flux_model.T_HP = T_HP_ave
+
         res_flux = self.neutron_flux_model.get_residuals(phi_ng_hat_and_k)
 
         return np.r_[res_cond_HP, res_cond_FP, res_flux]
     
 
+    # def calculate_qr(self, T_FP, phi_ng_hat):
+    #     _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
+
+    #     qr_rel = np.sum(phi_ng_hat.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G) * Sigma_f * kappa * self.fuel_pin_thermal_model.Delta_V, axis=1) # W
+    #     power_rel = np.sum(qr_rel)
+
+    #     return qr_rel * self.cfg_N.energy.power / (power_rel * self.cfg_FP.mesh.N_fuel)
+
     def calculate_qr(self, T_FP, phi_ng_hat):
         _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
 
-        qr_rel = np.sum(phi_ng_hat.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G) * Sigma_f * kappa * self.fuel_pin_thermal_model.Delta_V, axis=1) # W
-        power_rel = np.sum(qr_rel)
+        phi_ng_hat = phi_ng_hat.reshape(
+            self.cfg_N.mesh.N_Z,
+            self.cfg_N.energy.N_G,
+        )
 
-        return qr_rel * self.cfg_N.energy.power / (power_rel * self.cfg_FP.mesh.N_fuel)
+        q_vol_z = np.sum(
+            phi_ng_hat * Sigma_f * kappa,
+            axis=1,
+        )
+
+        V_fuel = self.fuel_pin_thermal_model.Delta_V[:self.cfg_FP.mesh.N_fuel]
+
+        if not np.allclose(V_fuel, V_fuel[0]):
+            raise ValueError(
+                "Expected equal fuel-cell volumes. "
+                "Check the quadratic fuel-region discretisation."
+            )
+
+        qr_rel = q_vol_z * V_fuel[0]
+        power_rel = np.sum(q_vol_z) * np.sum(V_fuel)
+
+        return qr_rel * self.cfg_N.energy.power / power_rel
             
 
     def calculate_HP_FP_boundary_cond(self, T_FP, T_HP):

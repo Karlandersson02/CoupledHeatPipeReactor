@@ -84,6 +84,51 @@ def _allocate_counts(lengths: np.ndarray, total_cells: int) -> np.ndarray:
     return counts
 
 
+def _allocate_counts_quad(lengths: np.ndarray, total_cells: int) -> np.ndarray:
+    lengths = np.asarray(lengths, dtype=float)
+
+    if total_cells <= 0:
+        raise ValueError("total_cells must be positive.")
+
+    if np.any(lengths < 0.0):
+        raise ValueError("All lengths must be non-negative.")
+
+    if np.isclose(lengths.sum(), 0.0):
+        raise ValueError("The provided lengths must not all be zero.")
+
+    positive = lengths > 0.0
+    n_positive = np.count_nonzero(positive)
+
+    if total_cells < n_positive:
+        raise ValueError(
+            f"Need at least {n_positive} radial cells, got {total_cells}."
+        )
+
+    counts = np.zeros_like(lengths, dtype=int)
+
+    counts[positive] = 1
+    remaining = total_cells - n_positive
+
+    if remaining == 0:
+        return counts
+
+    weights = lengths[positive] / lengths[positive].sum()
+    raw = weights * remaining
+
+    extra = np.floor(raw).astype(int)
+    remainder = remaining - extra.sum()
+
+    fractional = raw - extra
+    order = np.argsort(fractional)[::-1]
+
+    for i in range(remainder):
+        extra[order[i]] += 1
+
+    counts[positive] += extra
+
+    return counts
+
+
 # Heatpipe ------------------------
 
 @dataclass(slots=True, kw_only=True)
@@ -443,6 +488,99 @@ class FuelPinMaterial:
     h_mod: int | float
 
 
+# @dataclass(slots=True)
+# class FuelPinConfig:
+#     geometry: FuelPinGeometry
+#     mesh: FuelPinMesh
+#     energy: FuelPinEnergy
+#     material: FuelPinMaterial
+
+#     def resolve_mesh(self):
+#         radial_lengths = np.array([
+#             self.geometry.r_fuel,
+#             self.geometry.delta_gap,
+#             self.geometry.delta_wall,
+#         ], dtype=float)
+
+#         N_R_old = self.mesh.N_R
+#         N_R_new = _snap_to_compatible_total(N_R_old, radial_lengths)
+
+#         if N_R_new != N_R_old:
+#             print(
+#                 "\033[33mMesh warning:\033[0m",
+#                 f"N_R changed from {N_R_old} to {N_R_new}"
+#             )
+
+#         N_fuel, N_gap, N_wall = _allocate_counts(radial_lengths, N_R_new)
+
+#         self.mesh.N_R = N_R_new
+
+#         mesh_resolved = FuelPinMeshResolved(
+#             N_fuel=N_fuel,
+#             N_gap=N_gap,
+#             N_wall=N_wall,
+#             N_R=self.mesh.N_R,
+#             N_Z=self.mesh.N_Z,
+#         )
+
+#         return FuelPinConfigResolved(
+#             geometry=self.geometry,
+#             mesh=mesh_resolved,
+#             energy=self.energy,
+#             material=self.material,
+#         )
+
+#     def resolve_geometry(self):
+
+#         r_fuel = self.geometry.r - self.geometry.delta_gap - self.geometry.delta_wall
+        
+#         lengths = np.array([
+#             r_fuel,
+#             self.geometry.delta_gap,
+#             self.geometry.delta_wall
+#         ], dtype=float)
+
+#         N_fuel, N_gap, N_wall = _allocate_counts(lengths, self.mesh.N_R)
+
+#         delta_gap  = N_gap  / self.mesh.N_R * self.geometry.r
+#         delta_wall = N_wall / self.mesh.N_R * self.geometry.r
+#         r_fuel_new = N_fuel / self.mesh.N_R * self.geometry.r
+
+#         if not np.isclose(r_fuel, r_fuel_new):
+#             print(
+#                 "\033[33mGeometry warning:\033[0m",
+#                 f"r_fuel changed from {r_fuel} to {r_fuel_new}"
+#             )
+#         if not np.isclose(self.geometry.delta_gap, delta_gap):
+#             print(
+#                 "\033[33mGeometry warning:\033[0m",
+#                 f"delta_gap changed from {self.geometry.delta_gap} to {delta_gap}"
+#             )
+#         if not np.isclose(self.geometry.delta_wall, delta_wall):
+#             print(
+#                 "\033[33mGeometry warning:\033[0m",
+#                 f"delta_wall changed from {self.geometry.delta_wall} to {delta_wall}"
+#             )
+
+#         self.geometry.delta_gap  = delta_gap
+#         self.geometry.delta_wall = delta_wall
+#         self.geometry.r          = r_fuel_new + delta_gap + delta_wall
+
+#         mesh_resolved = FuelPinMeshResolved(
+#             N_fuel=N_fuel,
+#             N_gap=N_gap,
+#             N_wall=N_wall,
+#             N_R=self.mesh.N_R,
+#             N_Z=self.mesh.N_Z
+#         )
+
+#         return FuelPinConfigResolved(
+#             self.geometry,
+#             mesh_resolved,
+#             self.energy,
+#             self.material
+#         )
+
 @dataclass(slots=True)
 class FuelPinConfig:
     geometry: FuelPinGeometry
@@ -451,14 +589,24 @@ class FuelPinConfig:
     material: FuelPinMaterial
 
     def resolve_mesh(self):
+        r_fuel = self.geometry.r_fuel
+
+        if r_fuel <= 0.0:
+            raise ValueError(
+                "Invalid fuel-pin geometry: r_fuel must be positive. "
+                "Check r, delta_gap, and delta_wall."
+            )
+
         radial_lengths = np.array([
-            self.geometry.r_fuel,
+            r_fuel,
             self.geometry.delta_gap,
             self.geometry.delta_wall,
         ], dtype=float)
 
         N_R_old = self.mesh.N_R
-        N_R_new = _snap_to_compatible_total(N_R_old, radial_lengths)
+
+        min_cells = np.count_nonzero(radial_lengths > 0.0)
+        N_R_new = max(N_R_old, min_cells)
 
         if N_R_new != N_R_old:
             print(
@@ -466,16 +614,19 @@ class FuelPinConfig:
                 f"N_R changed from {N_R_old} to {N_R_new}"
             )
 
-        N_fuel, N_gap, N_wall = _allocate_counts(radial_lengths, N_R_new)
+        N_fuel, N_gap, N_wall = _allocate_counts_quad(
+            radial_lengths,
+            N_R_new,
+        )
 
         self.mesh.N_R = N_R_new
 
         mesh_resolved = FuelPinMeshResolved(
-            N_fuel=N_fuel,
-            N_gap=N_gap,
-            N_wall=N_wall,
-            N_R=self.mesh.N_R,
-            N_Z=self.mesh.N_Z,
+            N_fuel=int(N_fuel),
+            N_gap=int(N_gap),
+            N_wall=int(N_wall),
+            N_R=int(self.mesh.N_R),
+            N_Z=int(self.mesh.N_Z),
         )
 
         return FuelPinConfigResolved(
@@ -486,55 +637,82 @@ class FuelPinConfig:
         )
 
     def resolve_geometry(self):
-        # self.resolve_mesh()
+        r_fuel = self.geometry.r_fuel
 
-        r_fuel = self.geometry.r - self.geometry.delta_gap - self.geometry.delta_wall
-        
-        lengths = np.array([
+        if r_fuel <= 0.0:
+            raise ValueError(
+                "Invalid fuel-pin geometry: r_fuel must be positive. "
+                "Check r, delta_gap, and delta_wall."
+            )
+
+        radial_lengths = np.array([
             r_fuel,
             self.geometry.delta_gap,
-            self.geometry.delta_wall
+            self.geometry.delta_wall,
         ], dtype=float)
 
-        N_fuel, N_gap, N_wall = _allocate_counts(lengths, self.mesh.N_R)
+        N_R_old = self.mesh.N_R
 
-        delta_gap  = N_gap  / self.mesh.N_R * self.geometry.r
-        delta_wall = N_wall / self.mesh.N_R * self.geometry.r
-        r_fuel_new = N_fuel / self.mesh.N_R * self.geometry.r
+        min_cells = np.count_nonzero(radial_lengths > 0.0)
+        N_R_new = max(N_R_old, min_cells)
 
-        if not np.isclose(r_fuel, r_fuel_new):
+        if N_R_new != N_R_old:
             print(
-                "\033[33mGeometry warning:\033[0m",
-                f"r_fuel changed from {r_fuel} to {r_fuel_new}"
-            )
-        if not np.isclose(self.geometry.delta_gap, delta_gap):
-            print(
-                "\033[33mGeometry warning:\033[0m",
-                f"delta_gap changed from {self.geometry.delta_gap} to {delta_gap}"
-            )
-        if not np.isclose(self.geometry.delta_wall, delta_wall):
-            print(
-                "\033[33mGeometry warning:\033[0m",
-                f"delta_wall changed from {self.geometry.delta_wall} to {delta_wall}"
+                "\033[33mMesh warning:\033[0m",
+                f"N_R changed from {N_R_old} to {N_R_new}"
             )
 
-        self.geometry.delta_gap  = delta_gap
-        self.geometry.delta_wall = delta_wall
-        self.geometry.r          = r_fuel_new + delta_gap + delta_wall
+        self.mesh.N_R = N_R_new
+
+        N_fuel, N_gap, N_wall = _allocate_counts_quad(
+            radial_lengths,
+            self.mesh.N_R,
+        )
+
+        r_old = self.geometry.r
+        r_fuel_old = self.geometry.r_fuel
+        delta_gap_old = self.geometry.delta_gap
+        delta_wall_old = self.geometry.delta_wall
+
+        r_fuel_new = N_fuel / self.mesh.N_R * r_old
+        delta_gap_new = N_gap / self.mesh.N_R * r_old
+        delta_wall_new = N_wall / self.mesh.N_R * r_old
+
+        if not np.isclose(r_fuel_old, r_fuel_new):
+            print(
+                "\033[33mGeometry warning:\033[0m",
+                f"r_fuel changed from {r_fuel_old} to {r_fuel_new}"
+            )
+
+        if not np.isclose(delta_gap_old, delta_gap_new):
+            print(
+                "\033[33mGeometry warning:\033[0m",
+                f"delta_gap changed from {delta_gap_old} to {delta_gap_new}"
+            )
+
+        if not np.isclose(delta_wall_old, delta_wall_new):
+            print(
+                "\033[33mGeometry warning:\033[0m",
+                f"delta_wall changed from {delta_wall_old} to {delta_wall_new}"
+            )
+
+        self.geometry.delta_gap = delta_gap_new
+        self.geometry.delta_wall = delta_wall_new
+        self.geometry.r = r_fuel_new + delta_gap_new + delta_wall_new
 
         mesh_resolved = FuelPinMeshResolved(
-            N_fuel=N_fuel,
-            N_gap=N_gap,
-            N_wall=N_wall,
-            N_R=self.mesh.N_R,
-            N_Z=self.mesh.N_Z
+            N_fuel=int(N_fuel),
+            N_gap=int(N_gap),
+            N_wall=int(N_wall),
+            N_R=int(self.mesh.N_R),
+            N_Z=int(self.mesh.N_Z),
         )
 
         return FuelPinConfigResolved(
-            self.geometry,
-            mesh_resolved,
-            self.energy,
-            self.material
+            geometry=self.geometry,
+            mesh=mesh_resolved,
+            energy=self.energy,
+            material=self.material,
         )
 
 

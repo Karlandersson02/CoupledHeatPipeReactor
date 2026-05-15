@@ -609,11 +609,27 @@ class OpenMCTallyGridSurrogate:
         if self.model is None:
             raise RuntimeError("Model has not been fit.")
 
-        X_new = np.atleast_2d(np.asarray(X_new, dtype=float))
-        Y_pred = self.model(X_new)
+        if self.axes is None:
+            raise RuntimeError("Temperature axes are missing.")
 
-        # If only one point is queried, scipy may return shape (n_outputs,)
+        X_new = np.atleast_2d(np.asarray(X_new, dtype=float))
+
+        if X_new.shape[1] != len(self.axes):
+            raise ValueError(
+                f"Expected X_new to have shape (n_samples, {len(self.axes)}), "
+                f"got {X_new.shape}."
+            )
+
+        X_clipped = X_new.copy()
+
+        for axis_idx, axis_values in enumerate(self.axes):
+            t_min = np.min(axis_values)
+            t_max = np.max(axis_values)
+            X_clipped[:, axis_idx] = np.clip(X_clipped[:, axis_idx], t_min, t_max)
+
+        Y_pred = self.model(X_clipped)
         Y_pred = np.atleast_2d(Y_pred)
+
         return Y_pred
 
     def predict_dict(self, X_new: np.ndarray) -> List[Dict[str, np.ndarray]]:

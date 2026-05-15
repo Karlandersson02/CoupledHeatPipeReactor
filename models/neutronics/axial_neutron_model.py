@@ -70,7 +70,7 @@ class NeutronicsModel(Component):
 
         self.Z = np.linspace(0, self.cfg.mesh.l, self.cfg.mesh.N_Z)
 
-        self.interpolator_model = OpenMCTallyGridSurrogate()
+        self.interpolator_model = None
 
     def initial_guess(self):
         phi_ng_initial = np.full((self.cfg.mesh.N_Z*self.cfg.energy.N_G), 1)
@@ -105,6 +105,7 @@ class NeutronicsModel(Component):
     def post_process(self, X):
         T = self.T_FP
         _, _, _, Sigma_f, _, _, kappa = self.get_material_data(T)
+        
         phi_ng = X[:-1]
         phi_n_g = phi_ng.reshape((self.cfg.mesh.N_Z, self.cfg.energy.N_G))
         power_density = kappa * Sigma_f * phi_n_g
@@ -168,35 +169,42 @@ class NeutronicsModel(Component):
         return T[::self.cfg.mesh.N_R]
 
     def get_material_data(self, T):
+        if self.interpolator_model is None:
+            return self.get_material_data_static(T)
+        else:
+            return self.get_material_data_interp(T)
+
+    def get_material_data_static(self, T):
         T_center_axial = self.get_axial_temperature(T)
 
         D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa = calculate_parameters(T_center_axial)
         return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
     
-    # def get_material_data(self, T):
-    #     T_center_axial = self.get_axial_temperature(T)
+    def get_material_data_interp(self, T):
+        T_reshaped = T.reshape((self.cfg.mesh.N_Z,self.cfg.mesh.N_R))
+        T_mean = np.mean(T_reshaped, axis=1)
 
-    #     X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_center_axial])
-    #     params = self.interpolator_model.predict_dict(X)
+        X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_mean])
+        params = self.interpolator_model.predict_dict(X)
 
-    #     Diffusivity = np.zeros((len(params), self.cfg.energy.N_G))
-    #     Sigma_t = np.zeros((len(params), self.cfg.energy.N_G))
-    #     Sigma_f = np.zeros((len(params), self.cfg.energy.N_G))
-    #     Sigma_s0 = np.zeros((len(params), self.cfg.energy.N_G, self.cfg.energy.N_G))
-    #     fission_number = np.zeros((len(params), self.cfg.energy.N_G))
-    #     Chi = np.zeros((len(params), self.cfg.energy.N_G))
-    #     kappa = np.zeros((len(params), self.cfg.energy.N_G))
+        Diffusivity = np.zeros((len(params), self.cfg.energy.N_G))
+        Sigma_t = np.zeros((len(params), self.cfg.energy.N_G))
+        Sigma_f = np.zeros((len(params), self.cfg.energy.N_G))
+        Sigma_s0 = np.zeros((len(params), self.cfg.energy.N_G, self.cfg.energy.N_G))
+        fission_number = np.zeros((len(params), self.cfg.energy.N_G))
+        Chi = np.zeros((len(params), self.cfg.energy.N_G))
+        kappa = np.zeros((len(params), self.cfg.energy.N_G))
         
-    #     for i in range(len(params)):
-    #         Diffusivity[i] = np.array(params[i]["diffusion_coefficient"]) * 1e-2
-    #         Sigma_t[i] = np.array(params[i]["total_xs"]) * 1e2
-    #         Sigma_f[i] = np.array(params[i]["fission_xs"]) * 1e2
-    #         Sigma_s0[i] = (np.array(params[i]["scatter_matrix_xs"]) * 1e2)
-    #         fission_number[i] = np.array(params[i]["nu"])
-    #         Chi[i] = np.array(params[i]["chi"])
-    #         kappa[i] = np.array(params[i]["kappa"]) * 1.602176634e-19
+        for i in range(len(params)):
+            Diffusivity[i] = np.array(params[i]["diffusion_coefficient"]) * 1e-2
+            Sigma_t[i] = np.array(params[i]["total_xs"]) * 1e2
+            Sigma_f[i] = np.array(params[i]["fission_xs"]) * 1e2
+            Sigma_s0[i] = (np.array(params[i]["scatter_matrix_xs"]) * 1e2)
+            fission_number[i] = np.array(params[i]["nu"])
+            Chi[i] = np.array(params[i]["chi"])
+            kappa[i] = np.array(params[i]["kappa"]) * 1.602176634e-19
 
-    #     return Diffusivity, Sigma_t, Sigma_s0, Sigma_f, fission_number, Chi, kappa
+        return Diffusivity, Sigma_t, Sigma_s0, Sigma_f, fission_number, Chi, kappa
 
 if __name__ == "__main__":  
     import matplotlib.pyplot as plt

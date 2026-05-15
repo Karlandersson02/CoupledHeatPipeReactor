@@ -58,7 +58,27 @@ class Solver:
             if k in sig.parameters
         }
 
-        return solver_fn(component.get_residuals, x_initial, **valid_kwargs)
+        x_sol, info, ier, mesg = fsolve(
+            component.get_residuals,
+            x_initial,
+            full_output=True,
+            **valid_kwargs,
+        )
+
+        r_final = info["fvec"]
+
+        loss_l2 = np.linalg.norm(r_final)
+        loss_mse = np.mean(r_final**2)
+        loss_max = np.max(np.abs(r_final))
+
+        # print("fsolve status:", ier)
+        print("fsolve message:", mesg)
+        # print("final residual L2 norm:", loss_l2)
+        # print("final residual MSE:", loss_mse)
+        # print("final residual max abs:", loss_max)
+        # print("number of function evaluations:", info["nfev"])
+
+        return x_sol
 
     def _transfer_iso_heatpipe(
         self,

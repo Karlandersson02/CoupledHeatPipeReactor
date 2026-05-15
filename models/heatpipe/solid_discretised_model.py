@@ -295,8 +295,9 @@ class HeatpipeDiscretised(Component):
         h_matrix = np.zeros((self.cfg.mesh.N_Z, self.cfg.mesh.N_R))
         
         # Heat transfer coefficient for the vapor section.
-        h_matrix[:self.cfg.mesh.N_evap, 0]                      = self.cfg.material.h_vap
-        h_matrix[(self.cfg.mesh.N_Z - self.cfg.mesh.N_cond):self.cfg.mesh.N_Z, 0] = self.cfg.material.h_vap
+        # h_matrix[:self.cfg.mesh.N_evap, 0]                      = self.cfg.material.h_vap
+        # h_matrix[(self.cfg.mesh.N_Z - self.cfg.mesh.N_cond):self.cfg.mesh.N_Z, 0] = self.cfg.material.h_vap
+        h_matrix[:, 0] = self.cfg.material.h_vap
 
         # Heat transfer coefficient for the condensator section.
         h_matrix[(self.cfg.mesh.N_Z - self.cfg.mesh.N_cond):self.cfg.mesh.N_Z, self.cfg.mesh.N_R - 1] = self.cfg.material.h_cond
@@ -339,10 +340,10 @@ class HeatpipeDiscretised(Component):
         alpha[vapour_mask] = surface_tensor[vapour_mask]
         alpha[cooling_mask] = surface_tensor[cooling_mask]
 
-        # Adiabatic middle boundaries
-        adiabatic_mask = np.zeros_like(alpha, dtype=bool)
-        adiabatic_mask[self.cfg.mesh.N_evap:(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic), :, 0:2] = True
-        alpha[adiabatic_mask] = 0
+        # # Adiabatic middle boundaries
+        # adiabatic_mask = np.zeros_like(alpha, dtype=bool)
+        # adiabatic_mask[self.cfg.mesh.N_evap:(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic), :, 0:2] = True
+        # alpha[adiabatic_mask] = 0
         return alpha
 
     def _generate_matrix_form_temperature_bc(self, alpha, k, h):

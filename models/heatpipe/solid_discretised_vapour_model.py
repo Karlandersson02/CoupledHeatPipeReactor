@@ -166,10 +166,6 @@ class HeatpipeDiscretisedVapour(Component):
             + k[z, r] * alpha[z, r, 3] * T[z - 1, r]
         )
 
-        # # Vapour residual contribution at each axial cell
-        # beta = h[:, 0] * alpha[:, 0, 1]
-        # res_v = beta * (T[:, 0] - T_v)
-
         return res.reshape(-1)
 
     def post_process(self, X):
@@ -189,15 +185,11 @@ class HeatpipeDiscretisedVapour(Component):
         Z         = np.zeros(2 * self.cfg.mesh.N_Z, dtype=float)
         delta_Z   = np.zeros(self.cfg.mesh.N_Z, dtype=float)
 
-        self.Z = Z[0::2]
-        self.R = R[0::2]
-        self.delta_R = delta_R
-        
-        # Calculating the radii of the half-elements
-        R[0] = np.sqrt((self.cfg.geometry.r_outer**2 - self.cfg.geometry.r_vapour**2) / (self.cfg.mesh.N_R * 2) + self.cfg.geometry.r_vapour**2)
+        # Radial discretisation
+        dr_half = (self.cfg.geometry.r_outer - self.cfg.geometry.r_vapour) / (2 * self.cfg.mesh.N_R)
 
-        for i in range(1, 2 * self.cfg.mesh.N_R):
-            R[i] = np.sqrt(R[i-1]**2 + R[0]**2 - self.cfg.geometry.r_vapour**2)
+        for i in range(2 * self.cfg.mesh.N_R):
+            R[i] = self.cfg.geometry.r_vapour + (i + 1) * dr_half
 
         # Calculating the differences in the radius of the half-elements
         delta_R[0] = R[0] - self.cfg.geometry.r_vapour
@@ -207,21 +199,18 @@ class HeatpipeDiscretisedVapour(Component):
         delta_R_m = delta_R[0::2]
         delta_R_p = delta_R[1::2]
 
-        # Calculating the Z-position of the bulk and edges of the elements 
-        for i in range(self.cfg.mesh.N_evap*2):
-            Z[i] = (i/2 + 1/2) * self.cfg.geometry.l_evap/self.cfg.mesh.N_evap
+        # Axial discretisaion
+        dz_half = self.cfg.geometry.l_tot / (2 * self.cfg.mesh.N_Z)
 
-        for i in range(self.cfg.mesh.N_adiabatic*2):
-            Z[i + self.cfg.mesh.N_evap*2] = (i/2 + 1/2) * self.cfg.geometry.l_adiabatic/self.cfg.mesh.N_adiabatic + self.cfg.geometry.l_evap
-
-        for i in range(self.cfg.mesh.N_cond*2):
-            Z[i+ self.cfg.mesh.N_evap*2 + self.cfg.mesh.N_adiabatic*2] = (i/2 + 1/2) * self.cfg.geometry.l_cond/self.cfg.mesh.N_cond + (self.cfg.geometry.l_evap + self.cfg.geometry.l_adiabatic)
-
-        for i in range(self.cfg.mesh.N_Z):
-            delta_Z[i] = Z[2*i + 1] - Z[2*i]
+        Z[:] = dz_half * np.arange(1, 2 * self.cfg.mesh.N_Z + 1)
+        delta_Z[:] = dz_half
 
         # Generate surface tensors
         surface_areas = self._generate_surfaces(delta_R_p, delta_R_m, delta_Z)
+
+        self.Z = Z[0::2]
+        self.R = R[0::2]
+        self.delta_R = delta_R
 
         return surface_areas, delta_R_p, delta_R_m, delta_Z
 

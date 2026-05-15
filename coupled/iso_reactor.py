@@ -26,7 +26,7 @@ class Reactor(Component):
 
         # heat transfer HP variables: N_R * N_Z + 1, heat transfer FP variables: N_R * N_Z + 1, neutron flux variables: N_Z + 1
         self.N_HP = self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_Z + 1
-        self.N_FP = self.cfg_N.mesh.N_R  * self.cfg_N.mesh.N_Z
+        self.N_FP = self.cfg_FP.mesh.N_R  * self.cfg_FP.mesh.N_Z
         self.N_N  = self.cfg_N.mesh.N_Z  * self.cfg_N.energy.N_G + 1
 
         self.N_var = self.N_HP + self.N_FP + self.N_N
@@ -38,6 +38,9 @@ class Reactor(Component):
     def set_variable_k(self, cond: bool):
         self.heat_pipe_thermal_model.variable_k = cond
         self.fuel_pin_thermal_model.variable_k  = cond
+
+    def set_interpolator_model(self, model):
+        self.neutron_flux_model.interpolator_model = model
 
     def assemble(self):
         return
@@ -84,7 +87,7 @@ class Reactor(Component):
         Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
         
         T_HP_ave  = np.mean(T_HP[:self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap], dtype=float)
-        T_FP_ave  = np.mean(T_FP.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.mesh.N_R), axis=1)
+        T_FP_ave  = np.mean(T_FP.reshape(self.cfg_FP.mesh.N_Z, self.cfg_FP.mesh.N_R), axis=1)
         T_mod_ave = np.mean(T_mod)
         
         self.neutron_flux_model.T_FP = T_FP
@@ -103,13 +106,33 @@ class Reactor(Component):
 
         return np.r_[res_cond_HP, res_cond_FP, res_flux]
 
+    # def calculate_qr(self, T_FP, phi_ng_hat):
+    #     _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
+
+    #     qr_rel = np.sum(phi_ng_hat.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G) * Sigma_f * kappa * self.fuel_pin_thermal_model.Delta_V, axis=1) # W
+    #     power_rel = np.sum(qr_rel)
+
+    #     return qr_rel * self.cfg_N.energy.power / (power_rel * self.cfg_FP.mesh.N_fuel)
+
     def calculate_qr(self, T_FP, phi_ng_hat):
         _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
 
-        qr_rel = np.sum(phi_ng_hat.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G) * Sigma_f * kappa * self.fuel_pin_thermal_model.Delta_V, axis=1) # W
-        power_rel = np.sum(qr_rel)
+        phi_ng_hat = phi_ng_hat.reshape(
+            self.cfg_N.mesh.N_Z,
+            self.cfg_N.energy.N_G,
+        )
 
-        return qr_rel * self.cfg_N.energy.power / (power_rel * self.cfg_FP.mesh.N_fuel)
+        q_vol_z = np.sum(
+            phi_ng_hat * Sigma_f * kappa,
+            axis=1,
+        )
+
+        V_fuel = self.fuel_pin_thermal_model.Delta_V[:self.cfg_FP.mesh.N_fuel]
+
+        qr_rel = q_vol_z * np.mean(V_fuel)
+        power_rel = np.sum(q_vol_z) * np.sum(V_fuel)
+
+        return qr_rel * self.cfg_N.energy.power / power_rel
 
     def calculate_HP_FP_boundary_cond(self, T_FP, T_HP):
         T_edge_FP = T_FP[self.cfg_FP.mesh.N_R - 1::self.cfg_FP.mesh.N_R]
@@ -123,8 +146,9 @@ class Reactor(Component):
         else:
             R_seg = m_props.moderator_R_eff(self.r_eff_temperature) / Delta_z
 
-        Q_HP = (T_edge_FP - T_edge_HP) / R_seg
-        T_mod1 = T_edge_FP - Q_HP / (self.cfg_FP.material.h_mod * 2 * self.cfg_FP.geometry.r * np.pi * self.cfg_FP.geometry.l / self.cfg_FP.mesh.N_Z)
+        Q_FP = (T_edge_FP - T_edge_HP) / R_seg
+        Q_HP = Q_FP * 24 / 7
+        T_mod1 = T_edge_FP - Q_FP / (self.cfg_FP.material.h_mod * 2 * self.cfg_FP.geometry.r * np.pi * self.cfg_FP.geometry.l / self.cfg_FP.mesh.N_Z)
 
         return Q_HP, T_mod1
 
