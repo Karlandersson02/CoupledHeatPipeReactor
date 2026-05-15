@@ -450,7 +450,7 @@ class ModeratorDiscretisedMesh:
                 # Using the orthogonal correction approach
                 T_vector_surface = (n - e) * surface.length
 
-                self.cross_diffusion_correction[triangle_idx] += k_surface * np.dot(grad_flux_surface, T_vector_surface)
+                self.cross_diffusion_correction[triangle_idx] -= k_surface * np.dot(grad_flux_surface, T_vector_surface)
                 
 
     def calculate_effective_thermal_resistance(self):
@@ -750,7 +750,7 @@ class RectangularTestDiscretisedMesh:
                 # Using the orthogonal correction approach
                 T_surface = (n - e) * surface.length
 
-                self.cross_diffusion_correction[triangle_idx] += k_surface * np.dot(grad_flux_surface, T_surface)
+                self.cross_diffusion_correction[triangle_idx] -= k_surface * np.dot(grad_flux_surface, T_surface)
 
 
 def plot_rectangular_test(mod_mesh, cell_T, Q_in, k, height, lenght):
@@ -1011,11 +1011,16 @@ def plot_mesh_with_temp_profile(points, triangles, T):
 
 
 if __name__ == "__main__":
-    mesh = meshio.read("models/moderator/hex_mesh.msh")
+    mod_mesh = meshio.read("models/moderator/hex_mesh.msh")
+    rect_mesh = meshio.read("models/moderator/rect_mesh.msh")
 
-    points = mesh.points[:, :2]                
-    triangles = mesh.cells_dict["triangle"]     
-    mesh = UnstructuredMesh(points, triangles)
+    points = mod_mesh.points[:, :2]                
+    triangles = mod_mesh.cells_dict["triangle"]     
+    mod_mesh = UnstructuredMesh(points, triangles)
+
+    points = rect_mesh.points[:, :2]                
+    triangles = rect_mesh.cells_dict["triangle"]     
+    rect_mesh = UnstructuredMesh(points, triangles)
 
     print(f"Number of elements: {triangles.shape}, Number of points: {points.shape}")
 
@@ -1024,17 +1029,35 @@ if __name__ == "__main__":
     l_pitch = 0.0286
     r_HP = 0.008
     r_f = 0.0065
-    theta_hex = (np.pi / 6)
+    theta_mod = (np.pi / 6)
     l_f = 1.8
 
-    data = {
+    mod_data = {
         "cell_k": 62 * np.ones(triangles.shape[0]),
         "cell_T": np.ones(triangles.shape[0]),
 
         "Q_in": 15e6 / 2970 / l_f * 2,
 
-        "HP_centers":       [[0., 0.], [np.tan(theta_hex) * 2. * l_pitch, 2. * l_pitch]],
-        "fuel_pin_centers": [[0, l_pitch * 3./2.], [0, l_pitch * 5./2.], [np.tan(theta_hex) * 2 * l_pitch, l_pitch * 7./2.]],
+        "HP_centers":       [[0., 0.], [np.tan(theta_mod) * 2. * l_pitch, 2. * l_pitch]],
+        "fuel_pin_centers": [[0, l_pitch * 3./2.], [0, l_pitch * 5./2.], [np.tan(theta_mod) * 2 * l_pitch, l_pitch * 7./2.]],
+        "HP_radius": r_HP,
+        "fuel_pin_radius": r_f,
+
+        "T_HP": 850,
+        "T_FP": 885,
+
+        "HP_BC": "vonNeumann",   #"Dirichlet"
+        "FP_BC": "vonNeumann"   #"vonNeumann"
+    }
+    
+    rect_data = {
+        "cell_k": 20 * np.ones(triangles.shape[0]),
+        "cell_T": np.ones(triangles.shape[0]),
+
+        "Q_in": 1e3,
+
+        "HP_centers":       [[0., 0.], [np.tan(theta_mod) * 2. * l_pitch, 2. * l_pitch]],
+        "fuel_pin_centers": [[0, l_pitch * 3./2.], [0, l_pitch * 5./2.], [np.tan(theta_mod) * 2 * l_pitch, l_pitch * 7./2.]],
         "HP_radius": r_HP,
         "fuel_pin_radius": r_f,
 
@@ -1045,15 +1068,15 @@ if __name__ == "__main__":
         "FP_BC": "vonNeumann"   #"vonNeumann"
     }
 
-    mod_mesh = ModeratorDiscretisedMesh(mesh=mesh, data=data)
-    rect_mesh = RectangularTestDiscretisedMesh(mesh=mesh, data=data)
+    # #mod_disc_mesh = ModeratorDiscretisedMesh(mesh=mod_mesh, data=mod_data)
+    # rect_disc_mesh = RectangularTestDiscretisedMesh(mesh=rect_mesh, data=rect_data)
 
-    T = mod_mesh.solve_linearly(4)
-    T -= np.min(T) - 850
+    # T = rect_disc_mesh.solve(iterations=4)
+    # T -= np.min(T)
 
-    R_eff = mod_mesh.calculate_effective_thermal_resistance()
+    # #R_eff = mod_mesh.calculate_effective_thermal_resistance()
 
-    plot_mesh_with_temp_profile(mod_mesh.mesh.points, mod_mesh.mesh.triangles, T)
-    plot_temperature_profiles(R_eff, mod_mesh)
+    # #plot_temperature_profiles(R_eff, mod_mesh)
 
-    #plot_rectangular_test(mod_mesh, T, data["Q_in"], data["cell_k"][0], 10., 50.)
+    # plot_rectangular_test(rect_disc_mesh, T, rect_data["Q_in"], rect_data["cell_k"][0], 10., 50.)
+    # plot_mesh_with_temp_profile(rect_disc_mesh.mesh.points, rect_disc_mesh.mesh.triangles, T)

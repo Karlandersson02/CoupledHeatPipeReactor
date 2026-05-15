@@ -199,9 +199,9 @@ if __name__ == "__main__":
         "l_mesh_size": 0.0286 / 20,
     }
 
-    create_hexagonal_reactor_mesh(data)
+    #create_hexagonal_reactor_mesh(data)
 
-    #create_rectangular_mesh()
+    create_rectangular_mesh()
 
     # points = mesh.points[:, :2]                 # x,y coordinates
     # triangles = mesh.cells_dict["triangle"]     # element connectivity

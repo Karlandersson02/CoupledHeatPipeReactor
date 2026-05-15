@@ -1,0 +1,23 @@
+{
+"FuelPin": {
+    "geometry": {
+        "delta_gap": 0.003, 
+        "delta_wall": 0.003,
+        "r": 0.015,
+        "l": 1.5
+    },
+    "energy": {
+        "N_G": 8
+    },
+    "material": { 
+        "k_fuel": 15.0,
+        "k_clad": 16.5,
+        "h_gap": 1e5,
+        "h_mod": 1e4
+    },
+    "other": {
+        "packing_fraction": 0.4,
+        "enrichment": 19.75
+    }
+}
+}

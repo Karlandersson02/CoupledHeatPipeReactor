@@ -9,6 +9,10 @@
       "l_adiabatic": 0.05,
       "l_cond": 0.35
     },
+    "mesh": {
+      "N_R": 20,
+      "N_Z": 30
+    },
     "bc": {
       "Temperature_BC": true,
       "T_cond": 300,
@@ -44,6 +48,10 @@
       "l_evap": 0.1,
       "l_adiabatic": 0.05,
       "l_cond": 0.55
+    },
+    "mesh": {
+      "N_R": 20,
+      "N_Z": 30
     },
     "bc": {
       "Temperature_BC": true,
