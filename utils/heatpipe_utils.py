@@ -94,28 +94,35 @@ def plot_heatpipe_solutions(solver, labels=None):
         T_HP, mach, T_v = solver.solutions[i]
 
         z = component.solid.Z
-        m = calculate_m(component.solid, T_HP, T_v)
+        r = component.solid.R
+        N_evap = component.solid.cfg.mesh.N_evap
+        wall_slice = slice(
+            component.solid.cfg.mesh.N_R - component.solid.cfg.mesh.N_wall,
+            component.solid.cfg.mesh.N_R,
+        )
 
-        axs[0, 0].plot(z, T_HP[:, 0], color=colors[i], label=labels[i])
-        axs[0, 1].plot(z, T_v       , color=colors[i], label=labels[i])
-        axs[1, 0].plot(z, mach      , color=colors[i], label=labels[i])
-        axs[1, 1].plot(z, m         , color=colors[i], label=labels[i])
+        T_wall_axial_avg = np.mean(T_HP[:, wall_slice], axis=1)
+        T_evap_radial_avg = np.mean(T_HP[:N_evap], axis=0)
+
+        axs[0, 0].plot(z, T_v, color=colors[i], label=labels[i])
+        axs[0, 1].plot(z, mach, color=colors[i], label=labels[i])
+        axs[1, 0].plot(z, T_wall_axial_avg, color=colors[i], label=labels[i])
+        axs[1, 1].plot(r, T_evap_radial_avg, color=colors[i], label=labels[i])
 
     # Titles
-    axs[0, 0].set_title("Heat Pipe Temperature (interface)")
-    axs[0, 1].set_title("Vapour Temperature")
-    axs[1, 0].set_title("Vapour Mach Number")
-    axs[1, 1].set_title("Mass Flow Rate")
+    axs[0, 0].set_title("Vapour Temperature")
+    axs[0, 1].set_title("Vapour Mach Number")
+    axs[1, 0].set_title("Outer Heat Pipe Wall Axial Average Temperature")
+    axs[1, 1].set_title("Heat Pipe Evaporator Radial Average Temperature")
 
     # Axis labels
     axs[0, 0].set_ylabel("Temperature [K]")
-    axs[1, 0].set_ylabel("Mach [-]")
+    axs[0, 1].set_ylabel("Mach [-]")
+    axs[1, 0].set_ylabel("Temperature [K]")
+    axs[1, 1].set_ylabel("Temperature [K]")
 
     axs[1, 0].set_xlabel("Axial position z [m]")
-    axs[1, 1].set_xlabel("Axial position z [m]")
-
-    axs[0, 1].set_ylabel("Temperature [K]")
-    axs[1, 1].set_ylabel("Mass flow rate [kg/s]")
+    axs[1, 1].set_xlabel("Radius [m]")
 
     # Grid for readability
     for ax in axs.flat:

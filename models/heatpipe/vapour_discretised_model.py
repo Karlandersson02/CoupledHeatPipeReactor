@@ -2,6 +2,7 @@ import numpy as np
 
 import data.dataclass as d_class
 import utils.sodium_properties as s_props
+import utils.material_properties as m_props
 
 from models.component import Component
 
@@ -154,7 +155,29 @@ class VapourDiscretised(Component):
     def _calculate_Gamma(self, T_v):
         T_int = self._get_interface_temperature()
 
-        q_bis_surface = self.cfg.material.h_vap * (T_int - T_v)
+        r_center_inner = np.sqrt(
+            (self.cfg.geometry.r_outer**2 - self.cfg.geometry.r_vapour**2)
+            / (2.0 * self.cfg.mesh.N_R)
+            + self.cfg.geometry.r_vapour**2
+        )
+        dx = self.dx
+
+        k_inner = np.asarray(
+            m_props.HP_wick_k(T_int, self.cfg.wick.porosity),
+            dtype=float,
+        )
+
+        R_cond_inner = np.log(r_center_inner / self.cfg.geometry.r_vapour) / (
+            2.0 * np.pi * k_inner * dx
+        )
+        R_conv_inner = 1.0 / (
+            self.cfg.material.h_vap * 2.0 * np.pi * self.cfg.geometry.r_vapour * dx
+        )
+        G_inner = 1.0 / (R_cond_inner + R_conv_inner)
+        A_inner = 2.0 * np.pi * self.cfg.geometry.r_vapour * dx
+
+        # Gamma is derived from wall heat flux [W/m^2], not per-cell heat rate [W].
+        q_bis_surface = (G_inner / A_inner) * (T_int - T_v)
 
         a_W = 2.0 / self.cfg.geometry.r_vapour
         h_fg = np.asarray(self.calculate_hfg(T_v), dtype=float)

@@ -32,7 +32,7 @@ class HeatpipeDiscretised(Component):
         self.k_matrix = self._generate_k_matrix()
         self.h_matrix = self._generate_h_matrix()
 
-        self.alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, self.k_matrix)
+        self.alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, self.k_matrix, self.h_matrix)
 
     def get_residuals(self, X):
         T, T_v = self.unpack(X)
@@ -44,7 +44,7 @@ class HeatpipeDiscretised(Component):
         else:
             k = self._generate_k_matrix()
         h = self._generate_h_matrix()
-        alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k)
+        alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k, h)
 
         N_Z = self.cfg.mesh.N_Z
         N_R = self.cfg.mesh.N_R
@@ -304,7 +304,7 @@ class HeatpipeDiscretised(Component):
 
         return h_matrix
 
-    def _generate_alpha(self, surface_tensor, delta_Rm, delta_Rp, delta_Z, k_matrix):
+    def _generate_alpha(self, surface_tensor, delta_Rm, delta_Rp, delta_Z, k_matrix, h_matrix):
         alpha = np.zeros_like(surface_tensor)
 
         alpha[:, :-1, 0] = (
@@ -327,23 +327,31 @@ class HeatpipeDiscretised(Component):
             / (k_matrix[1:, :] * delta_Z[:-1, None] + k_matrix[:-1, :] * delta_Z[1:, None])
         )
 
-        # Init masks
-        vapour_mask = np.zeros_like(alpha, dtype=bool)
-        cooling_mask = np.zeros_like(alpha, dtype=bool)
-        
-        # Configure masks
-        vapour_mask[0:self.cfg.mesh.N_evap, 0, 1] = True
-        vapour_mask[(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic):, 0, 1] = True
-        cooling_mask[(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic):, -1, 0] = True
+        # Inner wick-vapour boundary: combine half-cell conduction and convection.
+        r_inner = self.cfg.geometry.r_vapour
+        r_center_inner = self.R[0]
+        R_cond_inner = np.log(r_center_inner / r_inner) / (
+            2.0 * np.pi * k_matrix[:, 0] * (2.0 * delta_Z)
+        )
+        R_conv_inner = 1.0 / (
+            h_matrix[:, 0] * 2.0 * np.pi * r_inner * (2.0 * delta_Z)
+        )
+        G_inner = 1.0 / (R_cond_inner + R_conv_inner)
+        alpha[:, 0, 1] = G_inner / h_matrix[:, 0]
 
-        # Apply masks
-        alpha[vapour_mask] = surface_tensor[vapour_mask]
-        alpha[cooling_mask] = surface_tensor[cooling_mask]
+        # Outer wall-condenser boundary: combine half-cell conduction and convection.
+        cond = slice(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic, self.cfg.mesh.N_Z)
+        r_outer = self.cfg.geometry.r_outer
+        r_center_outer = self.R[-1]
+        R_cond_outer = np.log(r_outer / r_center_outer) / (
+            2.0 * np.pi * k_matrix[cond, -1] * (2.0 * delta_Z[cond])
+        )
+        R_conv_outer = 1.0 / (
+            h_matrix[cond, -1] * 2.0 * np.pi * r_outer * (2.0 * delta_Z[cond])
+        )
+        G_outer = 1.0 / (R_cond_outer + R_conv_outer)
+        alpha[cond, -1, 0] = G_outer / h_matrix[cond, -1]
 
-        # # Adiabatic middle boundaries
-        # adiabatic_mask = np.zeros_like(alpha, dtype=bool)
-        # adiabatic_mask[self.cfg.mesh.N_evap:(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic), :, 0:2] = True
-        # alpha[adiabatic_mask] = 0
         return alpha
 
     def _generate_matrix_form_temperature_bc(self, alpha, k, h):

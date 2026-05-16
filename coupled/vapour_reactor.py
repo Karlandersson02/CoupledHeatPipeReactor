@@ -214,22 +214,64 @@ class VapourReactor(Component):
             
 
     def calculate_HP_FP_boundary_cond(self, T_FP, T_HP):
-        T_edge_FP = T_FP[self.cfg_FP.mesh.N_R - 1::self.cfg_FP.mesh.N_R]
-        T_edge_HP = T_HP[self.cfg_HP.mesh.N_R - 1:(self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap):self.cfg_HP.mesh.N_R]
-        T_mod_ave = (T_edge_FP + T_edge_HP) / 2
+        T_fp = T_FP.reshape(self.cfg_FP.mesh.N_Z, self.cfg_FP.mesh.N_R)
+        T_hp_solid = T_HP.reshape(self.cfg_HP.mesh.N_Z, self.cfg_HP.mesh.N_R)
 
-        Delta_z = self.cfg_HP.geometry.l_evap / self.cfg_HP.mesh.N_evap
+        evap = slice(0, self.cfg_HP.mesh.N_evap)
+
+        T_edge_FP = T_fp[:, -1]
+        T_edge_HP = T_hp_solid[evap, -1]
+
+        if self.fuel_pin_thermal_model.variable_k:
+            k_fp_edge = self.fuel_pin_thermal_model.generate_k_matrix(T_fp)[:, -1]
+        else:
+            k_fp_edge = self.fuel_pin_thermal_model.generate_k_matrix()[:, -1]
+
+        if self.heatpipe.solid.variable_k:
+            k_hp_edge = self.heatpipe.solid._generate_k_matrix(T_hp_solid)[evap, -1]
+        else:
+            k_hp_edge = self.heatpipe.solid._generate_k_matrix()[evap, -1]
+
+        r_fp_outer = self.cfg_FP.geometry.r
+        r_hp_outer = self.cfg_HP.geometry.r_outer
+
+        r_fp_center_outer = self.fuel_pin_thermal_model.R[-1]
+        r_hp_center_outer = self.heatpipe.solid.R[-1]
+
+        Delta_z_fp = self.fuel_pin_thermal_model.Delta_Z
+        Delta_z_hp = self.cfg_HP.geometry.l_evap / self.cfg_HP.mesh.N_evap
+
+        R_fp_cond = np.log(r_fp_outer / r_fp_center_outer) / (
+            2.0 * np.pi * k_fp_edge * Delta_z_fp
+        )
+        R_hp_cond = np.log(r_hp_outer / r_hp_center_outer) / (
+            2.0 * np.pi * k_hp_edge * Delta_z_hp
+        )
+
+        T_mod_ref = (T_edge_FP + T_edge_HP) / 2.0
 
         if self.variable_r_eff:
-            R_seg = m_props.moderator_R_eff(T_mod_ave) / Delta_z
+            R_mod = m_props.moderator_R_eff(T_mod_ref) / Delta_z_hp
         else:
-            R_seg = m_props.moderator_R_eff(self.r_eff_temperature) / Delta_z
+            R_mod = m_props.moderator_R_eff(self.r_eff_temperature) / Delta_z_hp
 
-        Q_FP = (T_edge_FP - T_edge_HP) / R_seg
-        Q_HP = Q_FP * 24/7
-        T_mod1 = T_edge_FP - Q_FP / (self.cfg_FP.material.h_mod * 2 * self.cfg_FP.geometry.r * np.pi * self.cfg_FP.geometry.l / self.cfg_FP.mesh.N_Z)   
+        R_total = R_fp_cond + R_mod + R_hp_cond
 
-        return Q_HP, T_mod1
+        Q_FP = (T_edge_FP - T_edge_HP) / R_total
+        Q_HP = Q_FP * 24 / 7
+
+        R_fp_conv = 1.0 / (
+            self.cfg_FP.material.h_mod
+            * 2.0
+            * np.pi
+            * r_fp_outer
+            * Delta_z_fp
+        )
+
+        G_fp = 1.0 / (R_fp_cond + R_fp_conv)
+        T_mod = T_edge_FP - Q_FP / G_fp
+
+        return Q_HP, T_mod
     
     # -------------------------------------------------------------------------
     # Scaling helpers

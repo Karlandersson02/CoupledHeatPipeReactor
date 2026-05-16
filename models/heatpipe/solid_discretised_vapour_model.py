@@ -32,7 +32,7 @@ class HeatpipeDiscretisedVapour(Component):
         self.k_matrix = self._generate_k_matrix()
         self.h_matrix = self._generate_h_matrix()
 
-        self.alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, self.k_matrix)
+        self.alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, self.k_matrix, self.h_matrix)
 
     def get_residuals(self, X):
         T, = self.unpack(X)
@@ -45,7 +45,7 @@ class HeatpipeDiscretisedVapour(Component):
         else:
             k = self._generate_k_matrix()
         h = self._generate_h_matrix()
-        alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k)
+        alpha = self._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k, h)
 
         N_Z = self.cfg.mesh.N_Z
         N_R = self.cfg.mesh.N_R
@@ -169,7 +169,7 @@ class HeatpipeDiscretisedVapour(Component):
         return res.reshape(-1)
 
     def post_process(self, X):
-        return X[0].reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
+        return X.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
     
     def unpack(self, X):
         return (X, )
@@ -185,11 +185,15 @@ class HeatpipeDiscretisedVapour(Component):
         Z         = np.zeros(2 * self.cfg.mesh.N_Z, dtype=float)
         delta_Z   = np.zeros(self.cfg.mesh.N_Z, dtype=float)
 
-        # Radial discretisation
-        dr_half = (self.cfg.geometry.r_outer - self.cfg.geometry.r_vapour) / (2 * self.cfg.mesh.N_R)
+        # Calculating the radii of the half-elements
+        R[0] = np.sqrt(
+            (self.cfg.geometry.r_outer**2 - self.cfg.geometry.r_vapour**2)
+            / (self.cfg.mesh.N_R * 2)
+            + self.cfg.geometry.r_vapour**2
+        )
 
-        for i in range(2 * self.cfg.mesh.N_R):
-            R[i] = self.cfg.geometry.r_vapour + (i + 1) * dr_half
+        for i in range(1, 2 * self.cfg.mesh.N_R):
+            R[i] = np.sqrt(R[i - 1]**2 + R[0]**2 - self.cfg.geometry.r_vapour**2)
 
         # Calculating the differences in the radius of the half-elements
         delta_R[0] = R[0] - self.cfg.geometry.r_vapour
@@ -199,11 +203,24 @@ class HeatpipeDiscretisedVapour(Component):
         delta_R_m = delta_R[0::2]
         delta_R_p = delta_R[1::2]
 
-        # Axial discretisaion
-        dz_half = self.cfg.geometry.l_tot / (2 * self.cfg.mesh.N_Z)
+        # Calculating the Z-position of the bulk and edges of the elements
+        for i in range(self.cfg.mesh.N_evap * 2):
+            Z[i] = (i / 2 + 1 / 2) * self.cfg.geometry.l_evap / self.cfg.mesh.N_evap
 
-        Z[:] = dz_half * np.arange(1, 2 * self.cfg.mesh.N_Z + 1)
-        delta_Z[:] = dz_half
+        for i in range(self.cfg.mesh.N_adiabatic * 2):
+            Z[i + self.cfg.mesh.N_evap * 2] = (
+                (i / 2 + 1 / 2) * self.cfg.geometry.l_adiabatic / self.cfg.mesh.N_adiabatic
+                + self.cfg.geometry.l_evap
+            )
+
+        for i in range(self.cfg.mesh.N_cond * 2):
+            Z[i + self.cfg.mesh.N_evap * 2 + self.cfg.mesh.N_adiabatic * 2] = (
+                (i / 2 + 1 / 2) * self.cfg.geometry.l_cond / self.cfg.mesh.N_cond
+                + (self.cfg.geometry.l_evap + self.cfg.geometry.l_adiabatic)
+            )
+
+        for i in range(self.cfg.mesh.N_Z):
+            delta_Z[i] = Z[2 * i + 1] - Z[2 * i]
 
         # Generate surface tensors
         surface_areas = self._generate_surfaces(delta_R_p, delta_R_m, delta_Z)
@@ -274,7 +291,7 @@ class HeatpipeDiscretisedVapour(Component):
 
         return h_matrix
 
-    def _generate_alpha(self, surface_tensor, delta_Rm, delta_Rp, delta_Z, k_matrix):
+    def _generate_alpha(self, surface_tensor, delta_Rm, delta_Rp, delta_Z, k_matrix, h_matrix):
         alpha = np.zeros_like(surface_tensor)
 
         alpha[:, :-1, 0] = (
@@ -297,19 +314,31 @@ class HeatpipeDiscretisedVapour(Component):
             / (k_matrix[1:, :] * delta_Z[:-1, None] + k_matrix[:-1, :] * delta_Z[1:, None])
         )
 
-        # Init masks
-        vapour_mask = np.zeros_like(alpha, dtype=bool)
-        cooling_mask = np.zeros_like(alpha, dtype=bool)
-        
-        # Configure masks
-        # vapour_mask[0:self.cfg.mesh.N_evap, 0, 1] = True
-        # vapour_mask[(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic):, 0, 1] = True
-        vapour_mask[:, 0, 1] = True
-        cooling_mask[(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic):, -1, 0] = True
+        # Inner wick-vapour boundary: combine half-cell conduction and convection.
+        r_inner = self.cfg.geometry.r_vapour
+        r_center_inner = self.R[0]
+        R_cond_inner = np.log(r_center_inner / r_inner) / (
+            2.0 * np.pi * k_matrix[:, 0] * (2.0 * delta_Z)
+        )
+        R_conv_inner = 1.0 / (
+            h_matrix[:, 0] * 2.0 * np.pi * r_inner * (2.0 * delta_Z)
+        )
+        G_inner = 1.0 / (R_cond_inner + R_conv_inner)
+        alpha[:, 0, 1] = G_inner / h_matrix[:, 0]
 
-        # Apply masks
-        alpha[vapour_mask] = surface_tensor[vapour_mask]
-        alpha[cooling_mask] = surface_tensor[cooling_mask]
+        # Outer wall-condenser boundary: combine half-cell conduction and convection.
+        cond = slice(self.cfg.mesh.N_evap + self.cfg.mesh.N_adiabatic, self.cfg.mesh.N_Z)
+        r_outer = self.cfg.geometry.r_outer
+        r_center_outer = self.R[-1]
+        R_cond_outer = np.log(r_outer / r_center_outer) / (
+            2.0 * np.pi * k_matrix[cond, -1] * (2.0 * delta_Z[cond])
+        )
+        R_conv_outer = 1.0 / (
+            h_matrix[cond, -1] * 2.0 * np.pi * r_outer * (2.0 * delta_Z[cond])
+        )
+        G_outer = 1.0 / (R_cond_outer + R_conv_outer)
+        alpha[cond, -1, 0] = G_outer / h_matrix[cond, -1]
+
         return alpha
 
     def linear_solve(self):
@@ -589,7 +618,7 @@ if __name__ == "__main__":
     surface_areas, delta_Rp, delta_Rm, delta_Z = heatpipe._initialize_discretization()
     k = heatpipe._generate_k_matrix()
     h = heatpipe._generate_h_matrix()
-    alpha = heatpipe._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k)
+    alpha = heatpipe._generate_alpha(surface_areas, delta_Rm, delta_Rp, delta_Z, k, h)
 
     q_to_vap = h[:, 0] * alpha[:, 0, 1] * (T_solid[:, 0] - T_v)
     q_to_cond = h[:, -1] * alpha[:, -1, 0] * (T_solid[:, -1] - cfg.bc.T_cond)
