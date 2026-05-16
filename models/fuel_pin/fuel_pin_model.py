@@ -36,22 +36,6 @@ class FuelPin(Component):
 
         self.M, self.C = self.generate_matrix_form(alpha, self.qr, self.T_mod, k, h)
 
-    # def calculate_qr(self):
-    #     self.initialize_discretization()
-    #     self.qr = np.sum(self.phi_g * self.Sigma_f * self.kappa * self.Delta_V, axis = 1)
-
-    # def calculate_qr(self):
-    #     self.initialize_discretization()
-
-    #     q_vol_z = np.sum(
-    #         self.phi_g * self.Sigma_f * self.kappa,
-    #         axis=1,
-    #     )
-
-    #     fuel_slice = slice(0, self.cfg.mesh.N_fuel)
-
-    #     self.qr = q_vol_z * np.sum(self.Delta_V[fuel_slice])
-
     def calculate_qr(self):
         self.initialize_discretization()
 
@@ -491,7 +475,7 @@ class FuelPin(Component):
         R = R_half[0::2]
 
         self.R = R
-        self.Z = np.arange(0, self.cfg.geometry.l - self.Delta_Z, self.Delta_Z) + self.Delta_Z / 2
+        self.Z = np.arange(self.cfg.mesh.N_Z, dtype=float) * self.Delta_Z + self.Delta_Z / 2
         self.delta_Rm = delta_Rm
         self.delta_Rp = delta_Rp
 

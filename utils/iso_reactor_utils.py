@@ -53,8 +53,8 @@ def plot_reactor_solutions(solver):
     reactors = solver.components
 
     plt.rcParams["font.size"] = 12
-    # plt.rcParams["font.family"] = "Computer Modern"
-    # plt.rcParams["text.usetex"] = True
+    plt.rcParams["font.family"] = "Computer Modern"
+    plt.rcParams["text.usetex"] = True
 
     fig, axs = plt.subplots(3, 2, figsize=(11, 11))
 
@@ -70,9 +70,8 @@ def plot_reactor_solutions(solver):
 
         N_evap = int(cfg_R.HP.mesh.N_evap)
         N_cond_start = int(cfg_R.HP.mesh.N_evap + cfg_R.HP.mesh.N_adiabatic)
-
-        k_cond = reactor.heat_pipe_thermal_model.variable_k
-        k_cond_string = "variable" if k_cond else "fixed"
+        hp_wall_slice = slice(cfg_R.HP.mesh.N_R - cfg_R.HP.mesh.N_wall, cfg_R.HP.mesh.N_R)
+        fp_clad_slice = slice(cfg_R.FP.mesh.N_fuel + cfg_R.FP.mesh.N_gap, cfg_R.FP.mesh.N_R)
 
         N_R_FP = cfg_R.FP.mesh.N_R
         N_R_HP = cfg_R.HP.mesh.N_R
@@ -99,25 +98,26 @@ def plot_reactor_solutions(solver):
 
         r_hp = reactor.heat_pipe_thermal_model.R
         r_fp = reactor.fuel_pin_thermal_model.R
-
-        # Choose one axial location in evaporator for radial plots
-        evap_idx = cfg_R.HP.mesh.N_evap // 2
+        T_hp_wall_axial = np.mean(T_solid[:N_evap, hp_wall_slice], axis=1)
+        T_fp_clad_axial = np.mean(T_FP[:, fp_clad_slice], axis=1)
+        T_hp_radial_avg = np.mean(T_solid[:N_evap], axis=0)
+        T_fp_radial_avg = np.mean(T_FP, axis=0)
 
         # Top row: neutron flux
-        axs[0, 0].plot(z_flux, phi_ng_hat[:, 0], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
+        axs[0, 0].plot(z_flux, phi_ng_hat[:, 0], linewidth=2, color=colors[i])
 
         # Keep top-right empty or use it for another group if desired
-        axs[0, 1].plot(z_flux, phi_ng_hat[:, -1], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
+        axs[0, 1].plot(z_flux, phi_ng_hat[:, -1], linewidth=2, color=colors[i])
 
         # Middle row: axial temperature distributions
-        axs[1, 0].plot(z_hp, T_solid[:N_evap, -1], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
+        axs[1, 0].plot(z_hp, T_hp_wall_axial, linewidth=2, color=colors[i])
 
-        axs[1, 1].plot(z_fp, T_FP[:, -1], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
+        axs[1, 1].plot(z_fp, T_fp_clad_axial, linewidth=2, color=colors[i])
 
         # Bottom row: radial temperature distributions
-        axs[2, 0].plot(r_hp, T_solid[evap_idx], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
+        axs[2, 0].plot(r_hp, T_hp_radial_avg, linewidth=2, color=colors[i])
 
-        axs[2, 1].plot(r_fp, T_FP[evap_idx], linewidth=2, color=colors[i], label=f"k {k_cond_string}")
+        axs[2, 1].plot(r_fp, T_fp_radial_avg, linewidth=2, color=colors[i])
 
     k_eff_string = ", ".join(f"{k_eff:.3f}" for k_eff in k_effs)
     Q_string = ", ".join(f"{100 * Q_frac:.2f}\\%" for Q_frac in Q_fracs)
@@ -134,42 +134,35 @@ def plot_reactor_solutions(solver):
     axs[0, 0].set_xlabel("Length [m]")
     axs[0, 0].set_ylabel("Flux")
     axs[0, 0].grid(True, alpha=0.4)
-    axs[0, 0].legend()
 
     axs[0, 1].set_title("Axial Neutron Flux Profile (Last Group)")
     axs[0, 1].set_xlabel("Length [m]")
     axs[0, 1].set_ylabel("Flux")
     axs[0, 1].grid(True, alpha=0.4)
-    axs[0, 1].legend()
 
     # Middle row
-    axs[1, 0].set_title("Heat Pipe Evaporator Axial Temperature")
+    axs[1, 0].set_title("Heat Pipe Wall Axial Average Temperature")
     axs[1, 0].set_xlabel("Length [m]")
     axs[1, 0].set_ylabel("Temperature [K]")
     axs[1, 0].grid(True, alpha=0.4)
-    axs[1, 0].legend()
 
-    axs[1, 1].set_title("Fuel Pin Axial Temperature Profile")
+    axs[1, 1].set_title("Fuel Pin Cladding Axial Average Temperature")
     axs[1, 1].set_xlabel("Length [m]")
     axs[1, 1].set_ylabel("Temperature [K]")
     axs[1, 1].grid(True, alpha=0.4)
-    axs[1, 1].legend()
 
     # Bottom row
-    axs[2, 0].set_title("Heat Pipe Evaporator Radial Temperature")
+    axs[2, 0].set_title("Heat Pipe Evaporator Radial Average Temperature")
     axs[2, 0].set_xlabel("Radius [m]")
     axs[2, 0].set_ylabel("Temperature [K]")
     axs[2, 0].grid(True, alpha=0.4)
-    axs[2, 0].legend()
 
-    axs[2, 1].set_title("Fuel Pin Radial Temperature")
+    axs[2, 1].set_title("Fuel Pin Radial Average Temperature")
     axs[2, 1].set_xlabel("Radius [m]")
     axs[2, 1].set_ylabel("Temperature [K]")
     axs[2, 1].grid(True, alpha=0.4)
-    axs[2, 1].legend()
 
     plt.tight_layout(rect=(0, 0, 1, 0.94))
-    # plt.savefig("./outputs/reactor_figures/reactor_data_k_comparison.png", bbox_inches="tight")
     plt.show()
 
 def plot_reactor_temperature_schematic(solver, solution_idx: int = -1):

@@ -52,7 +52,6 @@ class Reactor(Component):
         
         T_solid    = T_HP[:-1].reshape((self.cfg_HP.mesh.N_Z, self.cfg_HP.mesh.N_R))
         T_vap      = T_HP[-1]
-        T_FP       = T_FP.reshape((self.cfg_FP.mesh.N_Z, self.cfg_FP.mesh.N_R))
         phi_ng_hat = phi_ng_hat_and_k[:-1]
         k          = phi_ng_hat_and_k[-1]
 
@@ -62,6 +61,9 @@ class Reactor(Component):
         power_density = kappa * Sigma_f * phi_n_g_hat
         power = np.sum(power_density) * self.cfg_N.mesh.cross_sectional_area * self.cfg_N.mesh.delta_Z
         phi_n_g = phi_n_g_hat * self.cfg_N.energy.power / power
+
+        # T_FP reshape
+        T_FP = T_FP.reshape((self.cfg_FP.mesh.N_Z, self.cfg_FP.mesh.N_R))
 
         return ((T_solid, T_vap), T_FP, (phi_n_g, k))
     
@@ -105,14 +107,6 @@ class Reactor(Component):
         res_cond_FP = self.fuel_pin_thermal_model.get_residuals(T_FP)
 
         return np.r_[res_cond_HP, res_cond_FP, res_flux]
-
-    # def calculate_qr(self, T_FP, phi_ng_hat):
-    #     _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
-
-    #     qr_rel = np.sum(phi_ng_hat.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G) * Sigma_f * kappa * self.fuel_pin_thermal_model.Delta_V, axis=1) # W
-    #     power_rel = np.sum(qr_rel)
-
-    #     return qr_rel * self.cfg_N.energy.power / (power_rel * self.cfg_FP.mesh.N_fuel)
 
     def calculate_qr(self, T_FP, phi_ng_hat):
         _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
