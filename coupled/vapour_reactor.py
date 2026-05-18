@@ -48,7 +48,8 @@ class VapourReactor(Component):
 
     def set_variable_k(self, cond: bool):
         self.heatpipe.set_variable_k(cond)
-        self.fuel_pin_thermal_model.variable_k  = cond
+        self.fuel_pin_thermal_model.variable_k = cond
+        self.variable_r_eff = cond
 
     def set_interpolator_model(self, model):
         self.neutron_flux_model.interpolator_model = model
