@@ -32,7 +32,7 @@ class FuelPin(Component):
         k = self.generate_k_matrix()
         h = self.generate_h_matrix()
 
-        alpha = self.calculate_alpha(k)
+        alpha = self.calculate_alpha_with_old_boundary(k)
 
         self.M, self.C = self.generate_matrix_form(alpha, self.qr, self.T_mod, k, h)
 
@@ -70,6 +70,157 @@ class FuelPin(Component):
 
         self.qr = q_vol_z * V_fuel[0]
 
+    # def get_residuals(self, X):
+    #     T = X.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
+
+    #     qr = self.qr
+    #     T_mod = self.T_mod
+
+    #     N_Z = self.cfg.mesh.N_Z
+    #     N_R = self.cfg.mesh.N_R
+    #     N_fuel = self.cfg.mesh.N_fuel
+
+    #     if self.variable_k:
+    #         k = self.generate_k_matrix(T)
+    #     else:
+    #         k = self.generate_k_matrix()
+    #     h = self.generate_h_matrix()
+    #     alpha = self.calculate_alpha(k)
+
+    #     res = np.zeros((N_Z, N_R), dtype=float)
+
+    #     # -----------------------
+    #     # Bulk elements
+    #     if N_Z > 2 and N_R > 2:
+    #         kc = k[1:-1, 1:-1]
+    #         ac = alpha[1:-1, 1:-1]
+
+    #         res[1:-1, 1:-1] = (
+    #             -kc * (ac[..., 0] + ac[..., 1] + ac[..., 2] + ac[..., 3]) * T[1:-1, 1:-1]
+    #             + kc * ac[..., 0] * T[1:-1, 2:]
+    #             + kc * ac[..., 1] * T[1:-1, :-2]
+    #             + kc * ac[..., 2] * T[2:, 1:-1]
+    #             + kc * ac[..., 3] * T[:-2, 1:-1]
+    #         )
+
+    #     # -----------------------
+    #     # Insulated wall at z = 0, excluding corners
+    #     if N_R > 2:
+    #         z = 0
+    #         kc = k[z, 1:-1]
+    #         ac = alpha[z, 1:-1]
+
+    #         res[z, 1:-1] = (
+    #             -kc * (ac[:, 0] + ac[:, 1] + ac[:, 2]) * T[z, 1:-1]
+    #             + kc * ac[:, 0] * T[z, 2:]
+    #             + kc * ac[:, 1] * T[z, :-2]
+    #             + kc * ac[:, 2] * T[z + 1, 1:-1]
+    #         )
+
+    #     # -----------------------
+    #     # Insulated wall at z = N_Z - 1, excluding corners
+    #     if N_R > 2:
+    #         z = N_Z - 1
+    #         kc = k[z, 1:-1]
+    #         ac = alpha[z, 1:-1]
+
+    #         res[z, 1:-1] = (
+    #             -kc * (ac[:, 0] + ac[:, 1] + ac[:, 3]) * T[z, 1:-1]
+    #             + kc * ac[:, 0] * T[z, 2:]
+    #             + kc * ac[:, 1] * T[z, :-2]
+    #             + kc * ac[:, 3] * T[z - 1, 1:-1]
+    #         )
+
+    #     # -----------------------
+    #     # Cladding BC elements, excluding corners
+    #     if N_Z > 2:
+    #         r = N_R - 1
+    #         kc = k[1:-1, r]
+    #         ac = alpha[1:-1, r]
+    #         hc = h[1:-1, r]
+
+    #         res[1:-1, r] = (
+    #             (-kc * (ac[:, 1] + ac[:, 2] + ac[:, 3]) - hc * ac[:, 0]) * T[1:-1, r]
+    #             + kc * ac[:, 1] * T[1:-1, r - 1]
+    #             + kc * ac[:, 2] * T[2:, r]
+    #             + kc * ac[:, 3] * T[:-2, r]
+    #             + hc * ac[:, 0] * T_mod[1:-1]
+    #         )
+
+    #     # -----------------------
+    #     # Fuel inner BC elements, excluding corners
+    #     if N_Z > 2:
+    #         r = 0
+    #         kc = k[1:-1, r]
+    #         ac = alpha[1:-1, r]
+
+    #         res[1:-1, r] = (
+    #             -kc * (ac[:, 0] + ac[:, 2] + ac[:, 3]) * T[1:-1, r]
+    #             + kc * ac[:, 0] * T[1:-1, r + 1]
+    #             + kc * ac[:, 2] * T[2:, r]
+    #             + kc * ac[:, 3] * T[:-2, r]
+    #         )
+
+    #     # -----------------------
+    #     # Lowermost cladding outer corner: z = 0, r = N_R - 1
+    #     z = 0
+    #     r = N_R - 1
+    #     res[z, r] = (
+    #         (-k[z, r] * (alpha[z, r, 1] + alpha[z, r, 2]) - h[z, r] * alpha[z, r, 0]) * T[z, r]
+    #         + k[z, r] * alpha[z, r, 1] * T[z, r - 1]
+    #         + k[z, r] * alpha[z, r, 2] * T[z + 1, r]
+    #         + h[z, r] * alpha[z, r, 0] * T_mod[z]
+    #     )
+
+    #     # -----------------------
+    #     # Uppermost cladding outer corner: z = N_Z - 1, r = N_R - 1
+    #     z = N_Z - 1
+    #     r = N_R - 1
+    #     res[z, r] = (
+    #         (-k[z, r] * (alpha[z, r, 1] + alpha[z, r, 3]) - h[z, r] * alpha[z, r, 0]) * T[z, r]
+    #         + k[z, r] * alpha[z, r, 1] * T[z, r - 1]
+    #         + k[z, r] * alpha[z, r, 3] * T[z - 1, r]
+    #         + h[z, r] * alpha[z, r, 0] * T_mod[z]
+    #     )
+
+    #     # -----------------------
+    #     # Lowermost fuel inner corner: z = 0, r = 0
+    #     z = 0
+    #     r = 0
+    #     res[z, r] = (
+    #         -k[z, r] * (alpha[z, r, 0] + alpha[z, r, 2]) * T[z, r]
+    #         + k[z, r] * alpha[z, r, 0] * T[z, r + 1]
+    #         + k[z, r] * alpha[z, r, 2] * T[z + 1, r]
+    #     )
+
+    #     # -----------------------
+    #     # Uppermost fuel inner corner: z = N_Z - 1, r = 0
+    #     z = N_Z - 1
+    #     r = 0
+    #     res[z, r] = (
+    #         -k[z, r] * (alpha[z, r, 0] + alpha[z, r, 3]) * T[z, r]
+    #         + k[z, r] * alpha[z, r, 0] * T[z, r + 1]
+    #         + k[z, r] * alpha[z, r, 3] * T[z - 1, r]
+    #     )
+
+    #     # -----------------------
+    #     # Fuel heat production
+    #     res[:, :N_fuel] += qr[:, None]
+
+    #     # res_norm_denom = (
+    #     #     (np.sum(qr) * self.Delta_Z / self.cfg.geometry.l)
+    #     #     / (np.pi * self.cfg.geometry.r**2)
+    #     # )
+
+    #     total_power = np.sum(qr) * N_fuel
+
+    #     res_norm_denom = (
+    #         (total_power * self.Delta_Z / self.cfg.geometry.l)
+    #         / (np.pi * self.cfg.geometry.r**2)
+    #     )
+
+    #     return res.reshape(-1) / res_norm_denom
+
     def get_residuals(self, X):
         T = X.reshape(self.cfg.mesh.N_Z, self.cfg.mesh.N_R)
 
@@ -84,10 +235,26 @@ class FuelPin(Component):
             k = self.generate_k_matrix(T)
         else:
             k = self.generate_k_matrix()
+
         h = self.generate_h_matrix()
         alpha = self.calculate_alpha(k)
 
         res = np.zeros((N_Z, N_R), dtype=float)
+
+        # Outer cladding boundary conductance:
+        # cell center -> cylindrical conduction through half-cell -> convection to moderator
+        r_outer = self.cfg.geometry.r
+        r_center_outer = self.R[-1]
+
+        R_cond_outer = np.log(r_outer / r_center_outer) / (
+            2.0 * np.pi * k[:, -1] * self.Delta_Z
+        )
+
+        R_conv_outer = 1.0 / (
+            h[:, -1] * 2.0 * np.pi * r_outer * self.Delta_Z
+        )
+
+        G_mod = 1.0 / (R_cond_outer + R_conv_outer)
 
         # -----------------------
         # Bulk elements
@@ -132,23 +299,23 @@ class FuelPin(Component):
             )
 
         # -----------------------
-        # Cladding BC elements, excluding corners
+        # Cladding outer boundary elements, excluding corners
         if N_Z > 2:
             r = N_R - 1
             kc = k[1:-1, r]
             ac = alpha[1:-1, r]
-            hc = h[1:-1, r]
+            Gc = G_mod[1:-1]
 
             res[1:-1, r] = (
-                (-kc * (ac[:, 1] + ac[:, 2] + ac[:, 3]) - hc * ac[:, 0]) * T[1:-1, r]
+                (-kc * (ac[:, 1] + ac[:, 2] + ac[:, 3]) - Gc) * T[1:-1, r]
                 + kc * ac[:, 1] * T[1:-1, r - 1]
                 + kc * ac[:, 2] * T[2:, r]
                 + kc * ac[:, 3] * T[:-2, r]
-                + hc * ac[:, 0] * T_mod[1:-1]
+                + Gc * T_mod[1:-1]
             )
 
         # -----------------------
-        # Fuel inner BC elements, excluding corners
+        # Fuel inner boundary elements, excluding corners
         if N_Z > 2:
             r = 0
             kc = k[1:-1, r]
@@ -165,28 +332,33 @@ class FuelPin(Component):
         # Lowermost cladding outer corner: z = 0, r = N_R - 1
         z = 0
         r = N_R - 1
+        G = G_mod[z]
+
         res[z, r] = (
-            (-k[z, r] * (alpha[z, r, 1] + alpha[z, r, 2]) - h[z, r] * alpha[z, r, 0]) * T[z, r]
+            (-k[z, r] * (alpha[z, r, 1] + alpha[z, r, 2]) - G) * T[z, r]
             + k[z, r] * alpha[z, r, 1] * T[z, r - 1]
             + k[z, r] * alpha[z, r, 2] * T[z + 1, r]
-            + h[z, r] * alpha[z, r, 0] * T_mod[z]
+            + G * T_mod[z]
         )
 
         # -----------------------
         # Uppermost cladding outer corner: z = N_Z - 1, r = N_R - 1
         z = N_Z - 1
         r = N_R - 1
+        G = G_mod[z]
+
         res[z, r] = (
-            (-k[z, r] * (alpha[z, r, 1] + alpha[z, r, 3]) - h[z, r] * alpha[z, r, 0]) * T[z, r]
+            (-k[z, r] * (alpha[z, r, 1] + alpha[z, r, 3]) - G) * T[z, r]
             + k[z, r] * alpha[z, r, 1] * T[z, r - 1]
             + k[z, r] * alpha[z, r, 3] * T[z - 1, r]
-            + h[z, r] * alpha[z, r, 0] * T_mod[z]
+            + G * T_mod[z]
         )
 
         # -----------------------
         # Lowermost fuel inner corner: z = 0, r = 0
         z = 0
         r = 0
+
         res[z, r] = (
             -k[z, r] * (alpha[z, r, 0] + alpha[z, r, 2]) * T[z, r]
             + k[z, r] * alpha[z, r, 0] * T[z, r + 1]
@@ -197,6 +369,7 @@ class FuelPin(Component):
         # Uppermost fuel inner corner: z = N_Z - 1, r = 0
         z = N_Z - 1
         r = 0
+
         res[z, r] = (
             -k[z, r] * (alpha[z, r, 0] + alpha[z, r, 3]) * T[z, r]
             + k[z, r] * alpha[z, r, 0] * T[z, r + 1]
@@ -206,11 +379,6 @@ class FuelPin(Component):
         # -----------------------
         # Fuel heat production
         res[:, :N_fuel] += qr[:, None]
-
-        # res_norm_denom = (
-        #     (np.sum(qr) * self.Delta_Z / self.cfg.geometry.l)
-        #     / (np.pi * self.cfg.geometry.r**2)
-        # )
 
         total_power = np.sum(qr) * N_fuel
 
@@ -350,6 +518,34 @@ class FuelPin(Component):
         surface_tensor[..., 0:2] *= self.Delta_Z
 
         return surface_tensor
+
+    # def calculate_surfaces_from_edges(self, r_edges):
+    #     Rp = r_edges[1:]
+    #     Rm = r_edges[:-1]
+
+    #     S_rp = 2.0 * np.pi * Rp
+    #     S_rm = 2.0 * np.pi * Rm
+    #     S_z = np.pi * (Rp**2 - Rm**2)
+
+    #     surface_tensor = np.concatenate(
+    #         [
+    #             S_rp[:, None],
+    #             S_rm[:, None],
+    #             S_z[:, None],
+    #             S_z[:, None],
+    #         ],
+    #         axis=1,
+    #     )
+
+    #     surface_tensor = np.repeat(
+    #         surface_tensor[None],
+    #         self.cfg.mesh.N_Z,
+    #         axis=0,
+    #     )
+
+    #     surface_tensor[..., 0:2] *= self.Delta_Z
+
+    #     return surface_tensor
     
     
     def generate_k_matrix(self, T=None):
@@ -393,35 +589,81 @@ class FuelPin(Component):
         return h_matrix
 
 
+    # def calculate_alpha(self, k_matrix):
+    #     alpha = np.zeros_like(self.surface_tensor)
+
+    #     alpha[:, :-1, 0] = (
+    #         self.surface_tensor[:, :-1, 0] * k_matrix[:, 1:]
+    #         / (k_matrix[:, :-1] * self.delta_Rm[1:] + k_matrix[:, 1:] * self.delta_Rp[:-1])
+    #     )
+
+    #     alpha[:, 1:, 1] = (
+    #         self.surface_tensor[:, 1:, 1] * k_matrix[:, :-1]
+    #         / (k_matrix[:, 1:] * self.delta_Rp[:-1] + k_matrix[:, :-1] * self.delta_Rm[1:])
+    #     )
+
+    #     alpha[:-1, :, 2] = (
+    #         self.surface_tensor[:-1, :, 2] * k_matrix[1:, :]
+    #         / (k_matrix[:-1, :] * self.Delta_Z + k_matrix[1:, :] * self.Delta_Z)
+    #     )
+
+    #     alpha[1:, :, 3] = (
+    #         self.surface_tensor[1:, :, 3] * k_matrix[:-1, :]
+    #         / (k_matrix[1:, :] * self.Delta_Z + k_matrix[:-1, :] * self.Delta_Z)
+    #     )
+    #     # Init mask
+    #     cooling_mask = np.zeros_like(alpha, dtype=bool)
+                                     
+    #     # Configure masks
+    #     cooling_mask[:, -1, 0] = True
+
+    #     # Apply masks
+    #     alpha[cooling_mask] = self.surface_tensor[cooling_mask]
+
+    #     return alpha
+
     def calculate_alpha(self, k_matrix):
         alpha = np.zeros_like(self.surface_tensor)
 
         alpha[:, :-1, 0] = (
             self.surface_tensor[:, :-1, 0] * k_matrix[:, 1:]
-            / (k_matrix[:, :-1] * self.delta_Rm[1:] + k_matrix[:, 1:] * self.delta_Rp[:-1])
+            / (
+                k_matrix[:, :-1] * self.delta_Rm[1:]
+                + k_matrix[:, 1:] * self.delta_Rp[:-1]
+            )
         )
 
         alpha[:, 1:, 1] = (
             self.surface_tensor[:, 1:, 1] * k_matrix[:, :-1]
-            / (k_matrix[:, 1:] * self.delta_Rp[:-1] + k_matrix[:, :-1] * self.delta_Rm[1:])
+            / (
+                k_matrix[:, 1:] * self.delta_Rp[:-1]
+                + k_matrix[:, :-1] * self.delta_Rm[1:]
+            )
         )
 
         alpha[:-1, :, 2] = (
             self.surface_tensor[:-1, :, 2] * k_matrix[1:, :]
-            / (k_matrix[:-1, :] * self.Delta_Z + k_matrix[1:, :] * self.Delta_Z)
+            / (
+                k_matrix[:-1, :] * self.Delta_Z
+                + k_matrix[1:, :] * self.Delta_Z
+            )
         )
 
         alpha[1:, :, 3] = (
             self.surface_tensor[1:, :, 3] * k_matrix[:-1, :]
-            / (k_matrix[1:, :] * self.Delta_Z + k_matrix[:-1, :] * self.Delta_Z)
+            / (
+                k_matrix[1:, :] * self.Delta_Z
+                + k_matrix[:-1, :] * self.Delta_Z
+            )
         )
-        # Init mask
-        cooling_mask = np.zeros_like(alpha, dtype=bool)
-                                     
-        # Configure masks
-        cooling_mask[:, -1, 0] = True
 
-        # Apply masks
+        return alpha
+
+    def calculate_alpha_with_old_boundary(self, k_matrix):
+        alpha = self.calculate_alpha(k_matrix)
+
+        cooling_mask = np.zeros_like(alpha, dtype=bool)
+        cooling_mask[:, -1, 0] = True
         alpha[cooling_mask] = self.surface_tensor[cooling_mask]
 
         return alpha
