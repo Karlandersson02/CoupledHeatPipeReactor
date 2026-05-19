@@ -59,8 +59,8 @@
     "Reactor": {
         "geometry": {
             "core_diameter": 2.8,
-            "flake_diamter": 0.18,
-            "pin_cell_pitch": 0.0286
+            "flake_diameter": 0.20,
+            "pin_cell_pitch": 0.032
         },
         "components": {
             "N_HP": 876,
