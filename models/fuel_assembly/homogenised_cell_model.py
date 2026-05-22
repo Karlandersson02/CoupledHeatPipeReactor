@@ -8,7 +8,7 @@ import os
 import glob
 
 from utils.sodium_properties import calculate_Na_rho_l
-from coupled_systems.heatpipe_decoupled import Heatpipe
+from coupled.heatpipe import Heatpipe
 
 import matplotlib.pyplot as plt
 
@@ -237,7 +237,7 @@ def create_openmc_model(
     materials = openmc.Materials(list(all_materials.values()))
     materials.export_to_xml()
 
-    lattice_pitch = 2.86
+    lattice_pitch = 3.2
     lattice = openmc.HexLattice()
     lattice.center = (0., 0.)
     lattice.pitch  = (lattice_pitch, )
@@ -288,11 +288,11 @@ def create_openmc_model(
     )
 
     settings = openmc.Settings()
-    settings.batches = 500
+    settings.batches = 50
     settings.inactive = 20
-    settings.particles = 50000
+    settings.particles = 2000
     settings.source = source
-    settings.verbosity = 4
+    settings.verbosity = 7
 
     settings.temperature = {
         # 'default': 850.0,              # fallback temperature [K]
