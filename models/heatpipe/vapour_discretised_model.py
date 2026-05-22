@@ -155,18 +155,22 @@ class VapourDiscretised(Component):
     def _calculate_Gamma(self, T_v):
         T_int = self._get_interface_temperature()
 
-        r_center_inner = np.sqrt(
-            (self.cfg.geometry.r_outer**2 - self.cfg.geometry.r_vapour**2)
-            / (2.0 * self.cfg.mesh.N_R)
-            + self.cfg.geometry.r_vapour**2
-        )
+        # r_center_inner = np.sqrt(
+        #     (self.cfg.geometry.r_outer**2 - self.cfg.geometry.r_vapour**2)
+        #     / (2.0 * self.cfg.mesh.N_R)
+        #     + self.cfg.geometry.r_vapour**2
+        # )
+
+        dr = (self.cfg.geometry.r_outer - self.cfg.geometry.r_vapour) / self.cfg.mesh.N_R
+        r_center_inner = self.cfg.geometry.r_vapour + 0.5 * dr
+
         dx = self.dx
 
         k_inner = np.asarray(
             m_props.HP_wick_k(T_int, self.cfg.wick.porosity),
             dtype=float,
         )
-
+ 
         R_cond_inner = np.log(r_center_inner / self.cfg.geometry.r_vapour) / (
             2.0 * np.pi * k_inner * dx
         )
