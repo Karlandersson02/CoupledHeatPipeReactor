@@ -3,6 +3,17 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 from pathlib import Path
 
+
+colors = {
+    "blue": "#0077BB",
+    "cyan": "#33BBEE",
+    "teal": "#009988",
+    "orange": "#EE7733",
+    "red": "#CC3311",
+    "magenta": "#EE3377",
+    "grey": "#BBBBBB",
+}
+
 # ---------------------------------------------------------------------
 # Geometry parameters from the mesh-generator __main__ block
 # ---------------------------------------------------------------------
@@ -32,6 +43,21 @@ y_F3 = 2.5 * pin_pitch
 # ---------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------
+def swap_xy(points):
+    """
+    Swap x and y coordinates.
+
+    This transforms the geometry as:
+        (x, y) -> (y, x)
+    """
+    points = np.asarray(points, dtype=float)
+
+    if points.ndim == 1:
+        return np.array([points[1], points[0]])
+
+    return points[:, [1, 0]]
+
+
 def line_points(p_start, p_end, n=2):
     p_start = np.asarray(p_start, dtype=float)
     p_end = np.asarray(p_end, dtype=float)
@@ -54,6 +80,8 @@ def arc_points(center, radius, angle_start_deg, angle_end_deg, n=80):
 
 
 def plot_segment(ax, pts, color, lw=4.0, zorder=4):
+    pts = swap_xy(pts)
+
     ax.plot(
         pts[:, 0],
         pts[:, 1],
@@ -62,6 +90,17 @@ def plot_segment(ax, pts, color, lw=4.0, zorder=4):
         solid_capstyle="round",
         solid_joinstyle="round",
         zorder=zorder,
+    )
+
+
+def add_text_swapped(ax, x, y, text, **kwargs):
+    x_new, y_new = swap_xy(np.array([x, y]))
+
+    ax.text(
+        x_new,
+        y_new,
+        text,
+        **kwargs,
     )
 
 
@@ -169,10 +208,12 @@ boundary_poly = np.vstack(
     ]
 )
 
+boundary_poly = swap_xy(boundary_poly)
+
 # ---------------------------------------------------------------------
 # Plot
 # ---------------------------------------------------------------------
-fig, ax = plt.subplots(figsize=(7.2, 9.0))
+fig, ax = plt.subplots(figsize=(9.0, 7.2))
 
 # Moderator domain fill
 ax.fill(
@@ -184,9 +225,11 @@ ax.fill(
 )
 
 # White mask for the internal fuel-pin hole
+fuel3_center_swapped = swap_xy(np.array([x_F3, y_F3]))
+
 ax.add_patch(
     Circle(
-        (x_F3, y_F3),
+        fuel3_center_swapped,
         r_f,
         facecolor="white",
         edgecolor="none",
@@ -199,7 +242,7 @@ for pts in grey_segments:
     plot_segment(
         ax,
         pts,
-        color="#7a7a7a",
+        color="black",
         lw=4.2,
     )
 
@@ -208,15 +251,15 @@ for pts in fuel_segments:
     plot_segment(
         ax,
         pts,
-        color="#c62828",
+        color=colors["red"],
         lw=4.8,
     )
 
 plot_segment(
     ax,
     fuel3_circle,
-    color="#c62828",
-    lw=4.8,
+    color=colors["red"],
+    lw=6.0,
 )
 
 # Draw heat pipe boundary conditions in blue
@@ -224,58 +267,9 @@ for pts in hp_segments:
     plot_segment(
         ax,
         pts,
-        color="#1565c0",
-        lw=4.8,
+        color=colors["blue"],
+        lw=6.0,
     )
-
-# ---------------------------------------------------------------------
-# Optional text labels
-# Remove this block as well if you want a completely clean figure.
-# ---------------------------------------------------------------------
-ax.text(
-    x_F1 + 1.35 * r_f,
-    y_F1,
-    "Fuel pin",
-    ha="left",
-    va="center",
-    fontsize=12,
-)
-
-ax.text(
-    x_F2 + 1.35 * r_f,
-    y_F2,
-    "Fuel pin",
-    ha="left",
-    va="center",
-    fontsize=12,
-)
-
-ax.text(
-    x_F3,
-    y_F3 + 1.65 * r_f,
-    "Fuel pin",
-    ha="center",
-    va="bottom",
-    fontsize=12,
-)
-
-ax.text(
-    p14[0] - 1.75 * r_HP,
-    p14[1] - 0.15 * r_HP,
-    "Heat pipe",
-    ha="right",
-    va="center",
-    fontsize=12,
-)
-
-ax.text(
-    p17[0] + 0.8 * r_HP,
-    p17[1] - 0.15 * r_HP,
-    "Heat pipe",
-    ha="left",
-    va="center",
-    fontsize=12,
-)
 
 # ---------------------------------------------------------------------
 # Formatting
@@ -283,8 +277,12 @@ ax.text(
 ax.set_aspect("equal", adjustable="box")
 
 pad = 0.006
-ax.set_xlim(-pad, x_flat + pad)
-ax.set_ylim(r_HP - pad, y_flat + pad)
+
+# Since the geometry has been swapped:
+# old x-limits become new y-limits
+# old y-limits become new x-limits
+ax.set_xlim(r_HP - pad, y_flat + pad)
+ax.set_ylim(-pad, x_flat + pad)
 
 # Remove axes completely
 ax.axis("off")
@@ -294,18 +292,18 @@ fig.tight_layout(pad=0.0)
 # ---------------------------------------------------------------------
 # Save figure
 # ---------------------------------------------------------------------
-output_dir = Path(".")
+output_dir = Path("scripts/moderator")
 
-png_path = output_dir / "moderator_boundary_conditions_silhouette_no_axes.png"
-pdf_path = output_dir / "moderator_boundary_conditions_silhouette_no_axes.pdf"
-svg_path = output_dir / "moderator_boundary_conditions_silhouette_no_axes.svg"
+png_path = output_dir / "moderator_boundary_conditions_silhouette.png"
+pdf_path = output_dir / "moderator_boundary_conditions_silhouette.pdf"
+svg_path = output_dir / "moderator_boundary_conditions_silhouette.svg"
 
-fig.savefig(
-    png_path,
-    dpi=400,
-    bbox_inches="tight",
-    pad_inches=0.02,
-)
+# fig.savefig(
+#     png_path,
+#     dpi=400,
+#     bbox_inches="tight",
+#     pad_inches=0.02,
+# )
 
 fig.savefig(
     pdf_path,
@@ -313,10 +311,10 @@ fig.savefig(
     pad_inches=0.02,
 )
 
-fig.savefig(
-    svg_path,
-    bbox_inches="tight",
-    pad_inches=0.02,
-)
+# fig.savefig(
+#     svg_path,
+#     bbox_inches="tight",
+#     pad_inches=0.02,
+# )
 
 plt.show()
