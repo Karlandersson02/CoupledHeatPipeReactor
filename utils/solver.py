@@ -291,6 +291,9 @@ class Solver:
 
         return solver_list, kwargs_list
 
+    def submit_initial_guess(self, x_initial):
+        self.submitted_initial_guess = x_initial
+
     def run(
         self,
         solvers: Callable[..., np.ndarray] | Sequence[Callable[..., np.ndarray]],
@@ -298,7 +301,10 @@ class Solver:
     ) -> None:
         solver_list, kwargs_list = self._normalize_solver_inputs(solvers, solver_kwargs)
 
-        x_initial = self.components[0].initial_guess()
+        if hasattr(self, "submitted_initial_guess"):
+            x_initial = self.submitted_initial_guess
+        else:
+            x_initial = self.components[0].initial_guess()
 
         for i, component in enumerate(self.components):
             if not self.iterate and i > 0:

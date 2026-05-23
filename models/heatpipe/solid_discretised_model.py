@@ -212,11 +212,18 @@ class HeatpipeDiscretised(Component):
         self.R = R[0::2]
         self.delta_R = delta_R
         
-        # Calculating the radii of the half-elements
-        R[0] = np.sqrt((self.cfg.geometry.r_outer**2 - self.cfg.geometry.r_vapour**2) / (self.cfg.mesh.N_R * 2) + self.cfg.geometry.r_vapour**2)
+        # # Calculating the radii of the half-elements
+        # R[0] = np.sqrt((self.cfg.geometry.r_outer**2 - self.cfg.geometry.r_vapour**2) / (self.cfg.mesh.N_R * 2) + self.cfg.geometry.r_vapour**2)
 
-        for i in range(1, 2 * self.cfg.mesh.N_R):
-            R[i] = np.sqrt(R[i-1]**2 + R[0]**2 - self.cfg.geometry.r_vapour**2)
+        # for i in range(1, 2 * self.cfg.mesh.N_R):
+        #     R[i] = np.sqrt(R[i-1]**2 + R[0]**2 - self.cfg.geometry.r_vapour**2)
+
+        # Calculating the radii of the half-elements using equal radial length spacing
+        R[:] = np.linspace(
+            self.cfg.geometry.r_vapour,
+            self.cfg.geometry.r_outer,
+            2 * self.cfg.mesh.N_R + 1
+        )[1:]
 
         # Calculating the differences in the radius of the half-elements
         delta_R[0] = R[0] - self.cfg.geometry.r_vapour
