@@ -19,8 +19,8 @@ SAVE_DATASET_EVERY = 10
 # -------------------------------------------------------------------------
 # Temperature grid
 # -------------------------------------------------------------------------
-T_MIN = 600
-T_MAX = 1400
+T_MIN = 700
+T_MAX = 1500
 
 # -------------------------------------------------------------------------
 # Data / Config
@@ -79,8 +79,8 @@ BASE_OUTPUT_DIR = Path("outputs/openmc_data")
 TRAINING_DATA_DIR =  BASE_OUTPUT_DIR / "training_data"
 MODEL_DIR = Path("utils")
 
-TRAINING_DATA_FILE = TRAINING_DATA_DIR / "training_dataset_4_500_50000.npz"
-METADATA_FILE = TRAINING_DATA_DIR / "training_metadata_4_500_50000.json"
+TRAINING_DATA_FILE = TRAINING_DATA_DIR / "training_dataset_4_250_50000.npz"
+METADATA_FILE = TRAINING_DATA_DIR / "training_metadata_4_250_50000.json"
 MODEL_FILE = MODEL_DIR / "rgi_surrogate.joblib"
 
 # -------------------------------------------------------------------------
@@ -270,7 +270,7 @@ def run_openmc_case(
     """
     Run one OpenMC case and return homogenized MGXS outputs.
     """
-    from coupled_systems.heatpipe_decoupled import Heatpipe
+    # from coupled_systems.heatpipe_decoupled import Heatpipe
     from models.fuel_assembly.homogenised_cell_model import (
         create_openmc_model,
         load_homogenized_xs_from_statepoint,

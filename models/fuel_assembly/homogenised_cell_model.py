@@ -298,14 +298,14 @@ def create_openmc_model(
     settings = openmc.Settings()
     settings.batches = 250
     settings.inactive = 20
-    settings.particles = 100
+    settings.particles = 50000
     settings.source = source
     settings.verbosity = 7
 
     settings.temperature = {
         # 'default': 850.0,              # fallback temperature [K]
         'method': 'interpolation',     # use interpolation between tabulated temps
-        'range': (700.0, 1200.0),      # preload all XS temperatures in this range
+        'range': (700.0, 1600.0),      # preload all XS temperatures in this range
         'tolerance': 100.0             # outside range of available data, snap to bound if close enough
     }
 

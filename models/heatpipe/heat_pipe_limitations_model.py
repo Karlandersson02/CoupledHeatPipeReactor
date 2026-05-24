@@ -398,7 +398,6 @@ class HeatPipeLimitations:
                 np.count_nonzero(has_real_root & ~valid_result)
             )
 
-        print(Q_boil)
         print(diagnostics)
 
         if scalar_input:
