@@ -620,17 +620,10 @@ class OpenMCTallyGridSurrogate:
                 f"got {X_new.shape}."
             )
 
-        X_clipped = X_new.copy()
-
-        for axis_idx, axis_values in enumerate(self.axes):
-            t_min = np.min(axis_values)
-            t_max = np.max(axis_values)
-            X_clipped[:, axis_idx] = np.clip(X_clipped[:, axis_idx], t_min, t_max)
+        X_clipped = np.clip(X_new, 700.0, 1500.0)
 
         Y_pred = self.model(X_clipped)
-        Y_pred = np.atleast_2d(Y_pred)
-
-        return Y_pred
+        return np.atleast_2d(Y_pred)
 
     def predict_dict(self, X_new: np.ndarray) -> List[Dict[str, np.ndarray]]:
         Y_pred = self.predict_flat(X_new)

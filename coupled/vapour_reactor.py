@@ -51,8 +51,8 @@ class VapourReactor(Component):
         self.fuel_pin_thermal_model.variable_k = cond
         self.variable_r_eff = cond
 
-    def set_interpolator_model(self, model):
-        self.neutron_flux_model.interpolator_model = model
+    def set_variable_neutron_data(self, cond, T=900):
+        self.neutron_flux_model.set_variable_neutron_data(cond, T)
 
     def initial_guess(self):
         i = np.arange(self.cfg_HP.mesh.N_evap, dtype=float)
@@ -139,6 +139,34 @@ class VapourReactor(Component):
     def pack(self, X_tuple):
         X = np.r_[*X_tuple]
         return X
+
+    def _validate_temperature_state(self, T_HP, T_FP, T_v, T_mod=None):
+        arrays = {
+            "T_HP": np.asarray(T_HP, dtype=float),
+            "T_FP": np.asarray(T_FP, dtype=float),
+            "T_v": np.asarray(T_v, dtype=float),
+        }
+        if T_mod is not None:
+            arrays["T_mod"] = np.asarray(T_mod, dtype=float)
+
+        invalid = []
+        for name, values in arrays.items():
+            if not np.all(np.isfinite(values)):
+                invalid.append(f"{name} contains non-finite values")
+            elif np.min(values) <= 0.0:
+                invalid.append(
+                    f"{name} reached a non-physical minimum of {np.min(values):.3f} K"
+                )
+
+        if invalid:
+            ranges = ", ".join(
+                f"{name}=[{np.nanmin(values):.3f}, {np.nanmax(values):.3f}]"
+                for name, values in arrays.items()
+            )
+            raise ValueError(
+                "VapourReactor encountered an invalid temperature state before "
+                f"neutronics interpolation: {'; '.join(invalid)}. {ranges}"
+            )
     
     def get_residuals(self, X):
         X_HP, T_FP, phi_ng_hat_and_k = self.unpack(X)
@@ -153,7 +181,9 @@ class VapourReactor(Component):
         T_v  *= self.T_vap_ref
         T_FP *= self.T_cond
 
+        self._validate_temperature_state(T_HP, T_FP, T_v)
         Q_HP, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
+        self._validate_temperature_state(T_HP, T_FP, T_v, T_mod)
 
         T_HP_ave  = np.mean(
             T_HP[:self.cfg_HP.mesh.N_R * self.cfg_HP.mesh.N_evap],

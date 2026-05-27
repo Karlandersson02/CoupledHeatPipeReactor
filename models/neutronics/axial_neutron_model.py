@@ -16,11 +16,26 @@ class NeutronicsModel(Component):
         # temporary
         self.T_FP = np.full((self.cfg.mesh.N_Z*self.cfg.mesh.N_R), 900)
         self.T_HP = 900
-        self.T_M = 900
+        self.T_M  = 900
+
+        self.T_HP_static  = 900
+        self.T_M_static   = 900
+        self.T_FP_static  = 900
 
         self.Z = np.linspace(0, self.cfg.mesh.l, self.cfg.mesh.N_Z)
 
-        self.interpolator_model = None
+        MODEL_PATH = Path("./utils/rgi_surrogate.joblib")
+        interpolator_model = OpenMCTallyGridSurrogate()
+        interpolator_model = interpolator_model.load(MODEL_PATH)
+
+        self.interpolator_model = interpolator_model
+        self.variable_neutron_data = False
+
+    def set_variable_neutron_data(self, cond, T):
+        self.variable_neutron_data = cond
+        self.T_HP_static  = T
+        self.T_M_static   = T
+        self.T_FP_static  = T
 
     def initial_guess(self):
         phi_ng_initial = np.full((self.cfg.mesh.N_Z*self.cfg.energy.N_G), 1)
@@ -131,10 +146,42 @@ class NeutronicsModel(Component):
         return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
     
     def get_material_data_interp(self, T):
-        T_reshaped = T.reshape((self.cfg.mesh.N_Z,self.cfg.mesh.N_R))
-        T_mean = np.mean(T_reshaped, axis=1)
+        if self.variable_neutron_data:
+            T_reshaped = T.reshape((self.cfg.mesh.N_Z,self.cfg.mesh.N_R))
+            T_mean = np.mean(T_reshaped, axis=1)
+            X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_mean])
+        else:
+            X = np.array([[self.T_HP_static, self.T_FP_static, self.T_M_static] for i in range(self.cfg.mesh.N_Z)])
 
-        X = np.array([[self.T_HP, T_FP, self.T_M] for T_FP in T_mean])
+        if not np.all(np.isfinite(X)):
+            raise ValueError(
+                "Neutronics interpolator received non-finite temperatures: "
+                f"T_HP={self.T_HP}, T_M={self.T_M}, "
+                f"T_FP_mean_range=[{np.nanmin(X[:, 1]):.3f}, {np.nanmax(X[:, 1]):.3f}]"
+            )
+
+        # if self.variable_neutron_data:
+        #     bounds = self.interpolator_model.axes  # type: ignore[attr-defined]
+        #     if bounds is not None:
+        #         out_of_range = []
+        #         labels = ("T_HP", "T_FP", "T_M")
+        #         for axis_idx, axis_values in enumerate(bounds):
+        #             x_min = np.min(X[:, axis_idx])
+        #             x_max = np.max(X[:, axis_idx])
+        #             axis_min = np.min(axis_values)
+        #             axis_max = np.max(axis_values)
+        #             if x_min < axis_min or x_max > axis_max:
+        #                 out_of_range.append(
+        #                     f"{labels[axis_idx]}=[{x_min:.3f}, {x_max:.3f}] outside "
+        #                     f"[{axis_min:.3f}, {axis_max:.3f}]"
+        #                 )
+
+        #         if out_of_range:
+        #             raise ValueError(
+        #                 "Neutronics interpolator temperatures exceeded the surrogate "
+        #                 f"training domain: {', '.join(out_of_range)}"
+        #             )
+
         params = self.interpolator_model.predict_dict(X)   # type: ignore
 
         Diffusivity = np.zeros((len(params), self.cfg.energy.N_G))
@@ -156,145 +203,145 @@ class NeutronicsModel(Component):
 
         return Diffusivity, Sigma_t, Sigma_s0, Sigma_f, fission_number, Chi, kappa
     
-    def _repeat_over_temperature(self, values, T):
-        values = np.asarray(values, dtype=float)
-        return np.repeat(values[None], len(T), axis=0)
+    # def _repeat_over_temperature(self, values, T):
+    #     values = np.asarray(values, dtype=float)
+    #     return np.repeat(values[None], len(T), axis=0)
 
 
-    def calculate_diffusivity(self, T):
-        if self.cfg.energy.N_G == 8:
-            D = np.array([
-                1.873379, 0.940634, 0.809891, 0.795359,
-                0.801553, 0.732249, 0.630263, 1.438368
-            ])  # [cm]
-        else:
-            D = np.array([
-                1.2,   # group 1, fast [cm]
-                0.35,  # group 2, thermal [cm]
-            ])
+    # def calculate_diffusivity(self, T):
+    #     if self.cfg.energy.N_G == 8:
+    #         D = np.array([
+    #             1.873379, 0.940634, 0.809891, 0.795359,
+    #             0.801553, 0.732249, 0.630263, 1.438368
+    #         ])  # [cm]
+    #     else:
+    #         D = np.array([
+    #             1.2,   # group 1, fast [cm]
+    #             0.35,  # group 2, thermal [cm]
+    #         ])
 
-        return self._repeat_over_temperature(D, T)
-
-
-    def calculate_Sigma_t(self, T):
-        if self.cfg.energy.N_G == 8:
-            Sigma_t = np.array([
-                0.212918, 0.385936, 0.433878, 0.439159,
-                0.434345, 0.460764, 0.486712, 0.288787
-            ])  # [cm^-1]
-        else:
-            Sigma_a1 = 0.01
-            Sigma_a2 = 0.08
-            Sigma_s12 = 0.04
-            Sigma_s21 = 0.0
-
-            Sigma_t = np.array([
-                Sigma_a1 + Sigma_s12,
-                Sigma_a2 + Sigma_s21,
-            ])  # [cm^-1]
-
-        return self._repeat_over_temperature(Sigma_t, T)
+    #     return self._repeat_over_temperature(D, T)
 
 
-    def calculate_Sigma_s0(self, T):
-        if self.cfg.energy.N_G == 8:
-            Sigma_s0 = np.array([
-                [1.861927e-01, 2.573515e-02, 9.995288e-06, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-                [0.000000e+00, 3.692822e-01, 1.589830e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-                [0.000000e+00, 0.000000e+00, 4.148961e-01, 1.600025e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-                [0.000000e+00, 0.000000e+00, 0.000000e+00, 4.163120e-01, 1.253294e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00],
-                [0.000000e+00, 0.000000e+00, 0.000000e+00, 2.535302e-05, 4.066482e-01, 1.582596e-02, 8.742419e-07, 0.000000e+00],
-                [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 1.355158e-02, 4.168228e-01, 6.309109e-04, 1.209800e-06],
-                [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 1.073801e-01, 3.237823e-01, 0.000000e+00],
-                [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 2.854831e-01, 0.000000e+00, 0.000000e+00],
-            ])  # [cm^-1]
-        else:
-            Sigma_s12 = 0.04
-            Sigma_s21 = 0.0
+    # def calculate_Sigma_t(self, T):
+    #     if self.cfg.energy.N_G == 8:
+    #         Sigma_t = np.array([
+    #             0.212918, 0.385936, 0.433878, 0.439159,
+    #             0.434345, 0.460764, 0.486712, 0.288787
+    #         ])  # [cm^-1]
+    #     else:
+    #         Sigma_a1 = 0.01
+    #         Sigma_a2 = 0.08
+    #         Sigma_s12 = 0.04
+    #         Sigma_s21 = 0.0
 
-            Sigma_s0 = np.array([
-                [0.0,       Sigma_s12],
-                [Sigma_s21, 0.0      ],
-            ])  # [cm^-1]
+    #         Sigma_t = np.array([
+    #             Sigma_a1 + Sigma_s12,
+    #             Sigma_a2 + Sigma_s21,
+    #         ])  # [cm^-1]
 
-        return self._repeat_over_temperature(Sigma_s0, T)
+    #     return self._repeat_over_temperature(Sigma_t, T)
 
 
-    def calculate_Sigma_f(self, T):
-        if self.cfg.energy.N_G == 8:
-            Sigma_f = np.array([
-                0.000751, 0.000286, 0.000963, 0.003956,
-                0.006032, 0.023611, 0.043511, 0.0
-            ])  # [cm^-1]
-        else:
-            Sigma_f = np.array([
-                0.002,  # group 1, fast [cm^-1]
-                0.05,   # group 2, thermal [cm^-1]
-            ])
+    # def calculate_Sigma_s0(self, T):
+    #     if self.cfg.energy.N_G == 8:
+    #         Sigma_s0 = np.array([
+    #             [1.861927e-01, 2.573515e-02, 9.995288e-06, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+    #             [0.000000e+00, 3.692822e-01, 1.589830e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+    #             [0.000000e+00, 0.000000e+00, 4.148961e-01, 1.600025e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+    #             [0.000000e+00, 0.000000e+00, 0.000000e+00, 4.163120e-01, 1.253294e-02, 0.000000e+00, 0.000000e+00, 0.000000e+00],
+    #             [0.000000e+00, 0.000000e+00, 0.000000e+00, 2.535302e-05, 4.066482e-01, 1.582596e-02, 8.742419e-07, 0.000000e+00],
+    #             [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 1.355158e-02, 4.168228e-01, 6.309109e-04, 1.209800e-06],
+    #             [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 1.073801e-01, 3.237823e-01, 0.000000e+00],
+    #             [0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00, 2.854831e-01, 0.000000e+00, 0.000000e+00],
+    #         ])  # [cm^-1]
+    #     else:
+    #         Sigma_s12 = 0.04
+    #         Sigma_s21 = 0.0
 
-        return self._repeat_over_temperature(Sigma_f, T)
+    #         Sigma_s0 = np.array([
+    #             [0.0,       Sigma_s12],
+    #             [Sigma_s21, 0.0      ],
+    #         ])  # [cm^-1]
 
-
-    def calculate_nu(self, T):
-        if self.cfg.energy.N_G == 8:
-            nu = np.array([
-                2.714564, 2.444811, 2.433696, 2.434935,
-                2.436692, 2.436700, 2.436700, 0.0
-            ])  # [-]
-        else:
-            nuSigma_f1 = 0.005
-            nuSigma_f2 = 0.12
-
-            Sigma_f1 = 0.002
-            Sigma_f2 = 0.05
-
-            nu = np.array([
-                nuSigma_f1 / Sigma_f1,
-                nuSigma_f2 / Sigma_f2,
-            ])  # [-]
-
-        return self._repeat_over_temperature(nu, T)
+    #     return self._repeat_over_temperature(Sigma_s0, T)
 
 
-    def calculate_chi(self, T):
-        if self.cfg.energy.N_G == 8:
-            chi = np.array([
-                8.474541e-01, 1.516625e-01, 8.794743e-04, 3.858033e-06,
-                0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00
-            ])  # [-]
-        else:
-            chi = np.array([
-                1.0,  # all fission neutrons born into group 1, fast
-                0.0,
-            ])  # [-]
+    # def calculate_Sigma_f(self, T):
+    #     if self.cfg.energy.N_G == 8:
+    #         Sigma_f = np.array([
+    #             0.000751, 0.000286, 0.000963, 0.003956,
+    #             0.006032, 0.023611, 0.043511, 0.0
+    #         ])  # [cm^-1]
+    #     else:
+    #         Sigma_f = np.array([
+    #             0.002,  # group 1, fast [cm^-1]
+    #             0.05,   # group 2, thermal [cm^-1]
+    #         ])
 
-        return self._repeat_over_temperature(chi, T)
+    #     return self._repeat_over_temperature(Sigma_f, T)
 
 
-    def calculate_kappa(self, T):
-        if self.cfg.energy.N_G == 8:
-            kappa = np.array([
-                1.963227e+08, 1.934084e+08, 1.934085e+08, 1.934054e+08,
-                1.934054e+08, 1.934054e+08, 1.934054e+08, 0.000000e+00
-            ])  # [eV/fission]
-        else:
-            kappa = np.array([
-                2.0e8,
-                2.0e8,
-            ])  # [eV/fission]
+    # def calculate_nu(self, T):
+    #     if self.cfg.energy.N_G == 8:
+    #         nu = np.array([
+    #             2.714564, 2.444811, 2.433696, 2.434935,
+    #             2.436692, 2.436700, 2.436700, 0.0
+    #         ])  # [-]
+    #     else:
+    #         nuSigma_f1 = 0.005
+    #         nuSigma_f2 = 0.12
 
-        return self._repeat_over_temperature(kappa, T)
+    #         Sigma_f1 = 0.002
+    #         Sigma_f2 = 0.05
 
-    def calculate_parameters(self, T):
-        D        = self.calculate_diffusivity(T) * 1e-2
-        Sigma_t  = self.calculate_Sigma_t(T) * 1e2
-        Sigma_s0 = self.calculate_Sigma_s0(T) * 1e2
-        Sigma_f  = self.calculate_Sigma_f(T) * 1e2
-        nu       = self.calculate_nu(T)
-        chi      = self.calculate_chi(T)
-        kappa    = self.calculate_kappa(T) * 1.602e-19
+    #         nu = np.array([
+    #             nuSigma_f1 / Sigma_f1,
+    #             nuSigma_f2 / Sigma_f2,
+    #         ])  # [-]
 
-        return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
+    #     return self._repeat_over_temperature(nu, T)
+
+
+    # def calculate_chi(self, T):
+    #     if self.cfg.energy.N_G == 8:
+    #         chi = np.array([
+    #             8.474541e-01, 1.516625e-01, 8.794743e-04, 3.858033e-06,
+    #             0.000000e+00, 0.000000e+00, 0.000000e+00, 0.000000e+00
+    #         ])  # [-]
+    #     else:
+    #         chi = np.array([
+    #             1.0,  # all fission neutrons born into group 1, fast
+    #             0.0,
+    #         ])  # [-]
+
+    #     return self._repeat_over_temperature(chi, T)
+
+
+    # def calculate_kappa(self, T):
+    #     if self.cfg.energy.N_G == 8:
+    #         kappa = np.array([
+    #             1.963227e+08, 1.934084e+08, 1.934085e+08, 1.934054e+08,
+    #             1.934054e+08, 1.934054e+08, 1.934054e+08, 0.000000e+00
+    #         ])  # [eV/fission]
+    #     else:
+    #         kappa = np.array([
+    #             2.0e8,
+    #             2.0e8,
+    #         ])  # [eV/fission]
+
+    #     return self._repeat_over_temperature(kappa, T)
+
+    # def calculate_parameters(self, T):
+    #     D        = self.calculate_diffusivity(T) * 1e-2
+    #     Sigma_t  = self.calculate_Sigma_t(T) * 1e2
+    #     Sigma_s0 = self.calculate_Sigma_s0(T) * 1e2
+    #     Sigma_f  = self.calculate_Sigma_f(T) * 1e2
+    #     nu       = self.calculate_nu(T)
+    #     chi      = self.calculate_chi(T)
+    #     kappa    = self.calculate_kappa(T) * 1.602e-19
+
+    #     return D, Sigma_t, Sigma_s0, Sigma_f, nu, chi, kappa
 
 if __name__ == "__main__":  
     import matplotlib.pyplot as plt

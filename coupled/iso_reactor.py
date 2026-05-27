@@ -39,6 +39,9 @@ class Reactor(Component):
         self.heat_pipe_thermal_model.variable_k = cond
         self.fuel_pin_thermal_model.variable_k  = cond
 
+    def set_variable_neutron_data(self, cond, T=900):
+        self.neutron_flux_model.set_variable_neutron_data(cond, T)
+
     def set_interpolator_model(self, model):
         self.neutron_flux_model.interpolator_model = model
 
