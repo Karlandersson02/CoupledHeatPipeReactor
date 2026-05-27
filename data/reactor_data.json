@@ -23,7 +23,7 @@
             "h_cond": 550
         },
         "wick": {
-            "Is_annular": false,
+            "Is_annular": true,
             "K":1e-10,
             "r_pore": 0.00002,
             "porosity": 0.7
