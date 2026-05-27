@@ -41,6 +41,11 @@ class Solver:
         self.solution: Any | None = None
         self.save_iterates = save_iterates
 
+    def _heatpipe_velocity_grid(self, heatpipe: Any) -> np.ndarray:
+        dx = np.asarray(heatpipe.vapour.dx, dtype=float)
+        faces = np.concatenate(([0.0], np.cumsum(dx)))
+        return faces[1:-1]
+
     def _solve_component(
         self,
         component: Component,
@@ -88,11 +93,11 @@ class Solver:
     ) -> np.ndarray:
         x_out = current.unpack(x_sol)
 
-        z_coarse = np.linspace(1.0, current.cfg.geometry.l_tot, current.cfg.mesh.N_Z)
-        r_coarse = np.linspace(1.0, current.cfg.geometry.r_outer, current.cfg.mesh.N_R)
+        z_coarse = np.asarray(current.Z, dtype=float)
+        r_coarse = np.asarray(current.R, dtype=float)
 
-        z_fine = np.linspace(1.0, nxt.cfg.geometry.l_tot, nxt.cfg.mesh.N_Z)
-        r_fine = np.linspace(1.0, nxt.cfg.geometry.r_outer, nxt.cfg.mesh.N_R)
+        z_fine = np.asarray(nxt.Z, dtype=float)
+        r_fine = np.asarray(nxt.R, dtype=float)
 
         field = x_out[0].reshape(current.cfg.mesh.N_Z, current.cfg.mesh.N_R)
         field_interp = interpolate_2d(z_coarse, r_coarse, z_fine, r_fine, field)
@@ -108,16 +113,16 @@ class Solver:
     ) -> np.ndarray:
         x_out = current.unpack(x_sol)
 
-        z_coarse = np.linspace(1.0, current.cfg.geometry.l, current.cfg.mesh.N_Z)
-        r_coarse = np.linspace(1.0, current.cfg.geometry.r, current.cfg.mesh.N_R)
+        z_coarse = np.asarray(current.Z, dtype=float)
+        r_coarse = np.asarray(current.R, dtype=float)
 
-        z_fine = np.linspace(1.0, nxt.cfg.geometry.l, nxt.cfg.mesh.N_Z)
-        r_fine = np.linspace(1.0, nxt.cfg.geometry.r, nxt.cfg.mesh.N_R)
+        z_fine = np.asarray(nxt.Z, dtype=float)
+        r_fine = np.asarray(nxt.R, dtype=float)
 
         field = x_out[0].reshape(current.cfg.mesh.N_Z, current.cfg.mesh.N_R)
         field_interp = interpolate_2d(z_coarse, r_coarse, z_fine, r_fine, field)
 
-        return nxt.pack((field_interp, x_out[-1]))
+        return nxt.pack((field_interp,))
 
     def _transfer_neutronics(
         self,
@@ -127,11 +132,11 @@ class Solver:
     ) -> np.ndarray:
         x_out = current.unpack(x_sol)
 
-        z_coarse = np.linspace(1.0, current.cfg.mesh.l, current.cfg.mesh.N_Z)
-        g_coarse = np.linspace(1.0, current.cfg.energy.N_G, current.cfg.energy.N_G)
+        z_coarse = np.asarray(current.Z, dtype=float)
+        g_coarse = np.arange(current.cfg.energy.N_G, dtype=float)
 
-        z_fine = np.linspace(1.0, nxt.cfg.mesh.l, nxt.cfg.mesh.N_Z)
-        g_fine = np.linspace(1.0, nxt.cfg.energy.N_G, nxt.cfg.energy.N_G)
+        z_fine = np.asarray(nxt.Z, dtype=float)
+        g_fine = np.arange(nxt.cfg.energy.N_G, dtype=float)
 
         field = x_out[0].reshape(current.cfg.mesh.N_Z, current.cfg.energy.N_G)
         field_interp = interpolate_2d(z_coarse, g_coarse, z_fine, g_fine, field)
@@ -168,13 +173,13 @@ class Solver:
     ) -> np.ndarray:
         x_out = current.unpack(x_sol)
 
-        z_coarse   = np.linspace(1.0, current.cfg.geometry.l_tot, current.cfg.mesh.N_Z)
-        z_coarse_u = np.linspace(1.0, current.cfg.geometry.l_tot, current.cfg.mesh.N_Z - 1)
-        r_coarse   = np.linspace(1.0, current.cfg.geometry.r_outer, current.cfg.mesh.N_R)
+        z_coarse = np.asarray(current.solid.Z, dtype=float)
+        z_coarse_u = self._heatpipe_velocity_grid(current)
+        r_coarse = np.asarray(current.solid.R, dtype=float)
 
-        z_fine   = np.linspace(1.0, nxt.cfg.geometry.l_tot, nxt.cfg.mesh.N_Z)
-        z_fine_u = np.linspace(1.0, nxt.cfg.geometry.l_tot, nxt.cfg.mesh.N_Z - 1)
-        r_fine   = np.linspace(1.0, nxt.cfg.geometry.r_outer, nxt.cfg.mesh.N_R)
+        z_fine = np.asarray(nxt.solid.Z, dtype=float)
+        z_fine_u = self._heatpipe_velocity_grid(nxt)
+        r_fine = np.asarray(nxt.solid.R, dtype=float)
 
         T_solid = x_out[0].reshape(current.cfg.mesh.N_Z, current.cfg.mesh.N_R)
         T_solid_interp = interpolate_2d(z_coarse, r_coarse, z_fine, r_fine, T_solid)
