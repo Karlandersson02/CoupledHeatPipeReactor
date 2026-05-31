@@ -3,8 +3,12 @@ if __name__ == "__main__":
     import numpy as np
     import matplotlib.pyplot as plt
 
+    from matplotlib.path import Path
+    from matplotlib.patches import PathPatch
+    import matplotlib.transforms as mtransforms
+
     from models.heatpipe.liquid_discretised_model import LiquidDiscretised
-    from coupled_systems.heatpipe import Heatpipe
+    from coupled.heatpipe import Heatpipe
 
     from data.dataclass import *
     from utils.solver import Solver
@@ -39,8 +43,7 @@ if __name__ == "__main__":
 
         cfg = HeatpipeConfig(geom, mesh, mat, wick, bc)
 
-        # Your coupled Heatpipe example uses resolve_mesh().
-        # resolve_geometry() is kept to ensure the radii/thicknesses are consistent.
+        # The coupled Heatpipe model expects the resolved mesh.
         cfg = cfg.resolve_mesh()
 
         return cfg
@@ -66,32 +69,6 @@ if __name__ == "__main__":
             T_HP_flat, u, T_v = heatpipe.unpack(solver.solution)
 
         return heatpipe, T_HP_flat, u, T_v
-
-
-    def make_liquid_input(T_HP, T_v):
-        """
-        LiquidDiscretised expects one flat array:
-
-            [flattened solid temperature field, scalar vapour temperature]
-
-        The coupled Heatpipe solver may return T_HP either as:
-            - flat array of shape (N_Z * N_R,)
-            - 2D array of shape (N_Z, N_R)
-
-        Therefore, we explicitly flatten it before appending T_v.
-        """
-
-        T_HP_flat = np.asarray(T_HP, dtype=float).reshape(-1)
-
-        T_v_arr = np.asarray(T_v, dtype=float)
-        T_v_scalar = float(np.mean(T_v_arr))
-
-        T_liquid_input = np.concatenate([
-            T_HP_flat,
-            np.array([T_v_scalar], dtype=float),
-        ])
-
-        return T_liquid_input, T_v_scalar
 
 
     def make_axial_cell_widths(cfg):
@@ -144,6 +121,7 @@ if __name__ == "__main__":
 
         return z_evap_end, z_cond_start
 
+
     def make_axial_pressure_coordinates(cfg):
         """
         Coordinates corresponding to pressure profiles computed using np.cumsum.
@@ -152,20 +130,7 @@ if __name__ == "__main__":
         downstream/right edge of each cell, not the cell centre.
         """
 
-        dz_evap = np.ones(cfg.mesh.N_evap) * (
-            cfg.geometry.l_evap / cfg.mesh.N_evap
-        )
-
-        dz_adiabatic = np.ones(cfg.mesh.N_adiabatic) * (
-            cfg.geometry.l_adiabatic / cfg.mesh.N_adiabatic
-        )
-
-        dz_cond = np.ones(cfg.mesh.N_cond) * (
-            cfg.geometry.l_cond / cfg.mesh.N_cond
-        )
-
-        dz = np.concatenate([dz_evap, dz_adiabatic, dz_cond])
-
+        dz = make_axial_cell_widths(cfg)
         z_edges = np.concatenate([[0.0], np.cumsum(dz)])
 
         # Drop the first edge, because np.cumsum gives values after each cell.
@@ -174,14 +139,21 @@ if __name__ == "__main__":
         return z_pressure
 
 
-    def calculate_busse_vapour_pressure_profile(cfg, liquid, T_v_scalar):
+    def calculate_busse_vapour_pressure_profile(cfg, liquid):
         """
         Computes the Busse vapour pressure-drop profile.
 
-        This is the standalone replacement for the old method:
+        Updated for the current LiquidDiscretised implementation, where the
+        liquid model is initialized with the full heat-pipe solution:
 
-            HeatPipeLimitations.analytical_pressure_drop_Busse()
+            [T_solid_full, u_v_full, T_v_full]
+
+        The vapour properties are evaluated at the mean vapour temperature, while
+        the effective heat load is inferred from the maximum accumulated mass flow.
         """
+
+        T_v_profile = np.asarray(liquid.T_v_full, dtype=float).reshape(-1)
+        T_v_scalar = float(np.mean(T_v_profile))
 
         h_fg = calculate_Na_h_fg(T_v_scalar)
         rho_v = calculate_Na_rho_v(T_v_scalar)
@@ -192,11 +164,19 @@ if __name__ == "__main__":
         L_a = cfg.geometry.l_adiabatic
         L_c = cfg.geometry.l_cond
 
-        # Same convention as before: Q_tot is inferred from the liquid model.
-        mdot = liquid.get_mdot()
-        Q_tot = mdot[cfg.mesh.N_evap] * h_fg
+        # Trigger the current local-temperature-based mdot calculation.
+        mdot_cell = np.asarray(liquid.get_mdot(), dtype=float)
 
-        print(f"Actual Q_tot from liquid model = {Q_tot:.6e} W")
+        # Prefer the face mass-flow profile, since this is the accumulated flow.
+        if hasattr(liquid, "mdot_faces"):
+            mdot_peak = float(np.nanmax(np.abs(liquid.mdot_faces)))
+        else:
+            mdot_peak = float(np.nanmax(np.abs(mdot_cell)))
+
+        Q_tot = mdot_peak * h_fg
+
+        print(f"Actual Q_tot from current liquid model = {Q_tot:.6e} W")
+        print(f"Mean vapour temperature used in Busse model = {T_v_scalar:.6e} K")
 
         Re_re = Q_tot / (2.0 * np.pi * L_e * h_fg * mu_v)
         Re_rc = Q_tot / (2.0 * np.pi * L_c * h_fg * mu_v)
@@ -227,7 +207,7 @@ if __name__ == "__main__":
 
         dP_cond = (
             -dP_evap
-            - dP_adiabatic
+            -dP_adiabatic
             - (4.0 / np.pi)
             * (mu_v * Q_tot)
             / (rho_v * R_v**4 * h_fg)
@@ -284,23 +264,11 @@ if __name__ == "__main__":
         P_v = np.cumsum(dpdz * dz)
 
         return P_v
-    
+
 
     def add_vertical_curly_brace(ax, x, y0, y1, width, color="black", lw=1.5):
-        from matplotlib.path import Path
-        from matplotlib.patches import PathPatch
         """
         Draw a vertical curly brace opening to the right.
-        
-        Parameters
-        ----------
-        ax : matplotlib axis
-        x : float
-            x-position of the brace
-        y0, y1 : float
-            lower and upper y-values
-        width : float
-            horizontal size of the brace
         """
 
         if y1 < y0:
@@ -310,19 +278,23 @@ if __name__ == "__main__":
         dy = y1 - y0
 
         verts = [
-            (x, y0),                              # start
-            (x - width, y0),                      # control 1
-            (x - width, ym - 0.20 * dy),          # control 2
-            (x - 2* width, ym),                              # midpoint
-            (x - width, ym + 0.20 * dy),          # control 3
-            (x - width, y1),                      # control 4
-            (x, y1),                              # end
+            (x, y0),
+            (x - width, y0),
+            (x - width, ym - 0.20 * dy),
+            (x - 2.0 * width, ym),
+            (x - width, ym + 0.20 * dy),
+            (x - width, y1),
+            (x, y1),
         ]
 
         codes = [
             Path.MOVETO,
-            Path.CURVE4, Path.CURVE4, Path.CURVE4,
-            Path.CURVE4, Path.CURVE4, Path.CURVE4,
+            Path.CURVE4,
+            Path.CURVE4,
+            Path.CURVE4,
+            Path.CURVE4,
+            Path.CURVE4,
+            Path.CURVE4,
         ]
 
         patch = PathPatch(
@@ -335,7 +307,58 @@ if __name__ == "__main__":
         )
 
         ax.add_patch(patch)
+
         return patch
+
+
+    def add_section_arrows(ax, cfg, *, y_arrow, y_text, color="0.25"):
+        """
+        Add double-headed arrows in the lower empty part of the plot,
+        below the pressure curves.
+
+        Here both x and y are in data coordinates, which makes the placement
+        robust after setting the y-limits.
+        """
+
+        z0 = 0.0
+        z_evap_end = cfg.geometry.l_evap
+        z_cond_start = cfg.geometry.l_evap + cfg.geometry.l_adiabatic
+        z_end = (
+            cfg.geometry.l_evap
+            + cfg.geometry.l_adiabatic
+            + cfg.geometry.l_cond
+        )
+
+        sections = [
+            (z_cond_start, z_end, "Condenser"),
+        ]
+
+        for x0, x1, label in sections:
+            ax.annotate(
+                "",
+                xy=(x1, y_arrow),
+                xytext=(x0, y_arrow),
+                arrowprops=dict(
+                    arrowstyle="<->",
+                    color=color,
+                    lw=1.4,
+                    shrinkA=0,
+                    shrinkB=0,
+                ),
+                annotation_clip=False,
+                zorder=6,
+            )
+
+            ax.text(
+                0.5 * (x0 + x1),
+                y_text,
+                label,
+                ha="center",
+                va="center",
+                fontsize=15,
+                color=color,
+                zorder=6,
+            )
 
 
     def compute_wet_point_profiles(data, N_R, N_Z, Q_tot):
@@ -343,7 +366,7 @@ if __name__ == "__main__":
         Full workflow for one case:
             1. build cfg
             2. solve coupled heatpipe
-            3. build liquid model
+            3. build liquid model using the current full-solution interface
             4. compute liquid pressure profile
             5. compute Busse vapour pressure profile
             6. shift profiles to find wet point
@@ -358,15 +381,29 @@ if __name__ == "__main__":
 
         heatpipe, T_HP_flat, u, T_v = solve_coupled_heatpipe(cfg)
 
-        T_liquid_input, T_v_scalar = make_liquid_input(T_HP_flat, T_v)
+        # ------------------------------------------------------------------
+        # Current LiquidDiscretised interface
+        # ------------------------------------------------------------------
+        # The updated liquid model expects the full heat-pipe solution:
+        #
+        #     [solid temperature field, vapour velocity field, vapour temperature]
+        #
+        # It internally converts this to the old flattened format where needed.
+        # ------------------------------------------------------------------
 
-        liquid = LiquidDiscretised(cfg, T_liquid_input)
+        T_HP_full = [
+            np.asarray(T_HP_flat, dtype=float),
+            np.asarray(u, dtype=float),
+            np.asarray(T_v, dtype=float),
+        ]
+
+        liquid = LiquidDiscretised(cfg, T_HP_full)
 
         P_l = liquid.get_pressure_drop_profile()
+
         P_v = calculate_busse_vapour_pressure_profile(
             cfg=cfg,
             liquid=liquid,
-            T_v_scalar=T_v_scalar,
         )
 
         P_l = np.asarray(P_l, dtype=float)
@@ -413,173 +450,287 @@ if __name__ == "__main__":
             "P_v": P_v_plot,
             "P_l": P_l_plot,
             "i_wet": i_wet,
-            "T_v_scalar": T_v_scalar,
+            "T_v_scalar": float(np.mean(np.asarray(T_v, dtype=float))),
             "T_v_profile": T_v,
             "T_HP_flat": T_HP_flat,
             "u": u,
+            "liquid": liquid,
+            "heatpipe": heatpipe,
         }
 
 
-    def plot_wet_point_case(result, title, Q_tot, save_path_pdf=None):
+    def plot_wet_point_cases_1x2(
+        results,
+        titles,
+        Q_tots,
+        save_path_pdf=None,
+        lower_empty_fraction=0.42,
+    ):
         """
-        Plots one wet-point case in a thesis-ready style.
+        Plots two wet-point cases in a single 1x2 thesis-ready figure.
+
+        Parameters
+        ----------
+        results : list[dict]
+            List containing the two result dictionaries returned by
+            compute_wet_point_profiles(...).
+
+        titles : list[str]
+            Subfigure titles.
+
+        Q_tots : list[float]
+            Total heat loads. Kept as input in case you want to add them to titles
+            or annotations later.
+
+        save_path_pdf : str or None
+            If given, the combined figure is saved to this path.
+
+        lower_empty_fraction : float
+            Extra y-axis space below the pressure curves, expressed as a fraction
+            of the pressure-profile range. This creates room for the section
+            arrows below the curves.
         """
-
-        cfg = result["cfg"]
-        z = result["z"]
-        P_v = result["P_v"]
-        P_l = result["P_l"]
-        i_wet = result["i_wet"]
-
-        z_wet = z[i_wet]
-        P_wet = P_v[i_wet]
-
-        # Position and size of curly brace
-        z_span = z[-1] - z[0]
-        x_brace = z[0] - 0.035 * z_span
-        brace_width = 0.015 * z_span
-
-        z_evap_end, z_cond_start = get_discrete_section_boundaries(z, cfg)
 
         plt.rcParams.update({
-            "font.size": 25,
+            "font.family": "serif",
+            "font.serif": ["Computer Modern Roman"],
+            "mathtext.fontset": "cm",
+            "font.size": 24,
             "axes.titlesize": 20,
-            "axes.labelsize": 17,
-            "legend.fontsize": 20,
-            "lines.linewidth": 2.0,
+            "axes.labelsize": 20,
+            "legend.fontsize": 18,
+            "lines.linewidth": 2.2,
+            "text.usetex": True,
         })
 
-        fig, ax = plt.subplots(figsize=(10, 5.5))
+        fig, axs = plt.subplots(
+            1,
+            2,
+            figsize=(18, 5.8),
+            constrained_layout=True,
+        )
 
-        # Thesis-friendly colors
-        # vap_color = "#2F6B5F"   # muted dark green
-        # liq_color = "#8C4C5A"   # muted burgundy
+        fig.set_constrained_layout_pads(
+            w_pad=0.02,
+            h_pad=0.06,
+            wspace=0.04,
+            hspace=0.04,
+        )
 
-        # vap_color = "#922323"     # muted dark blue
-        # liq_color = "#156615"     # muted orange
-
-        # vap_color = "#2A7F7F"   # muted teal
-        # liq_color = "#A65A5A"   # muted red
-
-        # vap_color = "#1F6F68"   # dark muted teal
-        # liq_color = "#9A4F4F"   # dark muted red
-
-        vap_color = "#EC4E20"   
-        liq_color = "#016FB9"   
-
+        # Color scheme
+        vap_color = "#EC4E20"
+        liq_color = "#016FB9"
         boundary_color = "0.55"
+        wet_point_color = "black"
 
-        # Vapour: solid until wet point
-        ax.plot(
-            z[:i_wet + 1],
-            P_v[:i_wet + 1],
-            color=vap_color,
-            linestyle="-",
-            label="Vapour"
-        )
+        for ax, result, title, Q_tot in zip(axs, results, titles, Q_tots):
+            cfg = result["cfg"]
+            z = result["z"]
+            P_v_plot = np.asarray(result["P_v"], dtype=float)
+            P_l_plot = np.asarray(result["P_l"], dtype=float)
+            i_wet = result["i_wet"]
 
-        # Vapour: dashed beyond wet point
-        ax.plot(
-            z[i_wet:],
-            P_v[i_wet:],
-            color=vap_color,
-            linestyle="--",
-            alpha=0.55
-        )
+            z_wet = z[i_wet]
+            P_wet = P_v_plot[i_wet]
 
-        # Liquid profile
-        ax.plot(
-            z,
-            P_l,
-            color=liq_color,
-            linestyle="-",
-            label="Liquid"
-        )
+            # ------------------------------------------------------------------
+            # Geometry and section boundaries
+            # ------------------------------------------------------------------
 
-        # Section boundaries
-        ax.axvline(
-            z_evap_end,
-            linestyle="--",
-            color=boundary_color,
-            linewidth=1.5,
-            label="End of evaporator",
-            alpha=0.8
-        )
+            z_span = z[-1] - z[0]
 
-        ax.axvline(
-            z_cond_start,
-            linestyle="--",
-            color=boundary_color,
-            linewidth=1.5,
-            label="Start of condenser",
-            alpha=0.8
-        )
+            z_evap_end, z_cond_start = get_discrete_section_boundaries(z, cfg)
 
-        # Wet point
-        ax.scatter(
-            [z_wet],
-            [P_wet],
-            s=110,
-            color="black",
-            zorder=5,
-            label="Wet point"
-        )
+            # ------------------------------------------------------------------
+            # Vapour pressure profile
+            # ------------------------------------------------------------------
 
-        # Total pressure-drop bracket:
-        # from the lowest liquid-pressure point to the start of the vapour pressure fall
-        P_top_brace = P_v[0]
-        P_bottom_brace = np.min(P_l)   # or P_l[0] if that is always the minimum
+            ax.plot(
+                z[:i_wet + 1],
+                P_v_plot[:i_wet + 1],
+                color=vap_color,
+                linestyle="-",
+                label="Vapour",
+            )
 
-        z_span = z[-1] - z[0]
-        x_brace = z[0] - 0.02 * z_span
-        brace_width = 0.015 * z_span
+            ax.plot(
+                z[i_wet:],
+                P_v_plot[i_wet:],
+                color=vap_color,
+                linestyle="--",
+                alpha=0.55,
+                label="Vapour, unavailable",
+            )
 
-        add_vertical_curly_brace(
-            ax,
-            x=x_brace,
-            y0=P_bottom_brace,
-            y1=P_top_brace,
-            width=brace_width,
-            color="black",
-            lw=1.8,
-        )
+            # ------------------------------------------------------------------
+            # Liquid pressure profile
+            # ------------------------------------------------------------------
 
-        # Optional label next to brace
-        ax.text(
-            x_brace - 5 * brace_width,
-            0.5 * (P_top_brace + P_bottom_brace),
-            r"$\Delta P_{\text{loss}}$",
-            rotation=90,
-            va="center",
-            ha="center",
-        )
+            ax.plot(
+                z,
+                P_l_plot,
+                color=liq_color,
+                linestyle="-",
+                label="Liquid",
+            )
 
-        # Minimal axes
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_xlabel("")
-        # ax.set_ylabel(r"$\Delta P$")
+            # ------------------------------------------------------------------
+            # Section boundaries
+            # ------------------------------------------------------------------
 
-        ax.set_xlim(x_brace - 7.0 * brace_width, z[-1] + 0.02 * z_span)
+            ax.axvline(
+                z_evap_end,
+                linestyle="--",
+                color=boundary_color,
+                linewidth=1.5,
+                alpha=0.8,
+                label="Section boundary",
+            )
 
-        # ax.set_title(title, pad=10)
+            ax.axvline(
+                z_cond_start,
+                linestyle="--",
+                color=boundary_color,
+                linewidth=1.5,
+                alpha=0.8,
+            )
 
-        for spine in ax.spines.values():
-            spine.set_linewidth(1.0)
+            # ------------------------------------------------------------------
+            # Wet point
+            # ------------------------------------------------------------------
 
-        ax.grid(alpha=0.15, linewidth=0.6)
+            ax.scatter(
+                [z_wet],
+                [P_wet],
+                s=110,
+                color=wet_point_color,
+                zorder=5,
+                label="Wet point",
+            )
 
-        ax.legend(
-            loc="lower right",
+            # ------------------------------------------------------------------
+            # Total pressure-drop brace
+            # ------------------------------------------------------------------
+
+            P_top_brace = P_v_plot[0]
+            P_bottom_brace = np.min(P_l_plot)
+
+            x_brace = z[0] - 0.020 * z_span
+            brace_width = 0.014 * z_span
+
+            add_vertical_curly_brace(
+                ax,
+                x=x_brace,
+                y0=P_bottom_brace,
+                y1=P_top_brace,
+                width=brace_width,
+                color="black",
+                lw=1.8,
+            )
+
+            ax.text(
+                x_brace - 5.2 * brace_width,
+                0.5 * (P_top_brace + P_bottom_brace),
+                r"$\Delta P_{\mathrm{loss}}$",
+                rotation=90,
+                va="center",
+                ha="center",
+                fontsize=20,
+            )
+
+            # ------------------------------------------------------------------
+            # Axis limits
+            # ------------------------------------------------------------------
+            # Create empty space below the pressure curves. The section arrows are
+            # placed in this lower empty region.
+            # ------------------------------------------------------------------
+
+            y_bottom = min(np.min(P_v_plot), np.min(P_l_plot))
+            y_top = max(np.max(P_v_plot), np.max(P_l_plot))
+            y_range = y_top - y_bottom
+
+            if y_range <= 0.0:
+                y_range = 1.0
+
+            y_min_plot = y_bottom - lower_empty_fraction * y_range
+            y_max_plot = y_top + 0.12 * y_range
+
+            ax.set_ylim(y_min_plot, y_max_plot)
+
+            # ------------------------------------------------------------------
+            # Section arrows below the pressure curves
+            # ------------------------------------------------------------------
+
+            y_full_range = y_max_plot - y_min_plot
+
+            y_arrow = y_min_plot + 0.15 * y_full_range
+            y_text = y_min_plot + 0.07 * y_full_range
+
+            add_section_arrows(
+                ax=ax,
+                cfg=cfg,
+                y_arrow=y_arrow,
+                y_text=y_text,
+                color="0.25",
+            )
+
+            # ------------------------------------------------------------------
+            # Axis styling
+            # ------------------------------------------------------------------
+
+            ax.set_title(title, pad=8)
+
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+
+            ax.set_xlim(
+                x_brace - 7.0 * brace_width,
+                z[-1] + 0.025 * z_span,
+            )
+
+            for spine in ax.spines.values():
+                spine.set_linewidth(1.0)
+
+            ax.grid(alpha=0.15, linewidth=0.6)
+
+        # ----------------------------------------------------------------------
+        # Shared legend above figure
+        # ----------------------------------------------------------------------
+
+        handles, labels = [], []
+
+        for ax in axs:
+            h, l = ax.get_legend_handles_labels()
+            handles.extend(h)
+            labels.extend(l)
+
+        # Remove duplicate legend entries while preserving order.
+        unique_handles = []
+        unique_labels = []
+
+        for handle, label in zip(handles, labels):
+            if label not in unique_labels:
+                unique_handles.append(handle)
+                unique_labels.append(label)
+
+        fig.legend(
+            unique_handles,
+            unique_labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 1.12),
+            ncol=5,
             frameon=True,
-            fancybox=False,
-            framealpha=0.95,
-            borderpad=0.8
+            columnspacing=1.2,
+            handlelength=2.0,
+            handletextpad=0.6,
+            borderaxespad=0.0,
         )
 
-        fig.tight_layout()
         if save_path_pdf is not None:
             fig.savefig(save_path_pdf, format="pdf", bbox_inches="tight")
+
         plt.show()
 
 
@@ -597,12 +748,10 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
 
     N_R = 10
-    N_Z = 200
+    N_Z = 50
 
-    # These values are placeholders. Tune them until the wet point appears
-    # where you want it.
     case_close_to_condenser_start = {
-        "Q_tot": 1.0e3,
+        "Q_tot": 0.7e3,
         "title": "Wet point close to condenser start",
     }
 
@@ -623,12 +772,6 @@ if __name__ == "__main__":
         Q_tot=case_close_to_condenser_start["Q_tot"],
     )
 
-    plot_wet_point_case(
-        result=result_start,
-        title="Wet point close to condenser start",
-        Q_tot=case_close_to_condenser_start["Q_tot"],
-        save_path_pdf="wet_point_close_to_condenser_start.pdf",
-    )
 
     # -------------------------------------------------------------------------
     # Case 2: wet point close to condenser end
@@ -641,9 +784,24 @@ if __name__ == "__main__":
         Q_tot=case_close_to_condenser_end["Q_tot"],
     )
 
-    plot_wet_point_case(
-        result=result_end,
-        title="Wet point close to condenser end",
-        Q_tot=case_close_to_condenser_end["Q_tot"],
-        save_path_pdf="wet_point_close_to_condenser_end.pdf",
+
+    # -------------------------------------------------------------------------
+    # Combined 1x2 figure
+    # -------------------------------------------------------------------------
+
+    plot_wet_point_cases_1x2(
+        results=[
+            result_start,
+            result_end,
+        ],
+        titles=[
+            case_close_to_condenser_start["title"],
+            case_close_to_condenser_end["title"],
+        ],
+        Q_tots=[
+            case_close_to_condenser_start["Q_tot"],
+            case_close_to_condenser_end["Q_tot"],
+        ],
+        save_path_pdf="wet_point_cases_1x2.pdf",
+        lower_empty_fraction=0.42,
     )

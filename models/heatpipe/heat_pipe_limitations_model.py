@@ -21,7 +21,7 @@ class HeatPipeLimitations:
 
         Q_sonic       = self.calculate_analytical_sonic_limit(T_span)
         Q_cap         = self.calculate_analytical_capillary_limit(T_span)
-        Q_boil        = self.calculate_analytical_boiling_limit_new(T_span)
+        Q_boil        = self.calculate_analytical_boiling_limit(T_span)
         Q_entrainment = self.calculate_analytical_entrainment_limit(T_span)
 
         plt.semilogy(T_span, Q_sonic,       label="Sonic")
@@ -760,7 +760,7 @@ if __name__ == "__main__":
     import json
     with open("./data/reactor_data.json", "r") as f:
         data_guoju = json.load(f)
-        data = data_guoju["data_guoju_1000"]
+        data = data_guoju["HeatPipe"]
 
     geom = d_class.HeatpipeGeometry(**data["geometry"])
     mesh = d_class.HeatpipeMesh(N_R=20, N_Z=50)
