@@ -100,7 +100,7 @@
       "k_gap": 66.2,
       "k_wall": 19.0,
       "h_vap": 1e6,
-      "h_cond": 62.6
+      "h_cond": 84.5
     },
     "wick": {
       "Is_annular": false,
@@ -136,7 +136,7 @@
       "k_gap": 66.2,
       "k_wall": 19.0,
       "h_vap": 1e6,
-      "h_cond": 62.6
+      "h_cond": 54.14
     },
     "wick": {
       "Is_annular": false,

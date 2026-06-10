@@ -767,7 +767,7 @@ if __name__ == "__main__":
     ensure_dir(TRAINING_DATA_DIR)
     ensure_dir(MODEL_DIR)
 
-    FORCE_RECOMPUTE_DATA = True
+    FORCE_RECOMPUTE_DATA = False
 
     X, Y, specs, metadata = build_or_load_training_data(force_recompute=FORCE_RECOMPUTE_DATA)
     surrogate = train_and_save_model(X, Y, specs, metadata)

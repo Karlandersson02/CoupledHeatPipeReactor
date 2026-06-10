@@ -12,6 +12,7 @@ class VapourDiscretised(Component):
         self.T_HP = None
         self.dx = self._calculate_dx()
         self.loss_mult = 1
+        self.use_cc = False
 
         if T_HP is not None and not np.isscalar(T_HP):
             self.set_T_HP(T_HP)
@@ -63,7 +64,6 @@ class VapourDiscretised(Component):
 
         Ti = T_v[1:]
         Tim1 = T_v[:-1]
-        Tbar = 0.5 * (Ti + Tim1)
 
         p = s_props.calculate_Na_pressure_v(T_v)
         dp = p[1:] - p[:-1]
@@ -71,13 +71,18 @@ class VapourDiscretised(Component):
         rho_full = np.asarray(self.calculate_rho(T_v), dtype=float)
         rhoi = rho_full[1:]
         rhoim1 = rho_full[:-1]
-        rhobar = np.asarray(self.calculate_rho(Tbar), dtype=float)
 
-        h_fg_bar = np.asarray(self.calculate_hfg(Tbar), dtype=float)
-        lami = self._calculate_friction_factor(T_v, u)
+        lami = self._calculate_friction_factor(Tim1, ui)
         Gamma = self._calculate_Gamma(T_v)
 
         Dh = 2 * self.cfg.geometry.r_vapour
+
+        beta = self.loss_mult
+        c_s_i = self.calculate_c_s(rhoi, p[1:])
+        c_s_im1 = self.calculate_c_s(rhoim1, p[:-1])
+
+        if self.use_cc:
+            h_fg_im1 = np.asarray(self.calculate_hfg(Tim1), dtype=float)
 
         r1 = np.zeros_like(T_v)
 
@@ -96,27 +101,38 @@ class VapourDiscretised(Component):
             - self.dx[-1] * Gamma[-1]
         )
 
-        r2 = (
-            self.loss_mult * (rhoi * ui**2 - rhoim1 * uim1**2)
-            # loss_mult * (rhoi * (ui + uip1)/2*ui - rhoim1 * (ui + uim1)/2*uim1)
-            # + h_fg_bar * rhobar * ((Ti - Tim1) / Tbar)
-            + dp
-            + self.dx[1:] * lami * (1.0 / (2*Dh)) * rhobar * ui * np.abs(ui)
-        )
+        if self.use_cc:
+            r2 = (
+                beta * (rhoi * ui**2 - rhoim1 * uim1**2)
+                + h_fg_im1 * rhoim1 * ((Ti - Tim1) / Tim1)
+                + self.dx[1:] * lami * (1.0 / (2*Dh)) * rhoim1 * ui * np.abs(ui)
+            )
+        else:
+            r2 = (
+                beta * (rhoi * ui**2 - rhoim1 * uim1**2)
+                + dp
+                + self.dx[1:] * lami * (1.0 / (2*Dh)) * rhoim1 * ui * np.abs(ui)
+            )
 
         return np.r_[r1, r2]
     
     def calculate_rho(self, T):
-        return s_props.calculate_Na_rho_v(T)
-        # return s_props.calculate_rho_cc(T)
+        if not self.use_cc:
+            return s_props.calculate_Na_rho_v(T)
+        else:
+            return s_props.calculate_rho_cc(T)
     
     def calculate_hfg(self, T):
-        return s_props.calculate_Na_h_fg(T)
-        return np.full_like(T, 4.182e6)
+        if not self.use_cc:
+            return s_props.calculate_Na_h_fg(T)
+        else:
+            return np.full_like(T, 4.182e6)
     
     def calculate_viscosity(self, T):
-        return s_props.calculate_Na_viscosity_v(T)
-        # return np.full_like(T, 1.80e-5)
+        if not self.use_cc:
+            return s_props.calculate_Na_viscosity_v(T)
+        else:
+            return np.full_like(T, 1.80e-5)
 
     def _calculate_dx(self):
         dx = np.zeros(self.cfg.mesh.N_Z, dtype=float)
@@ -136,30 +152,12 @@ class VapourDiscretised(Component):
             raise ValueError("T_HP has not been set.")
         return self.T_HP[:, 0]
 
-    # def _calculate_Gamma(self, T_v):
-    #     T_int = self._get_interface_temperature()
-
-    #     q_bis_surface = np.zeros(self.cfg.mesh.N_Z, dtype=float)
-
-    #     evap = slice(0, self.cfg.mesh.N_evap)
-    #     cond = slice(self.cfg.mesh.N_Z - self.cfg.mesh.N_cond, self.cfg.mesh.N_Z)
-
-    #     q_bis_surface[evap] = self.cfg.material.h_vap * (T_int[evap] - T_v[evap])
-    #     q_bis_surface[cond] = self.cfg.material.h_vap * (T_int[cond] - T_v[cond])
-
-    #     a_W = 2.0 / self.cfg.geometry.r_vapour
-    #     h_fg = np.asarray(self.calculate_hfg(T_v), dtype=float)
-
-    #     return a_W * q_bis_surface / h_fg
+    def calculate_c_s(self, rho, p):
+        gamma = 5 / 3
+        return np.sqrt(gamma * p / rho)
 
     def _calculate_Gamma(self, T_v):
         T_int = self._get_interface_temperature()
-
-        # r_center_inner = np.sqrt(
-        #     (self.cfg.geometry.r_outer**2 - self.cfg.geometry.r_vapour**2)
-        #     / (2.0 * self.cfg.mesh.N_R)
-        #     + self.cfg.geometry.r_vapour**2
-        # )
 
         dr = (self.cfg.geometry.r_outer - self.cfg.geometry.r_vapour) / self.cfg.mesh.N_R
         r_center_inner = self.cfg.geometry.r_vapour + 0.5 * dr
@@ -188,8 +186,8 @@ class VapourDiscretised(Component):
 
         return a_W * q_bis_surface / h_fg
 
-    def _calculate_friction_factor(self, T_v, u):
-        Re = self._calculate_reynolds(T_v, u)
+    def _calculate_friction_factor(self, Tim1, ui):
+        Re = self._calculate_reynolds(Tim1, ui)
         Re_safe = np.maximum(Re, 1e-10)
 
         lam = np.zeros_like(Re_safe)
@@ -206,12 +204,11 @@ class VapourDiscretised(Component):
 
         return lam
 
-    def _calculate_reynolds(self, T_v, u):
-        Tbar = 0.5 * (T_v[1:] + T_v[:-1])
-        rhobar = np.asarray(self.calculate_rho(Tbar), dtype=float)
-        mu = np.asarray(self.calculate_viscosity(Tbar), dtype=float)
+    def _calculate_reynolds(self, Tim1, ui):
+        rhoim1 = np.asarray(self.calculate_rho(Tim1), dtype=float)
+        muim1 = np.asarray(self.calculate_viscosity(Tim1), dtype=float)
 
-        return rhobar * np.abs(u) * 2.0 * self.cfg.geometry.r_vapour / mu
+        return rhoim1 * np.abs(ui) * 2.0 * self.cfg.geometry.r_vapour / muim1
 
     def _build_initial_velocity(self, T_v):
         mdot_faces = self._calculate_mdot_faces(T_v)
