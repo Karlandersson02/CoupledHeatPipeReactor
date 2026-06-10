@@ -78,7 +78,7 @@ class Solver:
 
         # print("fsolve status:", ier)
         print("fsolve message:", mesg)
-        # print("final residual L2 norm:", loss_l2)
+        print(f"final residual L2 norm: {loss_l2:.3e}")
         # print("final residual MSE:", loss_mse)
         # print("final residual max abs:", loss_max)
         # print("number of function evaluations:", info["nfev"])
