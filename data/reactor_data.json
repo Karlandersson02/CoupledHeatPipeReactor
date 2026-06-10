@@ -38,7 +38,7 @@
         "geometry": {
             "delta_gap": 1e-4, 
             "delta_wall": 6e-4,
-            "r": 0.0065,
+            "r": 0.0072,
             "l": 1.5
         },
         "energy": {
