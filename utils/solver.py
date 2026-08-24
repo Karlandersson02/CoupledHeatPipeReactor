@@ -5,7 +5,7 @@ from typing import Sequence, Callable, Any
 from scipy.optimize import fsolve, newton_krylov
 from scipy.interpolate import RegularGridInterpolator
 
-from models.component import Component
+from models.model import AbstractModel
 from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
 from models.fuel_pin.fuel_pin_model import FuelPin
 from models.neutronics.axial_neutron_model import NeutronicsModel
@@ -34,7 +34,7 @@ def interpolate_2d(
 
 
 class Solver:
-    def __init__(self, components: Sequence[Component], iterate: bool = False, save_iterates: bool = True):
+    def __init__(self, components: Sequence[AbstractModel], iterate: bool = False, save_iterates: bool = True):
         self.components = list(components)
         self.iterate = iterate
         self.solutions: list[Any] = []
@@ -48,7 +48,7 @@ class Solver:
 
     def _solve_component(
         self,
-        component: Component,
+        component: AbstractModel,
         x_initial: np.ndarray,
         solver_fn: Callable[..., np.ndarray],
         solver_kwargs: dict[str, Any] | None = None,
@@ -238,8 +238,8 @@ class Solver:
 
     def _get_next_initial_guess(
         self,
-        current: Component,
-        nxt: Component,
+        current: AbstractModel,
+        nxt: AbstractModel,
         x_sol: np.ndarray,
     ) -> np.ndarray:
         if self._is_type(current, "HeatpipeDiscretised") and self._is_type(nxt, "HeatpipeDiscretised"):

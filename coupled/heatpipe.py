@@ -4,10 +4,10 @@ import utils.sodium_properties as s_props
 
 from models.heatpipe.solid_discretised_vapour_model import HeatpipeDiscretisedVapour
 from models.heatpipe.vapour_discretised_model import VapourDiscretised
-from models.component import Component
+from models.model import AbstractModel
 from data.dataclass import HeatpipeConfigResolved
 
-class Heatpipe(Component):
+class Heatpipe(AbstractModel):
 
     def __init__(self, cfg: HeatpipeConfigResolved):
         self.cfg = cfg

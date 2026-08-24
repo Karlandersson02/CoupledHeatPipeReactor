@@ -3,12 +3,12 @@ from pathlib import Path
 
 import data.dataclass as d_class
 
-from models.component import Component
+from models.model import AbstractModel
 from utils.interpolator import OpenMCTallyGridSurrogate
 
 import numpy as np
 
-class NeutronicsModel(Component):
+class NeutronicsModel(AbstractModel):
 
     def __init__(self, config):
         self.cfg = config

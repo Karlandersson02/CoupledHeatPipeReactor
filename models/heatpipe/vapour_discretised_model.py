@@ -4,9 +4,9 @@ import data.dataclass as d_class
 import utils.sodium_properties as s_props
 import utils.material_properties as m_props
 
-from models.component import Component
+from models.model import AbstractModel
 
-class VapourDiscretised(Component):
+class VapourDiscretised(AbstractModel):
     def __init__(self, config: d_class.HeatpipeConfigResolved, T_HP=None):
         self.cfg = config
         self.T_HP = None

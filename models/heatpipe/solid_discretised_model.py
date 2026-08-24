@@ -6,10 +6,10 @@ import utils.material_properties as m_props
 from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import spsolve
 
-from models.component import Component
+from models.model import AbstractModel
 
 
-class HeatpipeDiscretised(Component):
+class HeatpipeDiscretised(AbstractModel):
     def __init__(self, config: d_class.HeatpipeConfigResolved):
 
         self.cfg = config

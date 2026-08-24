@@ -8,12 +8,12 @@ from scipy.optimize import fsolve
 from coupled.heatpipe import Heatpipe
 from models.neutronics.axial_neutron_model import NeutronicsModel
 from models.fuel_pin.fuel_pin_model import FuelPin
-from models.component import Component
+from models.model import AbstractModel
 
 from utils.solver import Solver
 
 
-class VapourReactor(Component):
+class VapourReactor(AbstractModel):
 
     def __init__(self, cfg_R: d_class.ReactorConfigResolved):
 

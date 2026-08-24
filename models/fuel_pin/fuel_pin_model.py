@@ -3,9 +3,9 @@ import numpy as np
 import utils.material_properties as m_props
 import data.dataclass as d_class
 
-from models.component import Component
+from models.model import AbstractModel
 
-class FuelPin(Component):
+class FuelPin(AbstractModel):
     def __init__(self, config: d_class.FuelPinConfigResolved):
 
         self.cfg = config

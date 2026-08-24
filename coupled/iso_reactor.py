@@ -6,10 +6,10 @@ import utils.material_properties as m_props
 from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
 from models.neutronics.axial_neutron_model import NeutronicsModel
 from models.fuel_pin.fuel_pin_model import FuelPin
-from models.component import Component
+from models.model import AbstractModel
 
 
-class Reactor(Component):
+class Reactor(AbstractModel):
     def __init__(self, cfg_R: d_class.ReactorConfigResolved):
 
         self.cfg_R = cfg_R
