@@ -2,8 +2,8 @@ import numpy as np
 
 import utils.sodium_properties as s_props
 
-from models.heatpipe.solid_discretised_vapour_model import HeatpipeDiscretisedVapour
-from models.heatpipe.vapour_discretised_model import VapourDiscretised
+from models.heatpipe.solid import Solid
+from models.heatpipe.vapour import Vapour
 from models.model import AbstractModel
 from data.dataclass import HeatpipeConfigResolved
 
@@ -12,8 +12,8 @@ class Heatpipe(AbstractModel):
     def __init__(self, cfg: HeatpipeConfigResolved):
         self.cfg = cfg
 
-        self.solid  = HeatpipeDiscretisedVapour(cfg)
-        self.vapour = VapourDiscretised(cfg, -1)
+        self.solid  = Solid(cfg)
+        self.vapour = Vapour(cfg, -1)
 
         # N_HP, N_u, N_v
         self.N_HP = self.cfg.mesh.N_Z * self.cfg.mesh.N_R

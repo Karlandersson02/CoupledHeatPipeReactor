@@ -6,7 +6,7 @@ import utils.material_properties as m_props
 
 from models.model import AbstractModel
 
-class VapourDiscretised(AbstractModel):
+class Vapour(AbstractModel):
     def __init__(self, config: d_class.HeatpipeConfigResolved, T_HP=None):
         self.cfg = config
         self.T_HP = None
@@ -233,7 +233,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import matplotlib as mpl
     import json
-    from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
+    from models.reduced_heatpipes.iso_heatpipe import IsoHeatpipe
     from utils.solver import Solver
 
     with open("./data/vapour_data.json", "r") as f:
@@ -248,10 +248,10 @@ if __name__ == "__main__":
     cfg = d_class.HeatpipeConfig(geom, mesh, mat, wick, pipe_bc)
     cfg = cfg.resolve_geometry()
 
-    heatpipe = HeatpipeDiscretised(cfg)
+    heatpipe = IsoHeatpipe(cfg)
     T_HP = heatpipe.linear_solve()
 
-    vapour = VapourDiscretised(cfg, T_HP)
+    vapour = Vapour(cfg, T_HP)
     solver = Solver([vapour])
     solver.newton_krylov()
 

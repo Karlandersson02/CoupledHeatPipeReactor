@@ -8,7 +8,7 @@ from utils.interpolator import OpenMCTallyGridSurrogate
 
 import numpy as np
 
-class NeutronicsModel(AbstractModel):
+class Neutronics(AbstractModel):
 
     def __init__(self, config):
         self.cfg = config
@@ -364,7 +364,7 @@ if __name__ == "__main__":
     interpolator_model = OpenMCTallyGridSurrogate()
     interpolator_model = interpolator_model.load(MODEL_PATH)
 
-    neutronics_model = NeutronicsModel(cfg)
+    neutronics_model = Neutronics(cfg)
     neutronics_model.interpolator_model = interpolator_model # type: ignore
 
     solver = Solver([neutronics_model])

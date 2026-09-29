@@ -5,7 +5,7 @@ import data.dataclass as d_class
 
 from utils.sodium_properties import calculate_Na_rho_l, calculate_Na_viscosity_l, calculate_Na_h_fg
 
-class LiquidDiscretised:
+class WickLiquid:
     def __init__(self, config: d_class.HeatpipeConfigResolved, T_HP):
         self.cfg = config
         self.T_HP = T_HP
@@ -73,7 +73,7 @@ class LiquidDiscretised:
 
 if __name__ == "__main__":
     import json
-    from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
+    from models.reduced_heatpipes.iso_heatpipe import IsoHeatpipe
     from utils.solver import Solver
 
     with open("./data/vapour_data.json", "r") as f:
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     cfg = d_class.HeatpipeConfig(geom, mesh, mat, wick, bc)
     cfg = cfg.resolve_geometry()
 
-    heatpipe = HeatpipeDiscretised(cfg)
+    heatpipe = IsoHeatpipe(cfg)
     solver = Solver([heatpipe])
     solver.fsolve()
 

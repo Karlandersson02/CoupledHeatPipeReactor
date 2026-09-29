@@ -1,72 +1,103 @@
-# Heat pipe model runner
+# Coupled Modelling of a heat pipe reactor
+This repository is a part of a Master's project found [here](https://odr.chalmers.se/items/b35fd56b-2b26-492e-8d28-b2f4dd06144d).
 
-This repository contains python code that runs and visualises one of two steady-state heat pipe models: a lumped **thermal resistance network** (`network`) or a higher-resolution 2D (axial and radial) **discretised** model (`discretised`).
+In spring of 2026 we developed a reduced/simplified model of a single fuel assembly in a heat pipe reactor, a microreactor concept currently being explored by [Westinghouse](https://westinghousenuclear.com/innovation/evinci-microreactor/) and [Antares](https://antaresindustries.com), among others. The important components of such a reactor are contained in the reactor core and consists of wicked heat pipes, a graphite moderating material, and fuel rods. Implementations of these components and the multi-physics coupling inbetween can be found in this repository.
 
-All constants (geometry, boundary conditions, mesh sizes, material parameters, and output settings) are stored in `config.json`.
+## Usage
 
-## Requirements
+Install the Python dependencies from the repository root:
 
-- Python 3.10+
-- `numpy`
-- `matplotlib`
-
-```sh
-pip install numpy matplotlib
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-## How to run
+> [!Note]
+> The full list of Python packages can be found in [requirements.txt](requirements.txt).
+> Run the examples from the repository root so that the relative paths to the
+> reactor data and the neutron-data surrogate, `utils/rgi_surrogate.joblib`, resolve correctly.
 
-Run the solver with exactly one model argument:
+The [demo notebook](demo.ipynb) contains an example of the workflow below. Open it
+in a notebook editor such as VS Code and select the Python environment containing
+the installed dependencies, or run the following code blocks in order in a Python script.
 
-```sh
-python solve_heatpipe.py network
-python solve_heatpipe.py discretised
+Setting up and simulating the fuel assembly of the reactor is done in three steps:
+
+### Step 1: Specify the reactor
+
+The specifiers in [data/dataclass.py](data/dataclass.py) describe the geometry,
+mesh, materials, boundary conditions, and energy settings of each component.
+The heat pipe, fuel pin, and neutronics configurations are combined into a
+`ReactorConfig`. Calling its `resolve_mesh()` method produces a resolved
+configuration with compatible component meshes, including matching the fuel pin
+and neutronics axial meshes to the heat pipe evaporator.
+
+The `generate_config` helper builds these specifiers from
+[data/reactor_data.json](data/reactor_data.json) and calls `resolve_mesh()` for you:
+
+```python
+import json
+
+from utils.iso_reactor_utils import generate_config
+
+with open("data/reactor_data.json", "r") as f:
+    data = json.load(f)
+
+# Requested radial cells in the heat pipe and fuel pin, and axial heat pipe cells.
+cfg_coarse = generate_config(data, N_R_HP=15, N_R_FP=15, N_Z=30)
+cfg_fine = generate_config(data, N_R_HP=30, N_R_FP=30, N_Z=60)
 ```
 
-By default the script reads `config.json` in the current directory. To use another config file:
+Edit the JSON values, or the loaded `data` dictionary before generating the
+configurations, to change the reactor inputs. Mesh resolution can adjust the
+requested cell counts to fit the component geometry; the resolved counts are
+available through `cfg.HP.mesh`, `cfg.FP.mesh`, and `cfg.N.mesh`.
 
-```sh
-python solve_heatpipe.py network --config configs/case1.json
+### Step 2: Create the models and solve
+
+Instantiate a `Reactor` for each configuration. This couples the heat pipe,
+fuel pin, and neutronics models. The example first solves a coarse model with
+fixed thermal conductivities and neutron data, then enables temperature-dependent
+properties on the finer mesh:
+
+```python
+from models.reactors.reactor import Reactor
+from utils.solver import Solver
+
+reactor_coarse = Reactor(cfg_coarse)
+reactor_coarse.set_variable_k(False)
+reactor_coarse.set_variable_neutron_data(False)
+
+reactor_fine = Reactor(cfg_fine)
+reactor_fine.set_variable_k(True)
+reactor_fine.set_variable_neutron_data(True)
+
+solver = Solver([reactor_coarse, reactor_fine], iterate=True)
+solver.fsolve()
 ```
 
-## Configuration
+With `iterate=True`, the solver transfers the coarse solution to the next mesh
+as its initial guess. For a single configuration, use `Solver([reactor_coarse])`.
+The solver prints the SciPy convergence message and final residual norm; check
+these before interpreting the results.
 
-Edit `config.json` to change:
-- **Geometry**: `D_v`, `delta_wick`, `delta_wall`, `l_evap`, `l_adiabatic`, `l_cond`
-- **Boundary conditions**: `T_infc`, `Q_total`, `h_cond`, `h_vap`
-- **Network model**: `network_model.k`
-- **Discretised model**: `N_*` mesh sizes and `k_wall`, `k_wick`
-- **Output behaviour**: `output.base_dir`, `output.save_figures`, `output.show_figures`
+### Step 3: Inspect and visualise the results
 
-The file `configure.py` contains the logic to:
-- load configuration
-- build model inputs
-- create output folders
-- generate reports
+`solver.solutions` contains the post-processed result for each model, in the same
+order as the input list. `solver.solution` contains the final model's result.
+For `Reactor`, unpack it as follows:
 
-`solve_heatpipe.py` is intentionally kept minimal and only handles CLI argument parsing and dispatch.
+```python
+(T_solid, u_vapour, T_vapour), T_fuel_pin, (neutron_flux, k_eff) = solver.solution
+print(f"Effective multiplication factor: {k_eff:.5f}")
 
-## Outputs
+from utils.reactor_utils import plot_reactor_solutions
 
-Each run writes a timestamped folder under `output.base_dir` (default: `outputs/`), for example:
-
-```
-outputs/2026-02-12_14-03-22_network/
-outputs/2026-02-12_14-03-22_discretised/
+plot_reactor_solutions(solver)
 ```
 
-Each output folder contains:
-- `report.md` — summary including full input config and key outputs
-- `config_used.json` — the exact config used for the run
-- `network_temperatures.txt` — pretty-printed temperature table (network model)
-- `temperature_distribution.png` — saved figure (discretised model, if enabled)
-
-## Project layout (relevant files)
-
-- `solve_heatpipe.py` — CLI entrypoint (clean wrapper)
-- `configure.py` — configuration + run orchestration
-- `config.json` — all tunable parameters
-- `models/heat_network_model.py` — network solver
-- `models/heat_discretised_model.py` — discretised solver
-- `visualisation/visualise_network_results.py` — prints/saves network table
-- `visualisation/visualise_discretised_results.py` — plots/saves temperature distribution
+The results include heat pipe solid and vapour temperatures, vapour velocity,
+fuel pin temperatures, the neutron flux for each energy group, and the effective
+multiplication factor. Temperatures are in kelvin. The plotting helper compares
+temperature, velocity, and neutron flux profiles across the solved models.

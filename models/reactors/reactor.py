@@ -5,15 +5,15 @@ import utils.material_properties as m_props
 
 from scipy.optimize import fsolve
 
-from coupled.heatpipe import Heatpipe
-from models.neutronics.axial_neutron_model import NeutronicsModel
-from models.fuel_pin.fuel_pin_model import FuelPin
+from models.heatpipe.heatpipe import Heatpipe
+from models.neutronics.neutronics import Neutronics
+from models.fuel_pin.fuel_pin import FuelPin
 from models.model import AbstractModel
 
 from utils.solver import Solver
 
 
-class VapourReactor(AbstractModel):
+class Reactor(AbstractModel):
 
     def __init__(self, cfg_R: d_class.ReactorConfigResolved):
 
@@ -23,9 +23,9 @@ class VapourReactor(AbstractModel):
         self.cfg_FP: d_class.FuelPinConfigResolved = cfg_R.FP
         self.cfg_N: d_class.NeutronicsConfigResolved = cfg_R.N
 
-        self.heatpipe               = Heatpipe(self.cfg_HP)
-        self.fuel_pin_thermal_model = FuelPin(self.cfg_FP)
-        self.neutron_flux_model     = NeutronicsModel(self.cfg_N)
+        self.heatpipe   = Heatpipe(self.cfg_HP)
+        self.fuel_pin   = FuelPin(self.cfg_FP)
+        self.neutronics = Neutronics(self.cfg_N)
         
         self.T_cond = 300.
         self.T_vap_ref = 2000
@@ -48,11 +48,11 @@ class VapourReactor(AbstractModel):
 
     def set_variable_k(self, cond: bool):
         self.heatpipe.set_variable_k(cond)
-        self.fuel_pin_thermal_model.variable_k = cond
+        self.fuel_pin.variable_k = cond
         self.variable_r_eff = cond
 
     def set_variable_neutron_data(self, cond, T=900):
-        self.neutron_flux_model.set_variable_neutron_data(cond, T)
+        self.neutronics.set_variable_neutron_data(cond, T)
 
     def initial_guess(self):
         i = np.arange(self.cfg_HP.mesh.N_evap, dtype=float)
@@ -109,7 +109,7 @@ class VapourReactor(AbstractModel):
             self.cfg_FP.mesh.N_R,
         )
 
-        _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(
+        _, _, _, Sigma_f, _, _, kappa = self.neutronics.get_material_data(
             T_FP_flat
         )
 
@@ -164,7 +164,7 @@ class VapourReactor(AbstractModel):
                 for name, values in arrays.items()
             )
             raise ValueError(
-                "VapourReactor encountered an invalid temperature state before "
+                "Reactor encountered an invalid temperature state before "
                 f"neutronics interpolation: {'; '.join(invalid)}. {ranges}"
             )
     
@@ -191,34 +191,34 @@ class VapourReactor(AbstractModel):
         )
         T_mod_ave = np.mean(T_mod)
 
-        self.neutron_flux_model.T_FP = T_FP
-        self.neutron_flux_model.T_M  = T_mod_ave
-        self.neutron_flux_model.T_HP = T_HP_ave
+        self.neutronics.T_FP = T_FP
+        self.neutronics.T_M  = T_mod_ave
+        self.neutronics.T_HP = T_HP_ave
 
         qr = self.calculate_qr(T_FP, phi_ng_hat)
 
         self.heatpipe.cfg.bc.Q = Q_HP
         res_cond_HP = self.heatpipe.get_residuals(X_HP)
 
-        self.fuel_pin_thermal_model.qr = qr
-        self.fuel_pin_thermal_model.T_mod = T_mod
-        res_cond_FP = self.fuel_pin_thermal_model.get_residuals(T_FP)
+        self.fuel_pin.qr = qr
+        self.fuel_pin.T_mod = T_mod
+        res_cond_FP = self.fuel_pin.get_residuals(T_FP)
 
-        res_flux = self.neutron_flux_model.get_residuals(phi_ng_hat_and_k)
+        res_flux = self.neutronics.get_residuals(phi_ng_hat_and_k)
 
         return np.r_[res_cond_HP, res_cond_FP, res_flux]
     
 
     # def calculate_qr(self, T_FP, phi_ng_hat):
-    #     _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
+    #     _, _, _, Sigma_f, _, _, kappa = self.neutronics.get_material_data(T_FP)
 
-    #     qr_rel = np.sum(phi_ng_hat.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G) * Sigma_f * kappa * self.fuel_pin_thermal_model.Delta_V, axis=1) # W
+    #     qr_rel = np.sum(phi_ng_hat.reshape(self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G) * Sigma_f * kappa * self.fuel_pin.Delta_V, axis=1) # W
     #     power_rel = np.sum(qr_rel)
 
     #     return qr_rel * self.cfg_N.energy.power / (power_rel * self.cfg_FP.mesh.N_fuel)
 
     def calculate_qr(self, T_FP, phi_ng_hat):
-        _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
+        _, _, _, Sigma_f, _, _, kappa = self.neutronics.get_material_data(T_FP)
 
         phi_ng_hat = phi_ng_hat.reshape(
             self.cfg_N.mesh.N_Z,
@@ -230,7 +230,7 @@ class VapourReactor(AbstractModel):
             axis=1,
         )
 
-        V_fuel = self.fuel_pin_thermal_model.Delta_V[:self.cfg_FP.mesh.N_fuel]
+        V_fuel = self.fuel_pin.Delta_V[:self.cfg_FP.mesh.N_fuel]
 
         if not np.allclose(V_fuel, V_fuel[0]):
             raise ValueError(
@@ -253,10 +253,10 @@ class VapourReactor(AbstractModel):
         T_edge_FP = T_fp[:, -1]
         T_edge_HP = T_hp_solid[evap, -1]
 
-        if self.fuel_pin_thermal_model.variable_k:
-            k_fp_edge = self.fuel_pin_thermal_model.generate_k_matrix(T_fp)[:, -1]
+        if self.fuel_pin.variable_k:
+            k_fp_edge = self.fuel_pin.generate_k_matrix(T_fp)[:, -1]
         else:
-            k_fp_edge = self.fuel_pin_thermal_model.generate_k_matrix()[:, -1]
+            k_fp_edge = self.fuel_pin.generate_k_matrix()[:, -1]
 
         if self.heatpipe.solid.variable_k:
             k_hp_edge = self.heatpipe.solid._generate_k_matrix(T_hp_solid)[evap, -1]
@@ -266,10 +266,10 @@ class VapourReactor(AbstractModel):
         r_fp_outer = self.cfg_FP.geometry.r
         r_hp_outer = self.cfg_HP.geometry.r_outer
 
-        r_fp_center_outer = self.fuel_pin_thermal_model.R[-1]
+        r_fp_center_outer = self.fuel_pin.R[-1]
         r_hp_center_outer = self.heatpipe.solid.R[-1]
 
-        Delta_z_fp = self.fuel_pin_thermal_model.Delta_Z
+        Delta_z_fp = self.fuel_pin.Delta_Z
         Delta_z_hp = self.cfg_HP.geometry.l_evap / self.cfg_HP.mesh.N_evap
 
         R_fp_cond = np.log(r_fp_outer / r_fp_center_outer) / (
@@ -372,11 +372,11 @@ class VapourReactor(AbstractModel):
             dtype=float,
         )
 
-        self.neutron_flux_model.T_FP = T_FP
-        self.neutron_flux_model.T_M  = np.mean(T_mod)
-        self.neutron_flux_model.T_HP = T_HP_ave
+        self.neutronics.T_FP = T_FP
+        self.neutronics.T_M  = np.mean(T_mod)
+        self.neutronics.T_HP = T_HP_ave
 
-        return self.neutron_flux_model.get_residuals(phi_ng_hat_and_k)
+        return self.neutronics.get_residuals(phi_ng_hat_and_k)
     
     def get_residuals_fuel_pin_block(self, T_FP_scaled, X_HP_scaled, phi_ng_hat_and_k):
         """
@@ -397,10 +397,10 @@ class VapourReactor(AbstractModel):
         _, T_mod = self.calculate_HP_FP_boundary_cond(T_FP, T_HP)
         qr = self.calculate_qr(T_FP, phi_ng_hat)
 
-        self.fuel_pin_thermal_model.qr = qr
-        self.fuel_pin_thermal_model.T_mod = T_mod
+        self.fuel_pin.qr = qr
+        self.fuel_pin.T_mod = T_mod
 
-        return self.fuel_pin_thermal_model.get_residuals(T_FP)
+        return self.fuel_pin.get_residuals(T_FP)
     # -------------------------------------------------------------------------
     # Picard solve
     # -------------------------------------------------------------------------
@@ -619,7 +619,7 @@ if __name__ == "__main__":
     cfg_R = d_class.ReactorConfig(cfg_HP, cfg_FP, cfg_N)
     cfg_R = cfg_R.resolve_mesh()
 
-    vapour_reactor = VapourReactor(cfg_R)
+    vapour_reactor = Reactor(cfg_R)
     vapour_reactor.set_variable_k(True)
 
     solver = Solver([vapour_reactor])

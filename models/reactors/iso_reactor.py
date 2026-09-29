@@ -3,13 +3,13 @@ import numpy as np
 import data.dataclass as d_class
 import utils.material_properties as m_props
 
-from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
-from models.neutronics.axial_neutron_model import NeutronicsModel
-from models.fuel_pin.fuel_pin_model import FuelPin
+from models.reduced_heatpipes.iso_heatpipe import IsoHeatpipe
+from models.neutronics.neutronics import Neutronics
+from models.fuel_pin.fuel_pin import FuelPin
 from models.model import AbstractModel
 
 
-class Reactor(AbstractModel):
+class IsoReactor(AbstractModel):
     def __init__(self, cfg_R: d_class.ReactorConfigResolved):
 
         self.cfg_R = cfg_R
@@ -18,9 +18,9 @@ class Reactor(AbstractModel):
         self.cfg_FP = cfg_R.FP
         self.cfg_N = cfg_R.N
 
-        self.heat_pipe_thermal_model = HeatpipeDiscretised(self.cfg_HP)
-        self.fuel_pin_thermal_model  = FuelPin(self.cfg_FP)
-        self.neutron_flux_model      = NeutronicsModel(self.cfg_N)
+        self.iso_heatpipe = IsoHeatpipe(self.cfg_HP)
+        self.fuel_pin     = FuelPin(self.cfg_FP)
+        self.neutronics   = Neutronics(self.cfg_N)
         
         self.T_cond = 300.
 
@@ -36,14 +36,14 @@ class Reactor(AbstractModel):
         self.r_eff_temperature = 1100           # used if variable_r_eff is False
 
     def set_variable_k(self, cond: bool):
-        self.heat_pipe_thermal_model.variable_k = cond
-        self.fuel_pin_thermal_model.variable_k  = cond
+        self.iso_heatpipe.variable_k = cond
+        self.fuel_pin.variable_k  = cond
 
     def set_variable_neutron_data(self, cond, T=900):
-        self.neutron_flux_model.set_variable_neutron_data(cond, T)
+        self.neutronics.set_variable_neutron_data(cond, T)
 
     def set_interpolator_model(self, model):
-        self.neutron_flux_model.interpolator_model = model
+        self.neutronics.interpolator_model = model
 
     def assemble(self):
         return
@@ -59,7 +59,7 @@ class Reactor(AbstractModel):
         k          = phi_ng_hat_and_k[-1]
 
         # power normalisation
-        _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
+        _, _, _, Sigma_f, _, _, kappa = self.neutronics.get_material_data(T_FP)
         phi_n_g_hat = phi_ng_hat.reshape((self.cfg_N.mesh.N_Z, self.cfg_N.energy.N_G))
         power_density = kappa * Sigma_f * phi_n_g_hat
         power = np.sum(power_density) * self.cfg_N.mesh.cross_sectional_area * self.cfg_N.mesh.delta_Z
@@ -95,24 +95,24 @@ class Reactor(AbstractModel):
         T_FP_ave  = np.mean(T_FP.reshape(self.cfg_FP.mesh.N_Z, self.cfg_FP.mesh.N_R), axis=1)
         T_mod_ave = np.mean(T_mod)
         
-        self.neutron_flux_model.T_FP = T_FP
-        self.neutron_flux_model.T_M  = T_mod_ave
-        self.neutron_flux_model.T_HP = T_HP_ave
-        res_flux = self.neutron_flux_model.get_residuals(phi_ng_hat_and_k)
+        self.neutronics.T_FP = T_FP
+        self.neutronics.T_M  = T_mod_ave
+        self.neutronics.T_HP = T_HP_ave
+        res_flux = self.neutronics.get_residuals(phi_ng_hat_and_k)
 
-        self.heat_pipe_thermal_model.cfg.bc.Q = Q_HP
-        res_cond_HP = self.heat_pipe_thermal_model.get_residuals(T_HP)
+        self.iso_heatpipe.cfg.bc.Q = Q_HP
+        res_cond_HP = self.iso_heatpipe.get_residuals(T_HP)
 
         qr = self.calculate_qr(T_FP, phi_ng_hat_and_k[:-1])
         
-        self.fuel_pin_thermal_model.qr = qr
-        self.fuel_pin_thermal_model.T_mod = T_mod
-        res_cond_FP = self.fuel_pin_thermal_model.get_residuals(T_FP)
+        self.fuel_pin.qr = qr
+        self.fuel_pin.T_mod = T_mod
+        res_cond_FP = self.fuel_pin.get_residuals(T_FP)
 
         return np.r_[res_cond_HP, res_cond_FP, res_flux]
 
     def calculate_qr(self, T_FP, phi_ng_hat):
-        _, _, _, Sigma_f, _, _, kappa = self.neutron_flux_model.get_material_data(T_FP)
+        _, _, _, Sigma_f, _, _, kappa = self.neutronics.get_material_data(T_FP)
 
         phi_ng_hat = phi_ng_hat.reshape(
             self.cfg_N.mesh.N_Z,
@@ -124,7 +124,7 @@ class Reactor(AbstractModel):
             axis=1,
         )
 
-        V_fuel = self.fuel_pin_thermal_model.Delta_V[:self.cfg_FP.mesh.N_fuel]
+        V_fuel = self.fuel_pin.Delta_V[:self.cfg_FP.mesh.N_fuel]
 
         qr_rel = q_vol_z * np.mean(V_fuel)
         power_rel = np.sum(q_vol_z) * np.sum(V_fuel)
@@ -140,23 +140,23 @@ class Reactor(AbstractModel):
         T_edge_FP = T_fp[:, -1]
         T_edge_HP = T_hp_solid[evap, -1]
 
-        if self.fuel_pin_thermal_model.variable_k:
-            k_fp_edge = self.fuel_pin_thermal_model.generate_k_matrix(T_fp)[:, -1]
+        if self.fuel_pin.variable_k:
+            k_fp_edge = self.fuel_pin.generate_k_matrix(T_fp)[:, -1]
         else:
-            k_fp_edge = self.fuel_pin_thermal_model.generate_k_matrix()[:, -1]
+            k_fp_edge = self.fuel_pin.generate_k_matrix()[:, -1]
 
-        if self.heat_pipe_thermal_model.variable_k:
-            k_hp_edge = self.heat_pipe_thermal_model._generate_k_matrix(T_hp_solid)[evap, -1]
+        if self.iso_heatpipe.variable_k:
+            k_hp_edge = self.iso_heatpipe._generate_k_matrix(T_hp_solid)[evap, -1]
         else:
-            k_hp_edge = self.heat_pipe_thermal_model._generate_k_matrix()[evap, -1]
+            k_hp_edge = self.iso_heatpipe._generate_k_matrix()[evap, -1]
 
         r_fp_outer = self.cfg_FP.geometry.r
         r_hp_outer = self.cfg_HP.geometry.r_outer
 
-        r_fp_center_outer = self.fuel_pin_thermal_model.R[-1]
-        r_hp_center_outer = self.heat_pipe_thermal_model.R[-1]
+        r_fp_center_outer = self.fuel_pin.R[-1]
+        r_hp_center_outer = self.iso_heatpipe.R[-1]
 
-        Delta_z_fp = self.fuel_pin_thermal_model.Delta_Z
+        Delta_z_fp = self.fuel_pin.Delta_Z
         Delta_z_hp = self.cfg_HP.geometry.l_evap / self.cfg_HP.mesh.N_evap
 
         
@@ -209,7 +209,7 @@ if __name__ == "__main__":
     # plot_reactor_schematic(cfgs[-1])
 
     # Reactor ------------------
-    reactors = [Reactor(cfg) for cfg in cfgs]
+    reactors = [IsoReactor(cfg) for cfg in cfgs]
 
     solver = Solver(reactors, iterate=True, save_iterates=True)
     solver.fsolve()

@@ -189,7 +189,7 @@ def plot_reactor_temperature_schematic_with_vapour(solver, solution_idx: int = -
     plt.show()
 
 
-def plot_reactor_solutions(solver):
+def plot_reactor_solutions(solver, labels=None):
     reactors = solver.components
 
     plt.rcParams["font.size"] = 12
@@ -202,9 +202,9 @@ def plot_reactor_solutions(solver):
         reactor = reactors[i]
         cfg_R = reactor.cfg_R
 
-        label = "k variable" if getattr(reactor, "variable_r_eff", False) else "k fixed"
+        label = labels[i] if labels else f"Solution {i+1}"
 
-        if type(reactor).__name__ == "VapourReactor":
+        if type(reactor).__name__ == "Reactor":
             ((T_solid, u_v, T_v), T_FP, (phi_n_g, k)) = solver.solutions[i]  # type: ignore
 
             u_full = np.r_[0, u_v, 0]
@@ -216,7 +216,7 @@ def plot_reactor_solutions(solver):
             axs[0, 1].plot(z_full, u_bar, color=colors[i], label=label)
             axs[0, 2].plot(z_full, T_v, color=colors[i], label=label)
 
-        if type(reactor).__name__ == "Reactor":
+        if type(reactor).__name__ == "IsoReactor":
             ((T_solid, T_v), T_FP, (phi_n_g, k)) = solver.solutions[i]  # type: ignore
 
             T_v_vec = np.repeat(np.array([T_v]), cfg_R.HP.mesh.N_Z)
@@ -233,7 +233,7 @@ def plot_reactor_solutions(solver):
 
     # Titles
     axs[0, 0].set_title("Solid Axial Temperature")
-    axs[0, 1].set_title("Vapour Velocity")
+    axs[0, 1].set_title("Vapour Velocity") 
     axs[0, 2].set_title("Vapour Temperature")
     axs[1, 0].set_title("Fuel Axial Pin Temperature")
     axs[1, 1].set_title("Neutron Flux (Group 0)")

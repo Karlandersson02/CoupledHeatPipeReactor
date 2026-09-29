@@ -20,7 +20,7 @@
             "k_gap": 84,
             "k_wall": 19.0,
             "h_vap": 1e6,
-            "h_cond": 550
+            "h_cond": 525
         },
         "wick": {
             "Is_annular": false,

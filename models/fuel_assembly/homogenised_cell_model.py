@@ -8,7 +8,7 @@ import os
 import glob
 
 from utils.sodium_properties import calculate_Na_rho_l
-from coupled.heatpipe import Heatpipe
+from models.heatpipe.heatpipe import Heatpipe
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch

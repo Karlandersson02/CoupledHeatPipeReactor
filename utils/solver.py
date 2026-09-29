@@ -6,11 +6,11 @@ from scipy.optimize import fsolve, newton_krylov
 from scipy.interpolate import RegularGridInterpolator
 
 from models.model import AbstractModel
-from models.heatpipe.solid_discretised_model import HeatpipeDiscretised
-from models.fuel_pin.fuel_pin_model import FuelPin
-from models.neutronics.axial_neutron_model import NeutronicsModel
-from coupled.iso_reactor import Reactor
-# from coupled.vapour_reactor import VapourReactor
+from models.reduced_heatpipes.iso_heatpipe import IsoHeatpipe
+from models.fuel_pin.fuel_pin import FuelPin
+from models.neutronics.neutronics import Neutronics
+from models.reactors.iso_reactor import IsoReactor
+# from models.reactors.reactor import Reactor
 
 
 def interpolate_2d(
@@ -87,8 +87,8 @@ class Solver:
 
     def _transfer_iso_heatpipe(
         self,
-        current: HeatpipeDiscretised,
-        nxt: HeatpipeDiscretised,
+        current: IsoHeatpipe,
+        nxt: IsoHeatpipe,
         x_sol: np.ndarray,
     ) -> np.ndarray:
         x_out = current.unpack(x_sol)
@@ -126,8 +126,8 @@ class Solver:
 
     def _transfer_neutronics(
         self,
-        current: NeutronicsModel,
-        nxt: NeutronicsModel,
+        current: Neutronics,
+        nxt: Neutronics,
         x_sol: np.ndarray,
     ) -> np.ndarray:
         x_out = current.unpack(x_sol)
@@ -145,19 +145,19 @@ class Solver:
 
     def _transfer_iso_reactor(
         self,
-        current: Reactor,
-        nxt: Reactor,
+        current: IsoReactor,
+        nxt: IsoReactor,
         x_sol: np.ndarray,
     ) -> np.ndarray:
         x_out = current.unpack(x_sol)
 
-        hp_current  = current.heat_pipe_thermal_model
-        fp_current  = current.fuel_pin_thermal_model
-        neu_current = current.neutron_flux_model
+        hp_current  = current.iso_heatpipe
+        fp_current  = current.fuel_pin
+        neu_current = current.neutronics
 
-        hp_next  = nxt.heat_pipe_thermal_model
-        fp_next  = nxt.fuel_pin_thermal_model
-        neu_next = nxt.neutron_flux_model
+        hp_next  = nxt.iso_heatpipe
+        fp_next  = nxt.fuel_pin
+        neu_next = nxt.neutronics
 
         x_init_hp  = self._transfer_iso_heatpipe(hp_current, hp_next, x_out[0])
         x_init_fp  = self._transfer_fuel_pin(fp_current, fp_next, x_out[1])
@@ -199,12 +199,12 @@ class Solver:
         x_out = current.unpack(x_sol)
 
         hp_current  = current.heatpipe
-        fp_current  = current.fuel_pin_thermal_model
-        neu_current = current.neutron_flux_model
+        fp_current  = current.fuel_pin
+        neu_current = current.neutronics
 
         hp_next  = nxt.heatpipe
-        fp_next  = nxt.fuel_pin_thermal_model
-        neu_next = nxt.neutron_flux_model
+        fp_next  = nxt.fuel_pin
+        neu_next = nxt.neutronics
 
         x_init_hp  = self._transfer_vap_heatpipe(hp_current, hp_next, x_out[0])
         x_init_fp  = self._transfer_fuel_pin(fp_current, fp_next, x_out[1])
@@ -214,7 +214,7 @@ class Solver:
     
     def _transfer_iso_to_vapour(
             self,
-            current: Reactor,
+            current: IsoReactor,
             nxt,
             x_sol: np.ndarray
     ) -> np.ndarray:
@@ -242,25 +242,25 @@ class Solver:
         nxt: AbstractModel,
         x_sol: np.ndarray,
     ) -> np.ndarray:
-        if self._is_type(current, "HeatpipeDiscretised") and self._is_type(nxt, "HeatpipeDiscretised"):
+        if self._is_type(current, "IsoHeatpipe") and self._is_type(nxt, "IsoHeatpipe"):
             return self._transfer_iso_heatpipe(current, nxt, x_sol)
 
         if self._is_type(current, "FuelPin") and self._is_type(nxt, "FuelPin"):
             return self._transfer_fuel_pin(current, nxt, x_sol)
 
-        if self._is_type(current, "NeutronicsModel") and self._is_type(nxt, "NeutronicsModel"):
+        if self._is_type(current, "Neutronics") and self._is_type(nxt, "Neutronics"):
             return self._transfer_neutronics(current, nxt, x_sol)
 
-        if self._is_type(current, "Reactor") and self._is_type(nxt, "Reactor"):
+        if self._is_type(current, "IsoReactor") and self._is_type(nxt, "IsoReactor"):
             return self._transfer_iso_reactor(current, nxt, x_sol)
 
-        if self._is_type(current, "Reactor") and self._is_type(nxt, "VapourReactor"):
+        if self._is_type(current, "IsoReactor") and self._is_type(nxt, "Reactor"):
             return self._transfer_iso_to_vapour(current, nxt, x_sol)
 
         if self._is_type(current, "Heatpipe") and self._is_type(nxt, "Heatpipe"):
             return self._transfer_vap_heatpipe(current, nxt, x_sol)
         
-        if self._is_type(current, "VapourReactor") and self._is_type(nxt, "VapourReactor"):
+        if self._is_type(current, "Reactor") and self._is_type(nxt, "Reactor"):
             return self._transfer_vap_reactor(current, nxt, x_sol)
 
         raise TypeError(
