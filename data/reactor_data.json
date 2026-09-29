@@ -23,7 +23,7 @@
             "h_cond": 525
         },
         "wick": {
-            "Is_annular": false,
+            "Is_annular": true,
             "K":1e-10,
             "r_pore": 0.00002,
             "porosity": 0.7
@@ -38,7 +38,7 @@
         "geometry": {
             "delta_gap": 1e-4, 
             "delta_wall": 6e-4,
-            "r": 0.0065,
+            "r": 0.0072,
             "l": 1.5
         },
         "energy": {

@@ -116,8 +116,8 @@ def create_fuel_pin_universe(cfg_FP, temperature):
     r_fuel       = 1.0e2 * (cfg_FP.geometry.r - cfg_FP.geometry.delta_wall - cfg_FP.geometry.delta_gap)
 
     uo2 = openmc.Material(material_id=11, name='uo2')
-    uo2.add_nuclide('U235', 0.10)
-    uo2.add_nuclide('U238', 0.90)
+    uo2.add_nuclide('U235', 0.1975)
+    uo2.add_nuclide('U238', 0.8025)
     uo2.add_nuclide('O16',  2.0)
     uo2.set_density('g/cm3', density_uo2)
     uo2.temperature = temperature

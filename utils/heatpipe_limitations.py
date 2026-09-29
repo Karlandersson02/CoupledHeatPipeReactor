@@ -407,6 +407,152 @@ class HeatPipeLimitations:
             return Q_boil, diagnostics
 
         return Q_boil
+    
+
+    def calculate_analytical_boiling_limit_new(
+        self,
+        T_span,
+        R_b=1e-5,
+        return_diagnostics=False,
+    ):
+        """
+        Parameters
+        ----------
+        T_span : float or array-like
+            Vapour/saturation temperature values [K].
+
+        R_b : float, optional
+            Critical bubble radius [m]. Default is 1e-7 m.
+
+        return_diagnostics : bool, optional
+            If True, also return a diagnostics dictionary.
+
+        Returns
+        -------
+        Q_boil : float or np.ndarray
+            Analytical boiling limit [W].
+
+        diagnostics : dict, optional
+            Returned only if return_diagnostics=True.
+        """
+
+        T_span = np.asarray(T_span, dtype=float)
+        scalar_input = T_span.ndim == 0
+        T_span = np.atleast_1d(T_span)
+
+        def as_array(x, name):
+            x = np.asarray(x, dtype=float)
+            try:
+                return np.broadcast_to(x, T_span.shape).astype(float, copy=False)
+            except ValueError as exc:
+                raise ValueError(
+                    f"{name} returned shape {x.shape}, but expected something "
+                    f"broadcastable to {T_span.shape}."
+                ) from exc
+
+        # ------------------------------------------------------------
+        # Sodium properties
+        # ------------------------------------------------------------
+        h_fg    = as_array(s_props.calculate_Na_h_fg(T_span), "h_fg")
+        rho_v   = as_array(s_props.calculate_Na_rho_v(T_span), "rho_v")
+        sigma_l = as_array(s_props.calculate_Na_surface_tension(T_span), "sigma_l")
+        k_l     = as_array(s_props.calculate_Na_thermal_conductivity_l(T_span), "k_l")
+
+        # ------------------------------------------------------------
+        # Geometry and wick/material properties
+        # ------------------------------------------------------------
+        r_vapour = float(self.cfg.geometry.r_vapour)
+        r_wick   = float(self.cfg.geometry.r_wick)
+        r_pore   = float(self.cfg.wick.r_pore)
+        l_evap   = float(self.cfg.geometry.l_evap)
+        porosity = float(self.cfg.wick.porosity)
+        k_wick   = float(self.cfg.material.k_wick)
+
+        # ------------------------------------------------------------
+        # Input checks
+        # ------------------------------------------------------------
+        if r_vapour <= 0:
+            raise ValueError("cfg.geometry.r_vapour must be positive.")
+        if r_wick <= r_vapour:
+            raise ValueError("cfg.geometry.r_wick must be larger than r_vapour.")
+        if r_pore <= 0:
+            raise ValueError("cfg.wick.r_pore must be positive.")
+        if l_evap <= 0:
+            raise ValueError("cfg.geometry.l_evap must be positive.")
+        if R_b <= 0:
+            raise ValueError("R_b must be positive.")
+        if not (0.0 <= porosity <= 1.0):
+            raise ValueError("cfg.wick.porosity must be between 0 and 1.")
+
+        log_ratio = np.log(r_wick / r_vapour)
+
+        Q_boil = np.full_like(T_span, np.nan, dtype=float)
+
+        diagnostics = {
+            "invalid_property_points": 0,
+            "non_positive_superheat_points": 0,
+            "non_finite_result_points": 0,
+        }
+
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            # Effective wick conductivity
+            k_eff_wick = (1.0 - porosity) * k_wick + porosity * k_l
+
+            # Critical superheat
+            delta_T_crit = (
+                2.0 * sigma_l * T_span / (h_fg * rho_v)
+                * (1.0 / R_b - 1.0 / r_pore)
+            )
+
+            # Boiling limit
+            Q = (
+                2.0 * np.pi * l_evap * k_eff_wick * delta_T_crit
+                / log_ratio
+            )
+
+            valid_base = (
+                np.isfinite(T_span)
+                & np.isfinite(h_fg)
+                & np.isfinite(rho_v)
+                & np.isfinite(sigma_l)
+                & np.isfinite(k_l)
+                & np.isfinite(k_eff_wick)
+                & np.isfinite(delta_T_crit)
+                & np.isfinite(Q)
+                & (T_span > 0.0)
+                & (h_fg > 0.0)
+                & (rho_v > 0.0)
+                & (sigma_l > 0.0)
+                & (k_l > 0.0)
+                & (k_eff_wick > 0.0)
+                & (log_ratio > 0.0)
+            )
+
+            diagnostics["invalid_property_points"] = int(np.count_nonzero(~valid_base))
+
+            positive_superheat = valid_base & (delta_T_crit > 0.0)
+
+            diagnostics["non_positive_superheat_points"] = int(
+                np.count_nonzero(valid_base & ~positive_superheat)
+            )
+
+            valid_result = positive_superheat & np.isfinite(Q) & (Q >= 0.0)
+
+            diagnostics["non_finite_result_points"] = int(
+                np.count_nonzero(positive_superheat & ~valid_result)
+            )
+
+            Q_boil[valid_result] = Q[valid_result]
+
+        print(diagnostics)
+
+        if scalar_input:
+            Q_boil = Q_boil.item()
+
+        if return_diagnostics:
+            return Q_boil, diagnostics
+
+        return Q_boil
 
     
     
@@ -614,7 +760,7 @@ if __name__ == "__main__":
     import json
     with open("./data/reactor_data.json", "r") as f:
         data_guoju = json.load(f)
-        data = data_guoju["data_guoju_1000"]
+        data = data_guoju["HeatPipe"]
 
     geom = d_class.HeatpipeGeometry(**data["geometry"])
     mesh = d_class.HeatpipeMesh(N_R=20, N_Z=50)
