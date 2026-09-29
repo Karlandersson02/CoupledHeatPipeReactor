@@ -1,4 +1,4 @@
-# Coupled Modelling of a heat pipe reactor
+# Coupled modelling of a heat pipe reactor
 This repository is a part of a Master's project found [here](https://odr.chalmers.se/items/b35fd56b-2b26-492e-8d28-b2f4dd06144d).
 
 In spring of 2026 we developed a reduced/simplified model of a single fuel assembly in a heat pipe reactor, a microreactor concept currently being explored by [Westinghouse](https://westinghousenuclear.com/innovation/evinci-microreactor/) and [Antares](https://antaresindustries.com), among others. The important components of such a reactor are contained in the reactor core and consists of wicked heat pipes, a graphite moderating material, and fuel rods. Implementations of these components and the multi-physics coupling inbetween can be found in this repository.
